@@ -1,0 +1,19 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: business --default, dark, night, dim, luxury, forest, corporate, light, nord, sunset;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.form-control .input,
+.form-control .select,
+.form-control .textarea {
+  width: 100%;
+}
