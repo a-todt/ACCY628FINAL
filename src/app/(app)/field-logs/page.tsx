@@ -285,10 +285,7 @@ export default function FieldLogsPage() {
               </thead>
               <tbody>
                 {filtered.map((log) => (
-                  <tr
-                    key={log.id}
-                    className={isBadWeather(log.weather_conditions) ? "bg-error/10" : undefined}
-                  >
+                  <tr key={log.id}>
                     <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
                     <td>{log.contracts?.contract_name ?? "—"}</td>
                     <td>
