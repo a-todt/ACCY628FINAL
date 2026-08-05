@@ -21,11 +21,13 @@ import {
   CircleDollarSign,
   ClipboardList,
   FileText,
+  Gavel,
   Plus,
   TrendingUp,
   TriangleAlert,
   Wrench,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
@@ -33,7 +35,10 @@ import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/co
 import { buildInsuranceWarnings } from "@/lib/insurance";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
 import { statusBadgeClass } from "@/lib/roles";
+import { resolveSubcontractorScopeUserId } from "@/lib/subScope";
+import { createClient } from "@/lib/supabase/client";
 import type {
+  BidPackage,
   ChangeOrder,
   Contract,
   CostEntry,
@@ -69,6 +74,17 @@ export default function DashboardPage() {
   const { effectiveRole, profile, user } = useAuth();
   const data = useContractData();
   const insurance = useInsuranceData();
+
+  const subScopeUserId = useMemo(
+    () =>
+      resolveSubcontractorScopeUserId(
+        effectiveRole,
+        profile?.role,
+        user?.id,
+        data.userProfiles
+      ),
+    [effectiveRole, profile?.role, user?.id, data.userProfiles]
+  );
 
   if (data.loading || insurance.loading) {
     return (
@@ -109,7 +125,7 @@ export default function DashboardPage() {
       ) : effectiveRole === "field_supervisor" ? (
         <FieldSupervisorDashboard {...shared} userId={user?.id} />
       ) : effectiveRole === "subcontractor" ? (
-        <SubcontractorDashboard {...shared} userId={user?.id} />
+        <SubcontractorDashboard {...shared} userId={subScopeUserId ?? user?.id} />
       ) : (
         <ClientDashboard {...shared} />
       )}
@@ -447,21 +463,109 @@ function SubcontractorDashboard({
   costEntries,
   userId,
 }: DashboardData & { userId?: string }) {
-  const mySubs = subcontractors.filter((s) => s.user_id === userId);
-  const myFieldLogs = fieldLogs.filter((f) => f.user_id === userId).slice(0, 6);
-  const myCosts = costEntries.filter((c) => c.user_id === userId);
+  // Already scoped to this sub in useContractData; keep filter as a safety net
+  const mySubs = subcontractors.filter((s) => !userId || s.user_id === userId);
+  const myFieldLogs = fieldLogs
+    .filter((f) => !userId || f.user_id === userId)
+    .slice(0, 6);
+  const myCosts = costEntries.filter((c) => !userId || c.user_id === userId);
   const totalValue = mySubs.reduce((sum, s) => sum + Number(s.subcontract_value ?? 0), 0);
   const totalPaid = mySubs.reduce((sum, s) => sum + Number(s.amount_paid ?? 0), 0);
   const totalCostsSubmitted = myCosts.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
 
+  const [openPackages, setOpenPackages] = useState<BidPackage[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPackages = async () => {
+      setPackagesLoading(true);
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("bid_packages")
+        .select("*")
+        .eq("status", "open")
+        .order("bids_due_at", { ascending: true });
+      if (!cancelled) {
+        setOpenPackages((data as BidPackage[]) ?? []);
+        setPackagesLoading(false);
+      }
+    };
+    void loadPackages();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard title="Active Engagements" value={String(mySubs.filter((s) => s.status === "active").length)} hint={`${mySubs.length} total`} icon={Wrench} />
+        <StatCard
+          title="Active Engagements"
+          value={String(mySubs.filter((s) => s.status === "active").length)}
+          hint={`${mySubs.length} total`}
+          icon={Wrench}
+        />
         <StatCard title="Subcontract Value" value={money(totalValue)} icon={CircleDollarSign} />
         <StatCard title="Amount Paid" value={money(totalPaid)} icon={Banknote} tone="success" />
-        <StatCard title="Costs Submitted" value={money(totalCostsSubmitted)} hint={`${myCosts.length} entries`} />
+        <StatCard
+          title="Costs Submitted"
+          value={money(totalCostsSubmitted)}
+          hint={`${myCosts.length} entries`}
+        />
       </div>
+
+      <SectionCard
+        title="Open bid packages"
+        actions={
+          <Link href="/bidding" className="btn btn-primary btn-sm">
+            <Gavel className="h-4 w-4" />
+            Go to Bidding
+          </Link>
+        }
+      >
+        {packagesLoading ? (
+          <div className="grid place-items-center py-8">
+            <span className="loading loading-spinner loading-md text-primary" />
+          </div>
+        ) : openPackages.length === 0 ? (
+          <p className="text-sm opacity-60 py-6 text-center">
+            No open bid packages right now. Check back later or open Bidding for past packages.
+          </p>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {openPackages.map((pkg) => (
+              <Link
+                key={pkg.id}
+                href={`/bidding?package=${pkg.id}`}
+                className="card bg-base-200/60 border border-base-300 hover:border-primary transition-colors"
+              >
+                <div className="card-body p-4 gap-1">
+                  <p className="font-medium truncate">{pkg.title}</p>
+                  <p className="text-xs opacity-60 truncate">{pkg.project_name}</p>
+                  <p className="text-xs opacity-60">{pkg.trade}</p>
+                  <div className="flex items-center justify-between text-sm mt-2">
+                    <span className="opacity-70">Est. value</span>
+                    <span className="font-medium">{money(pkg.estimated_package_value)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="opacity-70">Bids due</span>
+                    <span className="font-medium">
+                      {pkg.bids_due_at
+                        ? new Date(pkg.bids_due_at).toLocaleDateString()
+                        : "—"}
+                    </span>
+                  </div>
+                  <span className="btn btn-primary btn-xs mt-3 w-fit">
+                    <Gavel className="h-3.5 w-3.5" />
+                    Bid on this package
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
       <SectionCard
         title="My Subcontract Engagements"
@@ -472,15 +576,20 @@ function SubcontractorDashboard({
         }
       >
         {mySubs.length === 0 ? (
-          <p className="text-sm opacity-60 py-6 text-center">You are not assigned to any subcontract engagements yet.</p>
+          <p className="text-sm opacity-60 py-6 text-center">
+            You are not assigned to any subcontract engagements yet.
+          </p>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {mySubs.map((sub) => {
-              const overpaid = Number(sub.amount_paid ?? 0) > Number(sub.subcontract_value ?? 0);
+              const overpaid =
+                Number(sub.amount_paid ?? 0) > Number(sub.subcontract_value ?? 0);
               return (
                 <div key={sub.id} className="card bg-base-200/60 border border-base-300">
                   <div className="card-body p-4 gap-1">
-                    <p className="font-medium truncate">{sub.contracts?.contract_name ?? "Project"}</p>
+                    <p className="font-medium truncate">
+                      {sub.contracts?.contract_name ?? "Project"}
+                    </p>
                     <p className="text-xs opacity-60">{sub.trade ?? "—"}</p>
                     <div className="flex items-center justify-between text-sm mt-1">
                       <span>Value</span>
@@ -491,8 +600,12 @@ function SubcontractorDashboard({
                       <span className="font-medium">{money(sub.amount_paid)}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className={`badge badge-sm ${statusBadgeClass(sub.status)}`}>{labelize(sub.status)}</span>
-                      {overpaid ? <span className="badge badge-sm badge-error">Overpaid</span> : null}
+                      <span className={`badge badge-sm ${statusBadgeClass(sub.status)}`}>
+                        {labelize(sub.status)}
+                      </span>
+                      {overpaid ? (
+                        <span className="badge badge-sm badge-error">Overpaid</span>
+                      ) : null}
                     </div>
                   </div>
                 </div>

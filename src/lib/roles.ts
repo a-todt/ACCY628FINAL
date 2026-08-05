@@ -248,6 +248,20 @@ export function canViewSubcontractors(role: UserRole): boolean {
   return hasPermission(role, "viewSubcontractors");
 }
 
+export function canManageBidPackages(role: UserRole): boolean {
+  return role === "admin" || role === "owner" || role === "project_manager";
+}
+
+export function canViewBidding(role: UserRole): boolean {
+  return (
+    role === "admin" ||
+    role === "owner" ||
+    role === "project_manager" ||
+    role === "field_supervisor" ||
+    role === "subcontractor"
+  );
+}
+
 export function canViewFieldLogs(role: UserRole): boolean {
   return hasPermission(role, "viewFieldLogs");
 }
@@ -320,6 +334,11 @@ export function secondaryNavForCategory(
           show: canViewSubcontractors(role),
         },
         {
+          href: "/bidding",
+          label: "Bidding",
+          show: canViewBidding(role),
+        },
+        {
           href: "/field-logs",
           label: "Field Logs",
           show: canViewFieldLogs(role),
@@ -372,6 +391,7 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
     pathname.startsWith("/contracts") ||
     pathname.startsWith("/change-orders") ||
     pathname.startsWith("/subcontractors") ||
+    pathname.startsWith("/bidding") ||
     pathname.startsWith("/field-logs")
   ) {
     return "contracts";
@@ -439,16 +459,23 @@ export function statusBadgeClass(status: string): string {
     case "paid":
     case "completed":
     case "complete":
+    case "accepted":
+    case "awarded":
+    case "open":
       return "badge-success";
     case "pending":
     case "partially_paid":
     case "in_progress":
     case "on_hold":
+    case "submitted":
+    case "draft":
       return "badge-warning";
     case "overdue":
     case "rejected":
     case "canceled":
     case "terminated":
+    case "withdrawn":
+    case "closed":
       return "badge-error";
     case "unpaid":
       return "badge-ghost";

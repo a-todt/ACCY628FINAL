@@ -14,9 +14,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { compareValues } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { StarRating } from "@/components/StarRating";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize, money } from "@/lib/metrics";
 import { canManageSubcontractors, statusBadgeClass } from "@/lib/roles";
+import { resolveSubcontractorScopeUserId } from "@/lib/subScope";
 import { createClient } from "@/lib/supabase/client";
 import type { SubStatus, Subcontractor } from "@/lib/types";
 
@@ -36,6 +38,8 @@ const EMPTY_FORM = {
   end_date: "",
   status: "active" as SubStatus,
   scope_of_work: "",
+  business_notes: "",
+  rating: "",
   user_id: "",
 };
 
@@ -51,6 +55,8 @@ type EditForm = {
   subcontract_value: string;
   amount_paid: string;
   status: SubStatus;
+  business_notes: string;
+  rating: string;
 };
 
 function editFormFromSub(sub: Subcontractor): EditForm {
@@ -64,6 +70,8 @@ function editFormFromSub(sub: Subcontractor): EditForm {
     subcontract_value: sub.subcontract_value != null ? String(sub.subcontract_value) : "",
     amount_paid: sub.amount_paid != null ? String(sub.amount_paid) : "0",
     status: sub.status,
+    business_notes: sub.business_notes ?? "",
+    rating: sub.rating != null ? String(Number(sub.rating)) : "",
   };
 }
 
@@ -72,11 +80,22 @@ function contactLabel(sub: Subcontractor) {
 }
 
 export default function SubcontractorsPage() {
-  const { effectiveRole, user } = useAuth();
+  const { effectiveRole, user, profile } = useAuth();
   const { contracts, subcontractors, userProfiles, loading, error, refresh } = useContractData();
   const canManage = canManageSubcontractors(effectiveRole);
   const canMutate = canManage;
   const isSubcontractor = effectiveRole === "subcontractor";
+
+  const scopeUserId = useMemo(
+    () =>
+      resolveSubcontractorScopeUserId(
+        effectiveRole,
+        profile?.role,
+        user?.id,
+        userProfiles
+      ),
+    [effectiveRole, profile?.role, user?.id, userProfiles]
+  );
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -101,8 +120,11 @@ export default function SubcontractorsPage() {
   const subLogins = useMemo(() => userProfiles.filter((p) => p.role === "subcontractor"), [userProfiles]);
 
   const baseList = useMemo(
-    () => (isSubcontractor ? subcontractors.filter((s) => s.user_id === user?.id) : subcontractors),
-    [subcontractors, isSubcontractor, user?.id]
+    () =>
+      isSubcontractor
+        ? subcontractors.filter((s) => !scopeUserId || s.user_id === scopeUserId)
+        : subcontractors,
+    [subcontractors, isSubcontractor, scopeUserId]
   );
 
   const filtered = useMemo(() => {
@@ -329,6 +351,8 @@ export default function SubcontractorsPage() {
           end_date: form.end_date || null,
           status: form.status,
           scope_of_work: form.scope_of_work.trim() || null,
+          business_notes: form.business_notes.trim() || null,
+          rating: form.rating ? Number(form.rating) : null,
           user_id: form.user_id || null,
         })
         .select("id")
@@ -376,6 +400,8 @@ export default function SubcontractorsPage() {
           subcontract_value: editForm.subcontract_value ? Number(editForm.subcontract_value) : null,
           amount_paid: editForm.amount_paid ? Number(editForm.amount_paid) : 0,
           status: editForm.status,
+          business_notes: editForm.business_notes.trim() || null,
+          rating: editForm.rating ? Number(editForm.rating) : null,
         })
         .eq("id", editing.id);
       if (updateError) throw updateError;
@@ -619,6 +645,33 @@ export default function SubcontractorsPage() {
                 onChange={(e) => updateField("scope_of_work", e.target.value)}
               />
             </FormField>
+            <FormField label="Business notes">
+              <textarea
+                className="textarea textarea-bordered w-full"
+                rows={3}
+                placeholder="e.g. Completes on time, easy to reach, professional crews…"
+                value={form.business_notes}
+                onChange={(e) => updateField("business_notes", e.target.value)}
+              />
+            </FormField>
+            <FormField label="Star rating">
+              <select
+                className="select select-bordered"
+                value={form.rating}
+                onChange={(e) => updateField("rating", e.target.value)}
+              >
+                <option value="">Not rated</option>
+                <option value="5">5.0 ★★★★★</option>
+                <option value="4.5">4.5 ★★★★½</option>
+                <option value="4">4.0 ★★★★</option>
+                <option value="3.5">3.5 ★★★½</option>
+                <option value="3">3.0 ★★★</option>
+                <option value="2.5">2.5 ★★½</option>
+                <option value="2">2.0 ★★</option>
+                <option value="1.5">1.5 ★½</option>
+                <option value="1">1.0 ★</option>
+              </select>
+            </FormField>
             <div className="flex justify-end gap-2">
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? <span className="loading loading-spinner loading-sm" /> : null}
@@ -739,6 +792,9 @@ export default function SubcontractorsPage() {
                           >
                             {sub.company_name}
                           </button>
+                          <div className="mt-0.5">
+                            <StarRating value={sub.rating} size="xs" />
+                          </div>
                         </td>
                         <td className="min-w-0 px-1 text-left">
                           <Link
@@ -903,6 +959,14 @@ export default function SubcontractorsPage() {
               <div className="sm:col-span-2">
                 <DetailField label="Scope of Work">{viewing.scope_of_work ?? "—"}</DetailField>
               </div>
+              <div className="sm:col-span-2">
+                <DetailField label="Business notes">{viewing.business_notes ?? "—"}</DetailField>
+              </div>
+              <div className="sm:col-span-2">
+                <DetailField label="Star rating">
+                  <StarRating value={viewing.rating} size="md" />
+                </DetailField>
+              </div>
             </div>
             <div className="modal-action">
               <button type="button" className="btn btn-ghost btn-sm" onClick={closeView}>
@@ -1013,6 +1077,33 @@ export default function SubcontractorsPage() {
                       {labelize(status)}
                     </option>
                   ))}
+                </select>
+              </FormField>
+              <FormField label="Business notes">
+                <textarea
+                  className="textarea textarea-bordered textarea-sm w-full"
+                  rows={3}
+                  placeholder="On-time? Easy to reach? Professional?"
+                  value={editForm.business_notes}
+                  onChange={(e) => updateEditField("business_notes", e.target.value)}
+                />
+              </FormField>
+              <FormField label="Star rating">
+                <select
+                  className="select select-bordered select-sm w-full"
+                  value={editForm.rating}
+                  onChange={(e) => updateEditField("rating", e.target.value)}
+                >
+                  <option value="">Not rated</option>
+                  <option value="5">5.0</option>
+                  <option value="4.5">4.5</option>
+                  <option value="4">4.0</option>
+                  <option value="3.5">3.5</option>
+                  <option value="3">3.0</option>
+                  <option value="2.5">2.5</option>
+                  <option value="2">2.0</option>
+                  <option value="1.5">1.5</option>
+                  <option value="1">1.0</option>
                 </select>
               </FormField>
               <div className="modal-action">

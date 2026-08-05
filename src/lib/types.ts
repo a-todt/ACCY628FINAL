@@ -19,6 +19,8 @@ export type CostCategory =
 export type InvoiceStatus = "unpaid" | "partially_paid" | "paid" | "overdue";
 export type MilestoneStatus = "pending" | "in_progress" | "completed";
 export type SubStatus = "active" | "complete" | "terminated";
+export type BidPackageStatus = "draft" | "open" | "closed" | "awarded";
+export type BidStatus = "submitted" | "withdrawn" | "accepted" | "rejected";
 
 export interface UserProfile {
   id: string;
@@ -195,8 +197,74 @@ export interface Subcontractor {
   license_number?: string | null;
   license_state?: string | null;
   license_expiration?: string | null;
+  /** Internal GC notes: on-time, easy to reach, professionalism, etc. */
+  business_notes?: string | null;
+  /** Internal GC star rating from 1.0 to 5.0 */
+  rating?: number | null;
   created_at: string;
   contracts?: { contract_name: string } | null;
+}
+
+export interface BidPackage {
+  id: string;
+  contract_id: string;
+  title: string;
+  trade: string;
+  status: BidPackageStatus;
+  project_name: string;
+  project_address: string | null;
+  project_city: string | null;
+  project_state: string | null;
+  client_name: string | null;
+  contract_type: string | null;
+  project_start_date: string | null;
+  project_end_date: string | null;
+  estimated_package_value: number | null;
+  scope_of_work: string | null;
+  technical_specifications: string | null;
+  materials_provided_by_gc: string | null;
+  materials_by_subcontractor: string | null;
+  site_conditions: string | null;
+  working_hours: string | null;
+  safety_requirements: string | null;
+  insurance_requirements: string | null;
+  bonding_requirements: string | null;
+  permit_notes: string | null;
+  schedule_milestones: string | null;
+  bid_instructions: string | null;
+  submission_requirements: string | null;
+  prebid_meeting_at: string | null;
+  questions_due_at: string | null;
+  bids_due_at: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Bid {
+  id: string;
+  bid_package_id: string;
+  user_id: string | null;
+  company_name: string;
+  amount: number;
+  days_to_complete: number | null;
+  proposal_notes: string | null;
+  exclusions: string | null;
+  license_number: string | null;
+  license_state: string | null;
+  license_expiration: string | null;
+  status: BidStatus;
+  /** Internal GC star rating for this bid (1.0–5.0) */
+  gc_rating?: number | null;
+  /** Internal GC review notes for this bid */
+  gc_review?: string | null;
+  created_at: string;
+  updated_at: string;
+  bid_packages?: { title: string; project_name: string; trade: string } | null;
+  user_profiles?: { full_name: string | null; email: string | null } | null;
 }
 
 export interface CostEntry {
