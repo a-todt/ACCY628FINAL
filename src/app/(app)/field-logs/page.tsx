@@ -6,7 +6,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { WeatherBadge } from "@/components/WeatherBadge";
 import { canCreateFieldLogs } from "@/lib/roles";
+import { WEATHER_OPTIONS, isBadWeather } from "@/lib/weather";
 import { createClient } from "@/lib/supabase/client";
 
 const EMPTY_FORM = {
@@ -201,13 +203,20 @@ export default function FieldLogsPage() {
                 onChange={(e) => updateField("workers_on_site", e.target.value)}
               />
             </FormField>
-            <FormField label="Weather Conditions">
-              <input
-                className="input input-bordered"
+            <FormField label="Weather Conditions" hint="Bad weather (rain, snow, wind, storm, extreme heat) shows in red.">
+              <select
+                className="select select-bordered"
                 value={form.weather_conditions}
                 onChange={(e) => updateField("weather_conditions", e.target.value)}
-                placeholder="e.g. Sunny, 75°F"
-              />
+              >
+                <option value="">Select weather…</option>
+                {WEATHER_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                    {isBadWeather(opt) ? " (adverse)" : ""}
+                  </option>
+                ))}
+              </select>
             </FormField>
             <FormField label="Equipment Used">
               <input
@@ -276,7 +285,10 @@ export default function FieldLogsPage() {
               </thead>
               <tbody>
                 {filtered.map((log) => (
-                  <tr key={log.id}>
+                  <tr
+                    key={log.id}
+                    className={isBadWeather(log.weather_conditions) ? "bg-error/10" : undefined}
+                  >
                     <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
                     <td>{log.contracts?.contract_name ?? "—"}</td>
                     <td>
@@ -287,7 +299,9 @@ export default function FieldLogsPage() {
                     <td className="max-w-xs truncate">{log.work_performed ?? "—"}</td>
                     <td className="text-right">{log.hours_worked ?? "—"}</td>
                     <td className="text-right">{log.workers_on_site ?? "—"}</td>
-                    <td>{log.weather_conditions ?? "—"}</td>
+                    <td>
+                      <WeatherBadge weather={log.weather_conditions} />
+                    </td>
                     <td className="max-w-xs truncate">{log.issues_or_delays ?? "—"}</td>
                   </tr>
                 ))}
