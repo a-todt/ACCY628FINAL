@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
@@ -534,6 +535,7 @@ function SubcontractorDashboard({
 }
 
 function ClientDashboard({ contracts, changeOrders, invoices, costEntries, milestones, payments }: DashboardData) {
+  const router = useRouter();
   const approvedChangeOrders = changeOrders.filter((co) => co.status === "approved");
   const perContract = contracts.map((contract) => ({
     contract,
@@ -638,8 +640,20 @@ function ClientDashboard({ contracts, changeOrders, invoices, costEntries, miles
                     (invoice.status === "unpaid" || invoice.status === "partially_paid") &&
                     daysPastDue(invoice.due_date) > 0;
                   return (
-                    <tr key={invoice.id}>
-                      <td>{invoice.invoice_number ?? "—"}</td>
+                    <tr
+                      key={invoice.id}
+                      className="hover cursor-pointer"
+                      onClick={() => router.push(`/invoices/${invoice.id}`)}
+                    >
+                      <td>
+                        <Link
+                          href={`/invoices/${invoice.id}`}
+                          className="link link-primary font-medium"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {invoice.invoice_number ?? "View invoice"}
+                        </Link>
+                      </td>
                       <td className="whitespace-nowrap">{invoice.invoice_date ?? "—"}</td>
                       <td>{money(invoice.invoice_amount)}</td>
                       <td>{money(invoice.amount_paid)}</td>

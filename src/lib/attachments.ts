@@ -112,6 +112,17 @@ export function canUploadAttachments(
   if (entityType === "invoice") {
     return role !== "subcontractor" && role !== "field_supervisor";
   }
+  if (entityType === "change_order") {
+    return role === "admin" || role === "owner" || role === "project_manager";
+  }
+  if (entityType === "insurance_policy") {
+    return (
+      role === "admin" ||
+      role === "owner" ||
+      role === "project_manager" ||
+      role === "subcontractor"
+    );
+  }
   return role !== "client";
 }
 

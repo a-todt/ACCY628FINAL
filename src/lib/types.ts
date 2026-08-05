@@ -326,7 +326,11 @@ export interface ContractMetrics {
   pendingChangeOrders: number;
 }
 
-export type AttachmentEntityType = "field_log" | "invoice";
+export type AttachmentEntityType =
+  | "field_log"
+  | "invoice"
+  | "change_order"
+  | "insurance_policy";
 
 export interface Attachment {
   id: string;

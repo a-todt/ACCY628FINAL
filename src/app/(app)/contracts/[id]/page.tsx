@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Ban, Trash2 } from "lucide-react";
+import { ArrowLeft, Ban, Paperclip, Trash2 } from "lucide-react";
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
+import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
@@ -539,6 +540,8 @@ function ContractInsuranceOverview({
   requirements: ContractInsuranceRequirement[];
   showRequiredRate: boolean;
 }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   if (policies.length === 0 && requirements.length === 0) {
     return <p className="text-sm opacity-60">No insurance policies on file for this contract.</p>;
   }
@@ -546,6 +549,7 @@ function ContractInsuranceOverview({
   const requiredRateByType = new Map<string, number | null>(
     requirements.map((req) => [`${req.policy_type}:${req.applies_to}`, req.minimum_limit])
   );
+  const colSpan = showRequiredRate ? 8 : 7;
 
   return (
     <div className="overflow-x-auto">
@@ -559,6 +563,7 @@ function ContractInsuranceOverview({
             {showRequiredRate ? <th className="text-right">Required</th> : null}
             <th>Expires</th>
             <th>Status</th>
+            <th className="text-right">Files</th>
           </tr>
         </thead>
         <tbody>
@@ -574,22 +579,46 @@ function ContractInsuranceOverview({
                 : [`${policy.policy_type}:subcontractor`, `${policy.policy_type}:both`];
             const required =
               appliesKey.map((key) => requiredRateByType.get(key)).find((value) => value != null) ?? null;
+            const expanded = expandedId === policy.id;
 
             return (
-              <tr key={policy.id}>
-                <td>
-                  <div className="font-medium">{labelPolicy(policy.policy_type)}</div>
-                  <div className="text-xs opacity-60">{policy.policy_number || "No policy #"}</div>
-                </td>
-                <td>{holderLabel}</td>
-                <td>{policy.carrier_name ?? "—"}</td>
-                <td className="text-right">{money(policy.coverage_limit)}</td>
-                {showRequiredRate ? <td className="text-right">{required != null ? money(required) : "—"}</td> : null}
-                <td className="whitespace-nowrap">{policy.expiration_date ?? "—"}</td>
-                <td>
-                  <span className={`badge badge-sm ${policyHealthBadge(health)}`}>{labelize(health)}</span>
-                </td>
-              </tr>
+              <Fragment key={policy.id}>
+                <tr>
+                  <td>
+                    <div className="font-medium">{labelPolicy(policy.policy_type)}</div>
+                    <div className="text-xs opacity-60">{policy.policy_number || "No policy #"}</div>
+                  </td>
+                  <td>{holderLabel}</td>
+                  <td>{policy.carrier_name ?? "—"}</td>
+                  <td className="text-right">{money(policy.coverage_limit)}</td>
+                  {showRequiredRate ? (
+                    <td className="text-right">{required != null ? money(required) : "—"}</td>
+                  ) : null}
+                  <td className="whitespace-nowrap">{policy.expiration_date ?? "—"}</td>
+                  <td>
+                    <span className={`badge badge-sm ${policyHealthBadge(health)}`}>{labelize(health)}</span>
+                  </td>
+                  <td className="text-right">
+                    <button
+                      type="button"
+                      className={`btn btn-ghost btn-xs ${expanded ? "btn-active" : ""}`}
+                      title="Attachments"
+                      onClick={() => setExpandedId(expanded ? null : policy.id)}
+                    >
+                      <Paperclip className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+                {expanded ? (
+                  <tr>
+                    <td colSpan={colSpan} className="bg-base-200/40">
+                      <div className="p-3 max-w-2xl">
+                        <AttachmentPanel entityType="insurance_policy" entityId={policy.id} />
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             );
           })}
           {requirements
@@ -618,6 +647,7 @@ function ContractInsuranceOverview({
                 <td>
                   <span className="badge badge-sm badge-warning">Missing</span>
                 </td>
+                <td />
               </tr>
             ))}
         </tbody>
