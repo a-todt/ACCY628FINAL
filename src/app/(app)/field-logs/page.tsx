@@ -139,7 +139,7 @@ export default function FieldLogsPage() {
         sortOptions={[
           { value: "date", label: "Date" },
           { value: "contract", label: "Project" },
-          { value: "hours", label: "Hours" },
+          { value: "hours", label: "Estimated Hours" },
           { value: "workers", label: "Workers" },
         ]}
         sortKey={sortKey}
@@ -277,7 +277,7 @@ export default function FieldLogsPage() {
                   <th>Project</th>
                   <th>Submitted By</th>
                   <th>Work Performed</th>
-                  <th className="text-right">Hours</th>
+                  <th className="text-right">Estimated Hours</th>
                   <th className="text-right">Workers</th>
                   <th>Weather</th>
                   <th>Issues</th>
