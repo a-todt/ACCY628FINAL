@@ -270,6 +270,7 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
   return (
     [
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
+      { id: "alerts" as const, href: "/alerts", label: "Alerts", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
       {
         id: "contracts" as const,
@@ -336,11 +337,17 @@ export function secondaryNavForCategory(
       .map(({ href, label }) => ({ href, label }));
   }
 
+  if (category === "alerts") {
+    return [{ href: "/alerts", label: "All Alerts" }];
+  }
+
   if (category === "finance") {
     return (
       [
         { href: "/finance", label: "Overview", show: true },
+        { href: "/projects", label: "Projects", show: canViewCosts(role) },
         { href: "/costs", label: "Cost Tracker", show: canViewCosts(role) },
+        { href: "/wip", label: "WIP Schedule", show: canViewCosts(role) },
         { href: "/invoices", label: "Invoices", show: canViewInvoices(role) },
       ] as Array<NavItem & { show: boolean }>
     )
@@ -380,7 +387,9 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
   }
   if (
     pathname.startsWith("/finance") ||
+    pathname.startsWith("/projects") ||
     pathname.startsWith("/costs") ||
+    pathname.startsWith("/wip") ||
     pathname.startsWith("/invoices")
   ) {
     return "finance";

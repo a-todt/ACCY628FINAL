@@ -13,8 +13,9 @@ export function money(n: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(Number.isFinite(value) ? value : 0);
 }
 
 export function moneyExact(n: number | null | undefined): string {
@@ -22,7 +23,9 @@ export function moneyExact(n: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-  }).format(value);
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
 }
 
 export function percent(n: number | null | undefined): string {
