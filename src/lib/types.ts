@@ -24,6 +24,7 @@ export interface UserProfile {
   id: string;
   email: string | null;
   full_name: string | null;
+  secondary_name?: string | null;
   role: UserRole;
   employee_id?: string | null;
   is_active?: boolean;
@@ -80,6 +81,7 @@ export interface Customer {
   id: string;
   company_name: string;
   contact_name: string | null;
+  secondary_name?: string | null;
   contact_email: string | null;
   contact_phone: string | null;
   billing_address: string | null;
@@ -89,11 +91,14 @@ export interface Customer {
   user_id: string | null;
   notes: string | null;
   is_active: boolean;
+  contract_id?: string | null;
   client_id?: string | null;
   setup_code?: string | null;
   setup_code_expires_at?: string | null;
   claimed_at?: string | null;
+  signup_access_emailed_at?: string | null;
   created_at: string;
+  contracts?: { contract_name: string } | null;
 }
 
 export interface SubcontractorInvite {

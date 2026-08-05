@@ -82,7 +82,7 @@ export function useAdminData() {
           .select("*, contracts(contract_name)")
           .order("created_at", { ascending: false }),
         supabase.from("contracts").select("*").order("contract_name", { ascending: true }),
-        supabase.from("customers").select("*").order("company_name", { ascending: true }),
+        supabase.from("customers").select("*, contracts(contract_name)").order("company_name", { ascending: true }),
         supabase
           .from("subcontractors")
           .select("*, contracts(contract_name)")

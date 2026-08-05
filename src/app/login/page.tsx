@@ -7,6 +7,7 @@ import { NailItLogo } from "@/components/NailItLogo";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { AlertBanner, FormField } from "@/components/ui";
 import { COMPANY_ROLES, ROLE_LABELS } from "@/lib/roles";
+import { requestClientSignupAccessMatch } from "@/lib/clientSignupAccessEmail";
 import type { UserRole } from "@/lib/types";
 
 type Mode = "login" | "signup" | "forgot";
@@ -21,6 +22,7 @@ export default function LoginPage() {
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [secondaryName, setSecondaryName] = useState("");
   const [accountType, setAccountType] = useState<UserRole>("field_supervisor");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export default function LoginPage() {
     });
     if (resolveError) throw resolveError;
     if (!data || typeof data !== "string") {
-      throw new Error("Could not resolve Client ID. Activate with your setup code first.");
+      throw new Error("Could not resolve Client ID. Activate your Client ID first.");
     }
     return data;
   };
@@ -96,6 +98,7 @@ export default function LoginPage() {
           .from("user_profiles")
           .update({
             full_name: fullName.trim() || null,
+            secondary_name: secondaryName.trim() || null,
             role: accountType,
             onboarding_complete: false,
             email,
@@ -106,9 +109,25 @@ export default function LoginPage() {
         }
       }
 
+      let clientNote = "";
+      if (accountType === "client" && data.session) {
+        const matched = await requestClientSignupAccessMatch();
+        if (matched.matched && matched.clientId) {
+          clientNote = ` Matched — after you sign in, your Client ID (${matched.clientId}) will be shown on the site.`;
+        } else if (matched.reason === "no_match") {
+          clientNote =
+            " Sign in after your GC adds you by the same name (or spouse/partner name).";
+        } else {
+          clientNote = " Sign in — if your name matches, the site will show your Client ID.";
+        }
+      } else if (accountType === "client") {
+        clientNote =
+          " Sign in with this email — if your name (or spouse/partner name) matches, the site shows your Client ID.";
+      }
+
       setMessage(
         accountType === "client"
-          ? "Account created. Sign in, then enter your Client ID and setup code from your GC."
+          ? `Account created.${clientNote}`
           : accountType === "subcontractor"
             ? "Account created. Sign in, then enter your invite code from your GC."
             : "Account created. Sign in — your Owner must assign you to a project before you can work."
@@ -187,13 +206,28 @@ export default function LoginPage() {
               <form className="space-y-4" onSubmit={onSubmit}>
                 {mode === "signup" ? (
                   <>
-                    <FormField label="Full name">
+                    <FormField
+                      label="Full name or business name"
+                      hint="Use your personal name (e.g. Joe Durrett) or your business name (e.g. Durrett Construction) — whichever your GC listed on the project invite."
+                    >
                       <input
                         className="input input-bordered"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         required
                         autoComplete="name"
+                        placeholder="Joe Durrett or Acme LLC"
+                      />
+                    </FormField>
+                    <FormField
+                      label="Spouse / partner name (optional)"
+                      hint="If your GC listed a spouse/partner on this project, either of you can match and get that project's Client ID."
+                    >
+                      <input
+                        className="input input-bordered"
+                        value={secondaryName}
+                        onChange={(e) => setSecondaryName(e.target.value)}
+                        autoComplete="nickname"
                       />
                     </FormField>
                     <FormField
@@ -314,9 +348,11 @@ export default function LoginPage() {
               </p>
 
               <div className="bg-base-200 rounded-lg p-3 text-xs space-y-1">
-                <p className="font-medium">Demo logins (after seed)</p>
-                <p>admin@gcmanager.demo / Demo123! (internal)</p>
-                <p>pm@gcmanager.demo · client@gcmanager.demo · field@ · sub@</p>
+                <p className="font-medium">Demo logins (password: Demo123!)</p>
+                <p>admin@gcmanager.demo · client@gcmanager.demo</p>
+                <p>PMs: pm@ · pm2@gcmanager.demo</p>
+                <p>Field: field@ · field2@gcmanager.demo</p>
+                <p>Subs: sub@ · sub2@gcmanager.demo</p>
               </div>
             </div>
           </div>
