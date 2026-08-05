@@ -62,53 +62,116 @@ export function canManageRoles(role: UserRole): boolean {
   return role === "admin";
 }
 
-export function navItemsForRole(role: UserRole) {
-  const items = [
-    { href: "/dashboard", label: "Dashboard", show: true },
-    { href: "/contracts", label: "Contracts", show: true },
-    {
-      href: "/contracts/new",
-      label: "Add Contract",
-      show: canManageContracts(role),
-    },
-    {
-      href: "/change-orders",
-      label: "Change Orders",
-      show: role !== "client",
-    },
-    {
-      href: "/subcontractors",
-      label: "Subcontractors",
-      show: role === "admin" || role === "project_manager" || role === "subcontractor",
-    },
-    {
-      href: "/costs",
-      label: "Cost Tracker",
-      show: canViewCosts(role),
-    },
-    {
-      href: "/invoices",
-      label: "Invoices",
-      show: role !== "subcontractor" && role !== "field_supervisor",
-    },
-    {
-      href: "/field-logs",
-      label: "Field Logs",
-      show: role !== "client",
-    },
-    {
-      href: "/reports",
-      label: "Reports",
-      show: canViewReports(role),
-    },
-    {
-      href: "/admin/roles",
-      label: "Roles",
-      show: canManageRoles(role),
-    },
-  ];
+export type NavCategoryId = "dashboard" | "reports" | "contracts" | "finance";
 
-  return items.filter((item) => item.show);
+export interface NavItem {
+  href: string;
+  label: string;
+}
+
+export function canViewInvoices(role: UserRole): boolean {
+  return role !== "subcontractor" && role !== "field_supervisor";
+}
+
+export function canViewFinance(role: UserRole): boolean {
+  return canViewCosts(role) || canViewInvoices(role);
+}
+
+export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCategoryId }> {
+  return (
+    [
+      { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
+      { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
+      { id: "contracts" as const, href: "/contracts/overview", label: "Contracts", show: true },
+      {
+        id: "finance" as const,
+        href: "/finance",
+        label: "Costing and Invoicing",
+        show: canViewFinance(role),
+      },
+    ] as Array<NavItem & { id: NavCategoryId; show: boolean }>
+  )
+    .filter((item) => item.show)
+    .map(({ id, href, label }) => ({ id, href, label }));
+}
+
+export function secondaryNavForCategory(
+  category: NavCategoryId | null,
+  role: UserRole
+): NavItem[] {
+  if (category === "contracts") {
+    return (
+      [
+        { href: "/contracts/overview", label: "Overview", show: true },
+        { href: "/contracts", label: "All Contracts", show: true },
+        { href: "/contracts/new", label: "Add Contract", show: canManageContracts(role) },
+        { href: "/change-orders", label: "Change Orders", show: role !== "client" },
+        {
+          href: "/subcontractors",
+          label: "Subcontractors",
+          show: role === "admin" || role === "project_manager" || role === "subcontractor",
+        },
+      ] as Array<NavItem & { show: boolean }>
+    )
+      .filter((item) => item.show)
+      .map(({ href, label }) => ({ href, label }));
+  }
+
+  if (category === "finance") {
+    return (
+      [
+        { href: "/finance", label: "Overview", show: true },
+        { href: "/costs", label: "Cost Tracker", show: canViewCosts(role) },
+        { href: "/invoices", label: "Invoices", show: canViewInvoices(role) },
+      ] as Array<NavItem & { show: boolean }>
+    )
+      .filter((item) => item.show)
+      .map(({ href, label }) => ({ href, label }));
+  }
+
+  return [];
+}
+
+export function categoryFromPath(pathname: string): NavCategoryId | null {
+  if (pathname.startsWith("/dashboard")) return "dashboard";
+  if (pathname.startsWith("/reports") || pathname.startsWith("/admin")) return "reports";
+  if (
+    pathname.startsWith("/contracts") ||
+    pathname.startsWith("/change-orders") ||
+    pathname.startsWith("/subcontractors") ||
+    pathname.startsWith("/field-logs")
+  ) {
+    return "contracts";
+  }
+  if (
+    pathname.startsWith("/finance") ||
+    pathname.startsWith("/costs") ||
+    pathname.startsWith("/invoices")
+  ) {
+    return "finance";
+  }
+  return null;
+}
+
+export function isNavItemActive(pathname: string, href: string): boolean {
+  if (href === "/dashboard") return pathname === "/dashboard";
+  if (href === "/contracts") {
+    return (
+      pathname === "/contracts" ||
+      (pathname.startsWith("/contracts/") &&
+        !pathname.startsWith("/contracts/overview") &&
+        !pathname.startsWith("/contracts/new"))
+    );
+  }
+  if (href === "/contracts/overview") return pathname.startsWith("/contracts/overview");
+  if (href === "/contracts/new") return pathname.startsWith("/contracts/new");
+  if (href === "/finance") return pathname === "/finance";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** @deprecated Prefer primaryNavForRole / secondaryNavForCategory */
+export function navItemsForRole(role: UserRole) {
+  return primaryNavForRole(role);
 }
 
 export function roleBadgeClass(role: UserRole): string {
