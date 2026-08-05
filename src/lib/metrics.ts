@@ -6,7 +6,6 @@ import type {
   Invoice,
   Milestone,
   Payment,
-  RevenueRecognitionMethod,
 } from "./types";
 
 export function money(n: number | null | undefined): string {
@@ -38,20 +37,6 @@ export function labelize(value: string | null | undefined): string {
     .join(" ");
 }
 
-export function recognitionMethodLabel(
-  method: RevenueRecognitionMethod | null | undefined
-): string {
-  if (method === "completed_contract") return "Completed Contract";
-  return "Percentage of Completion";
-}
-
-export function recognitionMethodShort(
-  method: RevenueRecognitionMethod | null | undefined
-): string {
-  if (method === "completed_contract") return "Completed";
-  return "POC";
-}
-
 export function computeContractMetrics(
   contract: Contract,
   changeOrders: ChangeOrder[],
@@ -63,6 +48,7 @@ export function computeContractMetrics(
   const relatedCOs = changeOrders.filter((c) => c.contract_id === contract.id);
   const relatedInvoices = invoices.filter((i) => i.contract_id === contract.id);
   const relatedCosts = costs.filter((c) => c.contract_id === contract.id);
+  const relatedMilestones = milestones.filter((m) => m.contract_id === contract.id);
   const invoiceIds = new Set(relatedInvoices.map((i) => i.id));
   const relatedPayments = payments.filter((p) => invoiceIds.has(p.invoice_id));
 
@@ -93,38 +79,13 @@ export function computeContractMetrics(
   const grossProfit = totalBilled - totalCosts;
   const grossMargin = totalBilled > 0 ? grossProfit / totalBilled : 0;
 
-  const revenueRecognitionMethod: RevenueRecognitionMethod =
-    contract.revenue_recognition_method === "completed_contract"
-      ? "completed_contract"
-      : "percentage_of_completion";
-
-  const estimatedTotalCost = Number(contract.estimated_total_cost ?? 0);
-  const missingCostEstimate =
-    revenueRecognitionMethod === "percentage_of_completion" && estimatedTotalCost <= 0;
-
   let completionPercent = 0;
-  let earnedRevenue = 0;
-
-  if (revenueRecognitionMethod === "completed_contract") {
-    if (contract.status === "completed") {
-      completionPercent = 1;
-      earnedRevenue = revisedValue;
-    } else {
-      completionPercent = 0;
-      earnedRevenue = 0;
-    }
-  } else if (estimatedTotalCost > 0) {
-    completionPercent = Math.min(totalCosts / estimatedTotalCost, 1);
-    earnedRevenue = revisedValue * completionPercent;
+  if (relatedMilestones.length > 0) {
+    const done = relatedMilestones.filter((m) => m.status === "completed").length;
+    completionPercent = done / relatedMilestones.length;
+  } else if (revisedValue > 0) {
+    completionPercent = Math.min(totalBilled / revisedValue, 1);
   }
-
-  const recognizedGrossProfit = earnedRevenue - totalCosts;
-  const recognizedGrossMargin = earnedRevenue > 0 ? recognizedGrossProfit / earnedRevenue : 0;
-  const billingsInExcess = Math.max(0, totalBilled - earnedRevenue);
-  const unbilledRevenue = Math.max(0, earnedRevenue - totalBilled);
-
-  // milestones kept for schedule UI; intentionally unused for recognition %
-  void milestones;
 
   return {
     approvedChangeOrders,
@@ -138,13 +99,6 @@ export function computeContractMetrics(
     grossMargin,
     completionPercent,
     pendingChangeOrders,
-    revenueRecognitionMethod,
-    earnedRevenue,
-    recognizedGrossProfit,
-    recognizedGrossMargin,
-    billingsInExcess,
-    unbilledRevenue,
-    missingCostEstimate,
   };
 }
 

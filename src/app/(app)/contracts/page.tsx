@@ -27,7 +27,7 @@ import { useContractSummaries } from "@/hooks/useContractSummaries";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, PageHeader } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
-import { computeContractMetrics, labelize, money, percent, recognitionMethodShort } from "@/lib/metrics";
+import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
 import {
   canCancelOrDeleteContracts,
   canManageContracts,
@@ -497,15 +497,10 @@ export default function ContractsPage() {
                       <p className="text-xs opacity-60">Revised Value</p>
                       <p className="font-medium">{money(metrics.revisedValue)}</p>
                     </div>
-                    {showCosts ? (
-                      <div>
-                        <p className="text-xs opacity-60">Recognition</p>
-                        <p className="font-medium">
-                          {recognitionMethodShort(metrics.revenueRecognitionMethod)} ·{" "}
-                          {percent(metrics.completionPercent)}
-                        </p>
-                      </div>
-                    ) : null}
+                    <div>
+                      <p className="text-xs opacity-60">Completion</p>
+                      <p className="font-medium">{percent(metrics.completionPercent)}</p>
+                    </div>
                     <div>
                       <p className="text-xs opacity-60">Billed / Collected</p>
                       <p className="font-medium">
@@ -514,9 +509,9 @@ export default function ContractsPage() {
                     </div>
                     {showCosts ? (
                       <div>
-                        <p className="text-xs opacity-60">Earned / Billing Profit</p>
-                        <p className={`font-medium ${metrics.recognizedGrossProfit < 0 ? "text-error" : ""}`}>
-                          {money(metrics.earnedRevenue)} / {money(metrics.grossProfit)}
+                        <p className="text-xs opacity-60">Gross Profit</p>
+                        <p className={`font-medium ${metrics.grossProfit < 0 ? "text-error" : ""}`}>
+                          {money(metrics.grossProfit)}
                         </p>
                       </div>
                     ) : null}
@@ -535,17 +530,15 @@ export default function ContractsPage() {
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
-                <col className="w-[12%]" />
+                <col className="w-[14%]" />
+                <col className="w-[11%]" />
                 <col className="w-[10%]" />
-                <col className="w-[9%]" />
-                <col className="w-[7%]" />
-                {showCosts ? <col className="w-[6%]" /> : null}
-                <col className="w-[9%]" />
-                <col className="w-[7%]" />
-                <col className="w-[7%]" />
-                {showCosts ? <col className="w-[7%]" /> : null}
-                {showCosts ? <col className="w-[8%]" /> : null}
-                <col className="w-[7%]" />
+                <col className="w-[8%]" />
+                <col className="w-[10%]" />
+                <col className="w-[8%]" />
+                <col className="w-[8%]" />
+                {showCosts ? <col className="w-[9%]" /> : null}
+                <col className="w-[8%]" />
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
               <thead>
@@ -597,7 +590,6 @@ export default function ContractsPage() {
                     sortDir={sortDir}
                     onSort={() => onSort("status")}
                   />
-                  {showCosts ? <th className="text-center align-middle">Recognition</th> : null}
                   <ColumnSortHeader
                     label="Revised Value"
                     sortActive={sortKey === "value"}
@@ -620,9 +612,6 @@ export default function ContractsPage() {
                     align="right"
                   />
                   {showCosts ? (
-                    <th className="text-center align-middle">Earned</th>
-                  ) : null}
-                  {showCosts ? (
                     <ColumnSortHeader
                       label="Gross Profit"
                       sortActive={sortKey === "profit"}
@@ -644,10 +633,7 @@ export default function ContractsPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={canMutate ? (showCosts ? 13 : 10) : showCosts ? 11 : 8}
-                      className="py-10 text-center opacity-60"
-                    >
+                    <td colSpan={canMutate ? (showCosts ? 11 : 10) : showCosts ? 9 : 8} className="py-10 text-center opacity-60">
                       No contracts match the column filters.
                     </td>
                   </tr>
@@ -686,13 +672,6 @@ export default function ContractsPage() {
                           {labelize(contract.status)}
                         </span>
                       </td>
-                      {showCosts ? (
-                        <td className="px-1 text-center">
-                          <span className="badge badge-outline badge-sm">
-                            {recognitionMethodShort(metrics.revenueRecognitionMethod)}
-                          </span>
-                        </td>
-                      ) : null}
                       <td className="truncate px-1 text-center" title={money(metrics.revisedValue)}>
                         {money(metrics.revisedValue)}
                       </td>
@@ -702,11 +681,6 @@ export default function ContractsPage() {
                       <td className="truncate px-1 text-center" title={money(metrics.totalCollected)}>
                         {money(metrics.totalCollected)}
                       </td>
-                      {showCosts ? (
-                        <td className="truncate px-1 text-center" title={money(metrics.earnedRevenue)}>
-                          {money(metrics.earnedRevenue)}
-                        </td>
-                      ) : null}
                       {showCosts ? (
                         <td
                           className={`truncate px-1 text-center ${metrics.grossProfit < 0 ? "text-error" : ""}`}

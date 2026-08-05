@@ -8,7 +8,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
-import { computeContractMetrics, daysPastDue, labelize, money } from "@/lib/metrics";
+import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { canViewCosts, canViewInvoices, statusBadgeClass } from "@/lib/roles";
 
 type Section = "costs" | "invoices";
@@ -16,8 +16,7 @@ type SortKey = "name" | "project" | "status" | "amount" | "date";
 
 export default function FinanceOverviewPage() {
   const { effectiveRole } = useAuth();
-  const { contracts, changeOrders, costEntries, invoices, payments, milestones, loading, error } =
-    useContractData();
+  const { costEntries, invoices, payments, loading, error } = useContractData();
 
   const showCosts = canViewCosts(effectiveRole);
   const showInvoices = canViewInvoices(effectiveRole);
@@ -101,30 +100,6 @@ export default function FinanceOverviewPage() {
   const totalCollected = invoices.reduce((sum, i) => sum + Number(i.amount_paid ?? 0), 0);
   const totalPayments = payments.reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0);
   const overdueCount = invoiceRows.filter((r) => r.status === "overdue").length;
-
-  const recognitionTotals = useMemo(() => {
-    if (!showCosts) {
-      return { earnedRevenue: 0, billingsInExcess: 0, unbilledRevenue: 0, recognizedGrossProfit: 0 };
-    }
-    return contracts.reduce(
-      (acc, contract) => {
-        const metrics = computeContractMetrics(
-          contract,
-          changeOrders,
-          invoices,
-          costEntries,
-          milestones,
-          payments
-        );
-        acc.earnedRevenue += metrics.earnedRevenue;
-        acc.billingsInExcess += metrics.billingsInExcess;
-        acc.unbilledRevenue += metrics.unbilledRevenue;
-        acc.recognizedGrossProfit += metrics.recognizedGrossProfit;
-        return acc;
-      },
-      { earnedRevenue: 0, billingsInExcess: 0, unbilledRevenue: 0, recognizedGrossProfit: 0 }
-    );
-  }, [showCosts, contracts, changeOrders, invoices, costEntries, milestones, payments]);
 
   if (loading) {
     return (
@@ -228,27 +203,6 @@ export default function FinanceOverviewPage() {
           <StatCard title="Cost Entries" value={String(costEntries.length)} />
         )}
       </div>
-
-      {showCosts ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <StatCard title="Earned Revenue" value={money(recognitionTotals.earnedRevenue)} />
-          <StatCard
-            title="Billings in Excess"
-            value={money(recognitionTotals.billingsInExcess)}
-            tone={recognitionTotals.billingsInExcess > 0 ? "warning" : "default"}
-          />
-          <StatCard
-            title="Unbilled Revenue"
-            value={money(recognitionTotals.unbilledRevenue)}
-            tone={recognitionTotals.unbilledRevenue > 0 ? "warning" : "default"}
-          />
-          <StatCard
-            title="Recognized Gross Profit"
-            value={money(recognitionTotals.recognizedGrossProfit)}
-            tone={recognitionTotals.recognizedGrossProfit >= 0 ? "success" : "error"}
-          />
-        </div>
-      ) : null}
 
       <div className="grid lg:grid-cols-3 gap-4 mb-6">
         <SectionCard title="Quick links">
