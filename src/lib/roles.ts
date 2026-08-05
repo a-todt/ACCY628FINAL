@@ -65,6 +65,16 @@ export function canCreateFieldLogs(role: UserRole): boolean {
   );
 }
 
+/** Cancel/delete contracts — same as manage. */
+export function canCancelOrDeleteContracts(role: UserRole): boolean {
+  return canManageContracts(role);
+}
+
+/** Cancel/delete field logs — creators and managers. */
+export function canManageFieldLogEntries(role: UserRole): boolean {
+  return canCreateFieldLogs(role);
+}
+
 export function canViewCosts(role: UserRole): boolean {
   return role !== "client" && role !== "subcontractor";
 }
