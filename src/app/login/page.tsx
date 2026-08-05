@@ -18,12 +18,41 @@ export default function LoginPage() {
   const supabase = createClient();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [accountType, setAccountType] = useState<UserRole>("field_supervisor");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const looksLikeClientId = (value: string) => {
+    const v = value.trim();
+    return /^CLT-/i.test(v) || (!v.includes("@") && /^[A-Z0-9-]{6,}$/i.test(v) && !v.includes("."));
+  };
+
+  const resolveLoginEmail = async (raw: string): Promise<string> => {
+    const value = raw.trim();
+    if (!value) throw new Error("Enter your email or Client ID.");
+    if (value.includes("@")) return value.toLowerCase();
+
+    if (!looksLikeClientId(value)) {
+      throw new Error("Enter a valid email or Client ID (e.g. CLT-XXXXXXXX).");
+    }
+
+    const clientId = value.toUpperCase().startsWith("CLT-")
+      ? value.toUpperCase()
+      : `CLT-${value.toUpperCase()}`;
+
+    const { data, error: resolveError } = await supabase.rpc("resolve_client_id_login", {
+      p_client_id: clientId,
+    });
+    if (resolveError) throw resolveError;
+    if (!data || typeof data !== "string") {
+      throw new Error("Could not resolve Client ID. Activate with your setup code first.");
+    }
+    return data;
+  };
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,17 +62,19 @@ export default function LoginPage() {
 
     try {
       if (mode === "forgot") {
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        const resetEmail = await resolveLoginEmail(loginId || email);
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
           redirectTo: `${window.location.origin}/reset-password`,
         });
         if (resetError) throw resetError;
-        setMessage("If that email exists, a reset link was sent. Check your inbox.");
+        setMessage("If that account exists, a reset link was sent to the linked email.");
         return;
       }
 
       if (mode === "login") {
+        const resolvedEmail = await resolveLoginEmail(loginId);
         const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
+          email: resolvedEmail,
           password,
         });
         if (signInError) throw signInError;
@@ -71,8 +102,6 @@ export default function LoginPage() {
           })
           .eq("id", userId);
         if (profileError) {
-          // Trigger may race; retry insert-style update after short wait is unnecessary —
-          // role can also be fixed on first access gate claim.
           console.warn(profileError.message);
         }
       }
@@ -85,6 +114,7 @@ export default function LoginPage() {
             : "Account created. Sign in — your Owner must assign you to a project before you can work."
       );
       setMode("login");
+      setLoginId(email);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
@@ -148,8 +178,10 @@ export default function LoginPage() {
                   </h2>
                   <p className="text-sm opacity-70">
                     {mode === "forgot"
-                      ? "We will email you a reset link"
-                      : "Secure access for project stakeholders"}
+                      ? "Reset via email or Client ID"
+                      : mode === "login"
+                        ? "Use your email or Client ID"
+                        : "Secure access for project stakeholders"}
                   </p>
                 </div>
                 <ThemeSelector compact />
@@ -186,19 +218,36 @@ export default function LoginPage() {
                         ))}
                       </select>
                     </FormField>
+                    <FormField label="Email">
+                      <input
+                        type="email"
+                        className="input input-bordered"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        autoComplete="email"
+                      />
+                    </FormField>
                   </>
-                ) : null}
-
-                <FormField label="Email">
-                  <input
-                    type="email"
-                    className="input input-bordered"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoComplete="email"
-                  />
-                </FormField>
+                ) : (
+                  <FormField
+                    label={mode === "forgot" ? "Email or Client ID" : "Email or Client ID"}
+                    hint={
+                      mode === "login"
+                        ? "Staff: use email. Clients can use email or Client ID (e.g. CLT-XXXXXXXX)."
+                        : "We'll send a reset link to the email linked to that account."
+                    }
+                  >
+                    <input
+                      className="input input-bordered"
+                      value={loginId}
+                      onChange={(e) => setLoginId(e.target.value)}
+                      required
+                      autoComplete="username"
+                      placeholder="you@company.com or CLT-XXXXXXXX"
+                    />
+                  </FormField>
+                )}
 
                 {mode !== "forgot" ? (
                   <FormField label="Password">
