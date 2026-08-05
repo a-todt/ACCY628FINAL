@@ -1,15 +1,19 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { Plus } from "lucide-react";
+import { Ban, Plus, Trash2 } from "lucide-react";
+import { ActivityLogPanel } from "@/components/ActivityLogPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { WeatherBadge } from "@/components/WeatherBadge";
-import { canCreateFieldLogs } from "@/lib/roles";
+import { writeAuditLog } from "@/lib/audit";
+import { canCreateFieldLogs, canManageFieldLogEntries, statusBadgeClass } from "@/lib/roles";
+import { labelize } from "@/lib/metrics";
 import { WEATHER_OPTIONS, isBadWeather } from "@/lib/weather";
 import { createClient } from "@/lib/supabase/client";
+import type { FieldLog } from "@/lib/types";
 
 const EMPTY_FORM = {
   contract_id: "",
@@ -24,26 +28,34 @@ const EMPTY_FORM = {
   notes: "",
 };
 
-type SortKey = "date" | "contract" | "hours" | "workers";
+type SortKey = "date" | "contract" | "hours" | "workers" | "status";
 
 export default function FieldLogsPage() {
   const { effectiveRole, user } = useAuth();
   const { contracts, fieldLogs, userProfiles, loading, error, refresh } =
     useContractData();
   const canCreate = canCreateFieldLogs(effectiveRole);
+  const canManage = canManageFieldLogEntries(effectiveRole);
+  const showActivityLog =
+    canManage || effectiveRole === "admin" || effectiveRole === "owner";
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const next = fieldLogs.filter((log) => {
+      const status = log.status ?? "active";
+      if (statusFilter !== "all" && status !== statusFilter) return false;
       if (!q) return true;
       const haystack = [log.work_performed, log.contracts?.contract_name, log.weather_conditions]
         .filter(Boolean)
@@ -54,14 +66,26 @@ export default function FieldLogsPage() {
 
     return [...next].sort((a, b) => {
       if (sortKey === "date") return compareValues(a.log_date, b.log_date, sortDir);
-      if (sortKey === "contract") return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
-      if (sortKey === "hours") return compareValues(Number(a.hours_worked ?? 0), Number(b.hours_worked ?? 0), sortDir);
+      if (sortKey === "contract")
+        return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
+      if (sortKey === "hours")
+        return compareValues(Number(a.hours_worked ?? 0), Number(b.hours_worked ?? 0), sortDir);
+      if (sortKey === "status")
+        return compareValues(a.status ?? "active", b.status ?? "active", sortDir);
       return compareValues(Number(a.workers_on_site ?? 0), Number(b.workers_on_site ?? 0), sortDir);
     });
-  }, [fieldLogs, search, sortKey, sortDir]);
+  }, [fieldLogs, search, statusFilter, sortKey, sortDir]);
 
   const updateField = <K extends keyof typeof EMPTY_FORM>(key: K, value: (typeof EMPTY_FORM)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const canActOnLog = (log: FieldLog) => {
+    if (!canManage || !user) return false;
+    if (effectiveRole === "admin" || effectiveRole === "owner" || effectiveRole === "project_manager") {
+      return true;
+    }
+    return log.user_id === user.id;
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -81,7 +105,7 @@ export default function FieldLogsPage() {
     setSaving(true);
     try {
       const supabase = createClient();
-      const { error: insertError } = await supabase.from("field_logs").insert({
+      const payload = {
         contract_id: form.contract_id,
         user_id: user.id,
         log_date: form.log_date || null,
@@ -93,16 +117,95 @@ export default function FieldLogsPage() {
         materials_used: form.materials_used.trim() || null,
         issues_or_delays: form.issues_or_delays.trim() || null,
         notes: form.notes.trim() || null,
-      });
+      };
+      const { data, error: insertError } = await supabase
+        .from("field_logs")
+        .insert(payload)
+        .select("id")
+        .single();
       if (insertError) throw insertError;
+
+      await writeAuditLog("field_log_created", "field_log", data?.id, {
+        contract_id: form.contract_id,
+        work_performed: payload.work_performed,
+        log_date: payload.log_date,
+      });
 
       setSuccess("Field log submitted successfully.");
       setForm(EMPTY_FORM);
+      setLogRefreshKey((k) => k + 1);
       await refresh();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to save field log.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const cancelLog = async (log: FieldLog) => {
+    if ((log.status ?? "active") === "canceled") return;
+    if (!window.confirm("Cancel this field log entry? It will stay in the list as canceled.")) {
+      return;
+    }
+    setFormError(null);
+    setSuccess(null);
+    setBusyId(log.id);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("field_logs")
+        .update({ status: "canceled" })
+        .eq("id", log.id);
+      if (updateError) throw updateError;
+      await writeAuditLog("field_log_canceled", "field_log", log.id, {
+        contract_id: log.contract_id,
+        contract_name: log.contracts?.contract_name,
+        work_performed: log.work_performed,
+        log_date: log.log_date,
+        from_status: log.status ?? "active",
+        to_status: "canceled",
+      });
+      setSuccess("Field log canceled.");
+      setLogRefreshKey((k) => k + 1);
+      await refresh();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to cancel field log.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteLog = async (log: FieldLog) => {
+    if (
+      !window.confirm(
+        "Permanently delete this field log? A record of the deletion will be kept in the change log."
+      )
+    ) {
+      return;
+    }
+    setFormError(null);
+    setSuccess(null);
+    setBusyId(log.id);
+    try {
+      const supabase = createClient();
+      const { error: deleteError } = await supabase.from("field_logs").delete().eq("id", log.id);
+      if (deleteError) throw deleteError;
+      await writeAuditLog("field_log_deleted", "field_log", log.id, {
+        contract_id: log.contract_id,
+        contract_name: log.contracts?.contract_name,
+        work_performed: log.work_performed,
+        log_date: log.log_date,
+        hours_worked: log.hours_worked,
+        weather_conditions: log.weather_conditions,
+        from_status: log.status ?? "active",
+      });
+      setSuccess("Field log deleted.");
+      setLogRefreshKey((k) => k + 1);
+      await refresh();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to delete field log.");
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -141,12 +244,29 @@ export default function FieldLogsPage() {
           { value: "contract", label: "Project" },
           { value: "hours", label: "Estimated Hours" },
           { value: "workers", label: "Workers" },
+          { value: "status", label: "Status" },
         ]}
         sortKey={sortKey}
         sortDir={sortDir}
         onSortKeyChange={(v) => setSortKey(v as SortKey)}
         onSortDirChange={setSortDir}
         resultCount={filtered.length}
+        filters={
+          <label className="form-control w-full lg:w-40">
+            <span className="label py-1">
+              <span className="label-text text-xs opacity-70">Status</span>
+            </span>
+            <select
+              className="select select-bordered select-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="canceled">Canceled</option>
+            </select>
+          </label>
+        }
       />
 
       {canCreate && showForm ? (
@@ -203,7 +323,10 @@ export default function FieldLogsPage() {
                 onChange={(e) => updateField("workers_on_site", e.target.value)}
               />
             </FormField>
-            <FormField label="Weather Conditions" hint="Bad weather (rain, snow, wind, storm, extreme heat) shows in red.">
+            <FormField
+              label="Weather Conditions"
+              hint="Bad weather (rain, snow, wind, storm, extreme heat) shows in red."
+            >
               <select
                 className="select select-bordered"
                 value={form.weather_conditions}
@@ -258,6 +381,9 @@ export default function FieldLogsPage() {
         </SectionCard>
       ) : null}
 
+      {!showForm && formError ? <AlertBanner type="error">{formError}</AlertBanner> : null}
+      {!showForm && success ? <AlertBanner type="success">{success}</AlertBanner> : null}
+
       {filtered.length === 0 ? (
         <EmptyState
           title="No field logs"
@@ -280,33 +406,78 @@ export default function FieldLogsPage() {
                   <th className="text-right">Estimated Hours</th>
                   <th className="text-right">Workers</th>
                   <th>Weather</th>
+                  <th>Status</th>
                   <th>Issues</th>
+                  {canManage ? <th className="text-right">Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((log) => (
-                  <tr key={log.id}>
-                    <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
-                    <td>{log.contracts?.contract_name ?? "—"}</td>
-                    <td>
-                      {userProfiles.find((p) => p.id === log.user_id)?.full_name ??
-                        userProfiles.find((p) => p.id === log.user_id)?.email ??
-                        "—"}
-                    </td>
-                    <td className="max-w-xs truncate">{log.work_performed ?? "—"}</td>
-                    <td className="text-right">{log.hours_worked ?? "—"}</td>
-                    <td className="text-right">{log.workers_on_site ?? "—"}</td>
-                    <td>
-                      <WeatherBadge weather={log.weather_conditions} />
-                    </td>
-                    <td className="max-w-xs truncate">{log.issues_or_delays ?? "—"}</td>
-                  </tr>
-                ))}
+                {filtered.map((log) => {
+                  const status = log.status ?? "active";
+                  return (
+                    <tr key={log.id} className={status === "canceled" ? "opacity-60" : undefined}>
+                      <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
+                      <td>{log.contracts?.contract_name ?? "—"}</td>
+                      <td>
+                        {userProfiles.find((p) => p.id === log.user_id)?.full_name ??
+                          userProfiles.find((p) => p.id === log.user_id)?.email ??
+                          "—"}
+                      </td>
+                      <td className="max-w-xs truncate">{log.work_performed ?? "—"}</td>
+                      <td className="text-right">{log.hours_worked ?? "—"}</td>
+                      <td className="text-right">{log.workers_on_site ?? "—"}</td>
+                      <td>
+                        <WeatherBadge weather={log.weather_conditions} />
+                      </td>
+                      <td>
+                        <span className={`badge badge-sm ${statusBadgeClass(status)}`}>
+                          {labelize(status)}
+                        </span>
+                      </td>
+                      <td className="max-w-xs truncate">{log.issues_or_delays ?? "—"}</td>
+                      {canManage ? (
+                        <td className="text-right">
+                          {canActOnLog(log) ? (
+                            <div className="inline-flex gap-1">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                title="Cancel entry"
+                                disabled={busyId === log.id || status === "canceled"}
+                                onClick={() => void cancelLog(log)}
+                              >
+                                <Ban className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs text-error"
+                                title="Delete entry"
+                                disabled={busyId === log.id}
+                                onClick={() => void deleteLog(log)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </SectionCard>
       )}
+
+      <ActivityLogPanel
+        title="Field Log Change Log"
+        entityTypes={["field_log"]}
+        enabled={showActivityLog}
+        refreshKey={logRefreshKey}
+      />
     </div>
   );
 }
