@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 export type ExportRow = Record<string, string | number | null | undefined>;
 
@@ -9,6 +10,21 @@ function escapeCsvCell(value: string | number | null | undefined): string {
     return `"${raw.replace(/"/g, '""')}"`;
   }
   return raw;
+}
+
+export function downloadXlsx(
+  filename: string,
+  rows: ExportRow[],
+  sheetName = "Sheet1"
+): void {
+  const workbook = XLSX.utils.book_new();
+  const worksheet =
+    rows.length === 0
+      ? XLSX.utils.aoa_to_sheet([["(no rows)"]])
+      : XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.slice(0, 31));
+  const outName = filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`;
+  XLSX.writeFile(workbook, outName);
 }
 
 export function downloadCsv(filename: string, rows: ExportRow[]): void {
