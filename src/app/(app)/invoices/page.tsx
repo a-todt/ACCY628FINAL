@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { Plus, Receipt } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Plus, Receipt } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
@@ -48,6 +50,7 @@ function invoiceBalance(invoice: Invoice): number {
 type SortKey = "number" | "contract" | "date" | "due" | "amount" | "status" | "balance";
 
 export default function InvoicesPage() {
+  const router = useRouter();
   const { effectiveRole } = useAuth();
   const { contracts, invoices, loading, error, refresh } = useContractData();
   const canManage = canCreateInvoices(effectiveRole);
@@ -506,14 +509,27 @@ export default function InvoicesPage() {
                   <th className="text-right">Net Due</th>
                   <th className="text-right">Paid</th>
                   <th>Status</th>
+                  <th className="w-8" />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((invoice) => {
                   const overdue = isOverdue(invoice);
                   return (
-                    <tr key={invoice.id}>
-                      <td>{invoice.invoice_number ?? "—"}</td>
+                    <tr
+                      key={invoice.id}
+                      className="hover cursor-pointer"
+                      onClick={() => router.push(`/invoices/${invoice.id}`)}
+                    >
+                      <td>
+                        <Link
+                          href={`/invoices/${invoice.id}`}
+                          className="link link-primary font-medium"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {invoice.invoice_number ?? "View invoice"}
+                        </Link>
+                      </td>
                       <td>{invoice.contracts?.contract_name ?? "—"}</td>
                       <td className="whitespace-nowrap">{invoice.invoice_date ?? "—"}</td>
                       <td className="whitespace-nowrap">{invoice.due_date ?? "—"}</td>
@@ -525,6 +541,9 @@ export default function InvoicesPage() {
                         <span className={`badge badge-sm ${statusBadgeClass(overdue ? "overdue" : invoice.status)}`}>
                           {overdue ? "Overdue" : labelize(invoice.status)}
                         </span>
+                      </td>
+                      <td className="text-right">
+                        <ChevronRight className="h-4 w-4 opacity-40 inline-block" />
                       </td>
                     </tr>
                   );
