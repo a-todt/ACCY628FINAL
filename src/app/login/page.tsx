@@ -54,12 +54,12 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-base-300 via-base-200 to-neutral" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-base-200 to-secondary/25" />
       <div
-        className="absolute inset-0 opacity-20"
+        className="absolute inset-0 opacity-30"
         style={{
           backgroundImage:
-            "radial-gradient(circle at 20% 20%, oklch(70% 0.15 70) 0, transparent 35%), radial-gradient(circle at 80% 0%, oklch(55% 0.12 240) 0, transparent 30%), linear-gradient(135deg, transparent 40%, oklch(20% 0.02 260 / 40%) 100%)",
+            "radial-gradient(circle at 18% 22%, oklch(72% 0.18 48) 0, transparent 34%), radial-gradient(circle at 82% 8%, oklch(55% 0.13 150) 0, transparent 32%), linear-gradient(140deg, transparent 45%, oklch(35% 0.03 70 / 25%) 100%)",
         }}
       />
 

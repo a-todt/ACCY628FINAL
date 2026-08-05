@@ -22,7 +22,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      data-theme="business"
+      data-theme="jobsite"
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
       suppressHydrationWarning
     >
