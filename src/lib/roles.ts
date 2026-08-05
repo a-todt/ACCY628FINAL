@@ -258,7 +258,6 @@ export type NavCategoryId =
   | "reports"
   | "contracts"
   | "finance"
-  | "audit"
   | "management";
 
 export interface NavItem {
@@ -283,12 +282,6 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
         href: "/finance",
         label: "Costing and Invoicing",
         show: canViewFinance(role),
-      },
-      {
-        id: "audit" as const,
-        href: "/audit-log",
-        label: "Audit Log",
-        show: canViewAuditLog(role),
       },
       {
         id: "management" as const,
@@ -374,8 +367,7 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (pathname.startsWith("/alerts")) return "alerts";
   if (pathname.startsWith("/reports")) return "reports";
   if (pathname.startsWith("/admin")) return "reports";
-  if (pathname.startsWith("/audit-log")) return "audit";
-  if (pathname.startsWith("/management")) return "management";
+  if (pathname.startsWith("/audit-log") || pathname.startsWith("/management")) return "management";
   if (
     pathname.startsWith("/contracts") ||
     pathname.startsWith("/change-orders") ||
