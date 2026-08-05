@@ -341,8 +341,8 @@ function AdminDashboard({
         <SectionCard
           title="Warnings"
           actions={
-            <Link href="/insurance" className="btn btn-ghost btn-xs">
-              Review insurance
+            <Link href="/contracts" className="btn btn-ghost btn-xs">
+              Review contracts
             </Link>
           }
         >

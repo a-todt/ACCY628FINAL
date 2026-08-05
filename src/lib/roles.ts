@@ -65,6 +65,16 @@ export function canCreateFieldLogs(role: UserRole): boolean {
   );
 }
 
+/** Cancel/delete contracts — same as manage. */
+export function canCancelOrDeleteContracts(role: UserRole): boolean {
+  return canManageContracts(role);
+}
+
+/** Cancel/delete field logs — creators and managers. */
+export function canManageFieldLogEntries(role: UserRole): boolean {
+  return canCreateFieldLogs(role);
+}
+
 export function canViewCosts(role: UserRole): boolean {
   return role !== "client" && role !== "subcontractor";
 }
@@ -150,11 +160,6 @@ export function secondaryNavForCategory(
           label: "Field Logs",
           show: role !== "client",
         },
-        {
-          href: "/insurance",
-          label: "Insurance",
-          show: true,
-        },
       ] as Array<NavItem & { show: boolean }>
     )
       .filter((item) => item.show)
@@ -197,8 +202,7 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
     pathname.startsWith("/contracts") ||
     pathname.startsWith("/change-orders") ||
     pathname.startsWith("/subcontractors") ||
-    pathname.startsWith("/field-logs") ||
-    pathname.startsWith("/insurance")
+    pathname.startsWith("/field-logs")
   ) {
     return "contracts";
   }
@@ -229,7 +233,6 @@ export function isNavItemActive(pathname: string, href: string): boolean {
   if (href === "/contracts/overview") return pathname.startsWith("/contracts/overview");
   if (href === "/contracts/new") return pathname.startsWith("/contracts/new");
   if (href === "/finance") return pathname === "/finance";
-  if (href === "/insurance") return pathname.startsWith("/insurance");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

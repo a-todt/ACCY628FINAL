@@ -1,18 +1,34 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, Ban, Trash2 } from "lucide-react";
+import { ActivityLogPanel } from "@/components/ActivityLogPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { WeatherBadge } from "@/components/WeatherBadge";
+import { writeAuditLog } from "@/lib/audit";
+import {
+  labelPolicy,
+  policyHealth,
+  policyHealthBadge,
+} from "@/lib/insurance";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
-import { canViewContractFinancials, canViewCosts, statusBadgeClass } from "@/lib/roles";
-import { isBadWeather } from "@/lib/weather";
+import {
+  canCancelOrDeleteContracts,
+  canViewContractFinancials,
+  canViewCosts,
+  statusBadgeClass,
+} from "@/lib/roles";
+import { createClient } from "@/lib/supabase/client";
+import type { ContractInsuranceRequirement, InsurancePolicy } from "@/lib/types";
 
 export default function ContractDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const contractId = params.id;
   const { effectiveRole } = useAuth();
   const {
@@ -27,9 +43,20 @@ export default function ContractDetailPage() {
     userProfiles,
     loading,
     error,
+    refresh,
   } = useContractData();
+  const {
+    policies: insurancePolicies,
+    requirements: insuranceRequirements,
+    loading: insuranceLoading,
+  } = useInsuranceData();
+  const canMutate = canCancelOrDeleteContracts(effectiveRole);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
 
-  if (loading) {
+  if (loading || insuranceLoading) {
     return (
       <div className="grid place-items-center py-24">
         <span className="loading loading-spinner loading-lg text-primary" />
@@ -76,17 +103,115 @@ export default function ContractDetailPage() {
   const contractFieldLogs = isClient ? [] : fieldLogs.filter((f) => f.contract_id === contract.id);
   const contractMilestones = milestones.filter((m) => m.contract_id === contract.id);
 
+  const contractRequirements = insuranceRequirements.filter((r) => r.contract_id === contract.id);
+  const contractSubIds = new Set(contractSubs.map((s) => s.id));
+  const contractPolicies = insurancePolicies.filter((p) => {
+    if (p.holder_type === "gc") return true;
+    return (
+      p.holder_type === "subcontractor" &&
+      p.subcontractor_id != null &&
+      contractSubIds.has(p.subcontractor_id)
+    );
+  });
+
+  const cancelContract = async () => {
+    if (contract.status === "canceled") return;
+    if (
+      !window.confirm(
+        `Cancel contract "${contract.contract_name}"? It will remain available as canceled.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+    setBusy(true);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("contracts")
+        .update({ status: "canceled" })
+        .eq("id", contract.id);
+      if (updateError) throw updateError;
+      await writeAuditLog("contract_canceled", "contract", contract.id, {
+        contract_name: contract.contract_name,
+        from_status: contract.status,
+        to_status: "canceled",
+      });
+      setActionSuccess("Contract canceled.");
+      setLogRefreshKey((k) => k + 1);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to cancel contract.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteContract = async () => {
+    if (
+      !window.confirm(
+        `Permanently delete "${contract.contract_name}"? Related records will also be removed.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+    setBusy(true);
+    try {
+      const supabase = createClient();
+      const { error: deleteError } = await supabase.from("contracts").delete().eq("id", contract.id);
+      if (deleteError) throw deleteError;
+      await writeAuditLog("contract_deleted", "contract", contract.id, {
+        contract_name: contract.contract_name,
+        from_status: contract.status,
+        client_name: contract.client_name,
+        client_email: contract.client_email,
+      });
+      router.replace("/contracts");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete contract.");
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={contract.contract_name}
         subtitle={contract.client_name ?? undefined}
         actions={
-          <Link href="/contracts" className="btn btn-ghost btn-sm">
-            <ArrowLeft className="h-4 w-4" /> Back to Contracts
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {canMutate ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={busy || contract.status === "canceled"}
+                  onClick={() => void cancelContract()}
+                >
+                  <Ban className="h-4 w-4" /> Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm text-error"
+                  disabled={busy}
+                  onClick={() => void deleteContract()}
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </button>
+              </>
+            ) : null}
+            <Link href="/contracts" className="btn btn-ghost btn-sm">
+              <ArrowLeft className="h-4 w-4" /> Back to Contracts
+            </Link>
+          </div>
         }
       />
+
+      {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
+      {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
 
       <SectionCard
         title="Overview"
@@ -124,6 +249,17 @@ export default function ContractDetailPage() {
           <div className="mt-4">
             <p className="text-xs uppercase tracking-wide opacity-60 mb-1">Special Terms / Internal Notes</p>
             <p className="text-sm whitespace-pre-wrap">{contract.special_terms}</p>
+          </div>
+        ) : null}
+
+        {!isClient ? (
+          <div className="mt-6 border-t border-base-300 pt-4">
+            <p className="text-xs uppercase tracking-wide opacity-60 mb-3">Insurance Policies</p>
+            <ContractInsuranceOverview
+              policies={contractPolicies}
+              requirements={contractRequirements}
+              showRequiredRate
+            />
           </div>
         ) : null}
       </SectionCard>
@@ -381,6 +517,111 @@ export default function ContractDetailPage() {
           </div>
         )}
       </SectionCard>
+
+      {canMutate ? (
+        <ActivityLogPanel
+          title="Contract Change Log"
+          entityTypes={["contract"]}
+          enabled
+          refreshKey={logRefreshKey}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ContractInsuranceOverview({
+  policies,
+  requirements,
+  showRequiredRate,
+}: {
+  policies: InsurancePolicy[];
+  requirements: ContractInsuranceRequirement[];
+  showRequiredRate: boolean;
+}) {
+  if (policies.length === 0 && requirements.length === 0) {
+    return <p className="text-sm opacity-60">No insurance policies on file for this contract.</p>;
+  }
+
+  const requiredRateByType = new Map<string, number | null>(
+    requirements.map((req) => [`${req.policy_type}:${req.applies_to}`, req.minimum_limit])
+  );
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="table table-sm">
+        <thead>
+          <tr>
+            <th>Policy</th>
+            <th>Holder</th>
+            <th>Carrier</th>
+            <th className="text-right">Rate</th>
+            {showRequiredRate ? <th className="text-right">Required</th> : null}
+            <th>Expires</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {policies.map((policy) => {
+            const health = policyHealth(policy);
+            const holderLabel =
+              policy.holder_type === "gc"
+                ? "GC"
+                : policy.subcontractors?.company_name ?? "Subcontractor";
+            const appliesKey =
+              policy.holder_type === "gc"
+                ? [`${policy.policy_type}:gc`, `${policy.policy_type}:both`]
+                : [`${policy.policy_type}:subcontractor`, `${policy.policy_type}:both`];
+            const required =
+              appliesKey.map((key) => requiredRateByType.get(key)).find((value) => value != null) ?? null;
+
+            return (
+              <tr key={policy.id}>
+                <td>
+                  <div className="font-medium">{labelPolicy(policy.policy_type)}</div>
+                  <div className="text-xs opacity-60">{policy.policy_number || "No policy #"}</div>
+                </td>
+                <td>{holderLabel}</td>
+                <td>{policy.carrier_name ?? "—"}</td>
+                <td className="text-right">{money(policy.coverage_limit)}</td>
+                {showRequiredRate ? <td className="text-right">{required != null ? money(required) : "—"}</td> : null}
+                <td className="whitespace-nowrap">{policy.expiration_date ?? "—"}</td>
+                <td>
+                  <span className={`badge badge-sm ${policyHealthBadge(health)}`}>{labelize(health)}</span>
+                </td>
+              </tr>
+            );
+          })}
+          {requirements
+            .filter((req) => {
+              const hasMatchingPolicy = policies.some((policy) => {
+                if (policy.policy_type !== req.policy_type) return false;
+                if (req.applies_to === "both") return true;
+                if (req.applies_to === "gc") return policy.holder_type === "gc";
+                return policy.holder_type === "subcontractor";
+              });
+              return !hasMatchingPolicy;
+            })
+            .map((req) => (
+              <tr key={req.id} className="opacity-80">
+                <td>
+                  <div className="font-medium">{labelPolicy(req.policy_type)}</div>
+                  <div className="text-xs opacity-60">Required · no policy on file</div>
+                </td>
+                <td>{labelize(req.applies_to)}</td>
+                <td>—</td>
+                <td className="text-right">—</td>
+                {showRequiredRate ? (
+                  <td className="text-right">{req.minimum_limit != null ? money(req.minimum_limit) : "—"}</td>
+                ) : null}
+                <td>—</td>
+                <td>
+                  <span className="badge badge-sm badge-warning">Missing</span>
+                </td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
     </div>
   );
 }
