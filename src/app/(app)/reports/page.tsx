@@ -1,18 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Download, FileDown } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import {
+  ProjectPeriodReportsSection,
+  periodReportCsvRows,
+} from "@/components/ProjectPeriodReportsSection";
 import { AlertBanner, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
+import type { PeriodReportRow } from "@/lib/periodReports";
 import { canViewReports } from "@/lib/roles";
 
 type ExportSection =
+  | "period_reports"
   | "profitability"
   | "ar_aging"
   | "costs"
@@ -32,7 +38,27 @@ function agingBucket(days: number): (typeof AGING_BUCKETS)[number] {
 export default function ReportsPage() {
   const router = useRouter();
   const { effectiveRole } = useAuth();
-  const [csvSection, setCsvSection] = useState<ExportSection>("profitability");
+  const [csvSection, setCsvSection] = useState<ExportSection>("period_reports");
+  const [periodExport, setPeriodExport] = useState<{
+    rows: PeriodReportRow[];
+    unspecified: PeriodReportRow | null;
+    totals: {
+      expenses: number;
+      billed: number;
+      collected: number;
+      earnedPeriod: number;
+      earnedYtd: number;
+      grossBilled: number;
+      grossEarned: number;
+      wipExpenses: number;
+      wipBilled: number;
+    };
+  } | null>(null);
+
+  const onPeriodReportChange = useCallback((payload: NonNullable<typeof periodExport>) => {
+    setPeriodExport(payload);
+  }, []);
+
   const {
     contracts,
     changeOrders,
@@ -49,7 +75,14 @@ export default function ReportsPage() {
     () =>
       contracts.map((contract) => ({
         contract,
-        metrics: computeContractMetrics(contract, changeOrders, invoices, costEntries, milestones, payments),
+        metrics: computeContractMetrics(
+          contract,
+          changeOrders,
+          invoices,
+          costEntries,
+          milestones,
+          payments
+        ),
       })),
     [contracts, changeOrders, invoices, costEntries, milestones, payments]
   );
@@ -57,7 +90,9 @@ export default function ReportsPage() {
   const arAging = useMemo(() => {
     const rows = invoices
       .map((invoice) => {
-        const outstanding = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0) - Number(invoice.amount_paid ?? 0);
+        const outstanding =
+          Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0) -
+          Number(invoice.amount_paid ?? 0);
         const days = daysPastDue(invoice.due_date);
         return { invoice, outstanding, days, bucket: agingBucket(days) };
       })
@@ -87,10 +122,14 @@ export default function ReportsPage() {
     () =>
       contracts.map((contract) => {
         const contractInvoices = invoices.filter((i) => i.contract_id === contract.id);
-        const invoiceRetainage = contractInvoices.reduce((sum, i) => sum + Number(i.retainage_amount ?? 0), 0);
+        const invoiceRetainage = contractInvoices.reduce(
+          (sum, i) => sum + Number(i.retainage_amount ?? 0),
+          0
+        );
         const contractSubs = subcontractors.filter((s) => s.contract_id === contract.id);
         const subRetainage = contractSubs.reduce(
-          (sum, s) => sum + Number(s.subcontract_value ?? 0) * (Number(s.retainage_percent ?? 0) / 100),
+          (sum, s) =>
+            sum + Number(s.subcontract_value ?? 0) * (Number(s.retainage_percent ?? 0) / 100),
           0
         );
         return { contract, invoiceRetainage, subRetainage };
@@ -102,14 +141,20 @@ export default function ReportsPage() {
     const statuses: Array<"pending" | "approved" | "rejected"> = ["pending", "approved", "rejected"];
     const overall = statuses.map((status) => {
       const rows = changeOrders.filter((co) => co.status === status);
-      return { status, count: rows.length, total: rows.reduce((sum, co) => sum + Number(co.amount ?? 0), 0) };
+      return {
+        status,
+        count: rows.length,
+        total: rows.reduce((sum, co) => sum + Number(co.amount ?? 0), 0),
+      };
     });
     const byContract = contracts.map((contract) => {
       const rows = changeOrders.filter((co) => co.contract_id === contract.id);
       return {
         contract,
         pending: rows.filter((co) => co.status === "pending").length,
-        approved: rows.filter((co) => co.status === "approved").reduce((sum, co) => sum + Number(co.amount ?? 0), 0),
+        approved: rows
+          .filter((co) => co.status === "approved")
+          .reduce((sum, co) => sum + Number(co.amount ?? 0), 0),
         rejected: rows.filter((co) => co.status === "rejected").length,
       };
     });
@@ -120,7 +165,9 @@ export default function ReportsPage() {
     return (
       <div>
         <PageHeader title="Reports" />
-        <AlertBanner type="error">Access denied. Reports are only available to admins and project managers.</AlertBanner>
+        <AlertBanner type="error">
+          Access denied. Reports are only available to admins and project managers.
+        </AlertBanner>
       </div>
     );
   }
@@ -140,6 +187,14 @@ export default function ReportsPage() {
   const totalOutstanding = AGING_BUCKETS.reduce((sum, bucket) => sum + arAging.totals[bucket], 0);
 
   const exportCsv = () => {
+    if (csvSection === "period_reports") {
+      if (!periodExport) return;
+      downloadCsv(
+        "project-period-reports.csv",
+        periodReportCsvRows(periodExport.rows, periodExport.unspecified, periodExport.totals)
+      );
+      return;
+    }
     if (csvSection === "profitability") {
       downloadCsv(
         "contract-profitability.csv",
@@ -198,7 +253,24 @@ export default function ReportsPage() {
   };
 
   const exportPdf = () => {
+    const periodRows = periodExport
+      ? periodReportCsvRows(periodExport.rows, periodExport.unspecified, periodExport.totals)
+      : [];
+
     downloadPdfTables("reports-summary.pdf", "GC Contract Manager — Reports", [
+      {
+        title: "Project Period Reports",
+        columns: ["Project", "Period", "Expenses", "Billed", "Collected", "Earned", "Gross Billed"],
+        rows: periodRows.map((row) => [
+          String(row.Project ?? ""),
+          String(row.Period ?? ""),
+          money(Number(row.Expenses ?? 0)),
+          money(Number(row.Billed ?? 0)),
+          money(Number(row.Collected ?? 0)),
+          money(Number(row["Earned (period)"] ?? 0)),
+          money(Number(row["Gross (Billed)"] ?? 0)),
+        ]),
+      },
       {
         title: "Contract Profitability",
         columns: ["Contract", "Revised", "Billed", "Collected", "Costs", "Profit", "Margin"],
@@ -263,6 +335,7 @@ export default function ReportsPage() {
               onChange={(e) => setCsvSection(e.target.value as ExportSection)}
               aria-label="CSV export section"
             >
+              <option value="period_reports">Period Reports</option>
               <option value="profitability">Profitability</option>
               <option value="ar_aging">AR Aging</option>
               <option value="costs">Cost by Category</option>
@@ -279,6 +352,15 @@ export default function ReportsPage() {
             </button>
           </>
         }
+      />
+
+      <ProjectPeriodReportsSection
+        contracts={contracts}
+        costEntries={costEntries}
+        invoices={invoices}
+        payments={payments}
+        changeOrders={changeOrders}
+        onReportChange={onPeriodReportChange}
       />
 
       <SectionCard title="Contract Profitability">
@@ -337,14 +419,14 @@ export default function ReportsPage() {
                   <th>Due Date</th>
                   <th>Bucket</th>
                   <th className="text-right">Outstanding</th>
-                  <th className="w-8" />
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {arAging.rows.map(({ invoice, outstanding, bucket }) => (
                   <tr
                     key={invoice.id}
-                    className="hover cursor-pointer"
+                    className="hover:bg-base-200/50 cursor-pointer"
                     onClick={() => router.push(`/invoices/${invoice.id}`)}
                   >
                     <td>
@@ -353,22 +435,24 @@ export default function ReportsPage() {
                         className="link link-primary font-medium"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {invoice.invoice_number ?? "View invoice"}
+                        {invoice.invoice_number ?? "View"}
                       </Link>
                     </td>
                     <td>{invoice.contracts?.contract_name ?? "—"}</td>
-                    <td className="whitespace-nowrap">{invoice.due_date ?? "—"}</td>
-                    <td>{bucket}</td>
-                    <td className="text-right">{money(outstanding)}</td>
+                    <td>{invoice.due_date ?? "—"}</td>
+                    <td>
+                      <span className="badge badge-ghost badge-sm">{bucket}</span>
+                    </td>
+                    <td className="text-right font-medium">{money(outstanding)}</td>
                     <td className="text-right">
-                      <ChevronRight className="h-4 w-4 opacity-40 inline-block" />
+                      <ChevronRight className="h-4 w-4 opacity-40 inline" />
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="font-semibold">
-                  <td colSpan={4}>Total Outstanding</td>
+                  <td colSpan={4}>Total outstanding</td>
                   <td className="text-right">{money(totalOutstanding)}</td>
                   <td />
                 </tr>
@@ -380,9 +464,26 @@ export default function ReportsPage() {
 
       <SectionCard title="Cost by Category">
         {costsByCategory.length === 0 ? (
-          <p className="text-sm opacity-60 py-4 text-center">No cost entries recorded yet.</p>
+          <p className="text-sm opacity-60 py-4 text-center">No cost entries yet.</p>
         ) : (
-          <div className="grid lg:grid-cols-2 gap-6">
+          <div className="grid lg:grid-cols-2 gap-4">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={costsByCategory} margin={{ top: 8, right: 8, left: 8, bottom: 48 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11 }}
+                    interval={0}
+                    angle={-25}
+                    textAnchor="end"
+                  />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={72} />
+                  <Tooltip formatter={(value) => money(Number(value))} />
+                  <Bar dataKey="total" fill="#0d9488" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
             <div className="overflow-x-auto">
               <table className="table table-sm">
                 <thead>
@@ -401,17 +502,6 @@ export default function ReportsPage() {
                 </tbody>
               </table>
             </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={costsByCategory} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={80} />
-                  <Tooltip formatter={(value) => money(Number(value))} />
-                  <Bar dataKey="total" fill="#4f46e5" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
           </div>
         )}
       </SectionCard>
@@ -422,8 +512,8 @@ export default function ReportsPage() {
             <thead>
               <tr>
                 <th>Contract</th>
-                <th className="text-right">Invoice Retainage Held</th>
-                <th className="text-right">Subcontractor Retainage Est.</th>
+                <th className="text-right">Invoice Retainage</th>
+                <th className="text-right">Sub Retainage Est.</th>
               </tr>
             </thead>
             <tbody>
@@ -440,13 +530,13 @@ export default function ReportsPage() {
       </SectionCard>
 
       <SectionCard title="Change Order Summary">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-3 gap-3 mb-4">
           {changeOrderSummary.overall.map((row) => (
             <StatCard
               key={row.status}
               title={labelize(row.status)}
               value={String(row.count)}
-              hint={row.status === "approved" ? money(row.total) : undefined}
+              hint={money(row.total)}
             />
           ))}
         </div>
