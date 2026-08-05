@@ -73,3 +73,17 @@ set user_id = '66666666-6666-6666-6666-666666666665',
     contact_name = 'Taylor Quinn'
 where company_name in ('Flow Plumbing Inc', 'Solid Concrete Works')
   and (user_id is null or user_id = '66666666-6666-6666-6666-666666666665');
+
+-- SQL crypt() hashes use a different bcrypt cost than GoTrue expects.
+-- Copy a known-good Auth API password hash so Demo123! actually signs in.
+update auth.users u
+set encrypted_password = w.encrypted_password,
+    email_confirmed_at = coalesce(u.email_confirmed_at, now()),
+    updated_at = now()
+from auth.users w
+where w.email = 'pm@gcmanager.demo'
+  and u.email in (
+    'pm2@gcmanager.demo',
+    'field2@gcmanager.demo',
+    'sub2@gcmanager.demo'
+  );
