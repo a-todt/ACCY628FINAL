@@ -56,7 +56,7 @@ export default function FinanceOverviewPage() {
         status: overdue ? "overdue" : invoice.status,
         amount: Number(invoice.invoice_amount ?? 0),
         date: invoice.invoice_date ?? invoice.created_at,
-        href: "/invoices",
+        href: `/invoices/${invoice.id}`,
         detail: `Paid ${money(invoice.amount_paid)} · Due ${invoice.due_date ?? "—"}`,
       };
     });

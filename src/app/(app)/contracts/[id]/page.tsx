@@ -261,8 +261,12 @@ export default function ContractDetailPage() {
               </thead>
               <tbody>
                 {contractInvoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td>{invoice.invoice_number ?? "—"}</td>
+                  <tr key={invoice.id} className="hover">
+                    <td>
+                      <Link href={`/invoices/${invoice.id}`} className="link link-primary font-medium">
+                        {invoice.invoice_number ?? "View invoice"}
+                      </Link>
+                    </td>
                     <td className="whitespace-nowrap">{invoice.invoice_date ?? "—"}</td>
                     <td className="whitespace-nowrap">{invoice.due_date ?? "—"}</td>
                     <td className="text-right">{money(invoice.invoice_amount)}</td>

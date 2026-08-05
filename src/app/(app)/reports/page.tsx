@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
@@ -19,6 +22,7 @@ function agingBucket(days: number): (typeof AGING_BUCKETS)[number] {
 }
 
 export default function ReportsPage() {
+  const router = useRouter();
   const { effectiveRole } = useAuth();
   const {
     contracts,
@@ -186,16 +190,32 @@ export default function ReportsPage() {
                   <th>Due Date</th>
                   <th>Bucket</th>
                   <th className="text-right">Outstanding</th>
+                  <th className="w-8" />
                 </tr>
               </thead>
               <tbody>
                 {arAging.rows.map(({ invoice, outstanding, bucket }) => (
-                  <tr key={invoice.id}>
-                    <td>{invoice.invoice_number ?? "—"}</td>
+                  <tr
+                    key={invoice.id}
+                    className="hover cursor-pointer"
+                    onClick={() => router.push(`/invoices/${invoice.id}`)}
+                  >
+                    <td>
+                      <Link
+                        href={`/invoices/${invoice.id}`}
+                        className="link link-primary font-medium"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {invoice.invoice_number ?? "View invoice"}
+                      </Link>
+                    </td>
                     <td>{invoice.contracts?.contract_name ?? "—"}</td>
                     <td className="whitespace-nowrap">{invoice.due_date ?? "—"}</td>
                     <td>{bucket}</td>
                     <td className="text-right">{money(outstanding)}</td>
+                    <td className="text-right">
+                      <ChevronRight className="h-4 w-4 opacity-40 inline-block" />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -203,6 +223,7 @@ export default function ReportsPage() {
                 <tr className="font-semibold">
                   <td colSpan={4}>Total Outstanding</td>
                   <td className="text-right">{money(totalOutstanding)}</td>
+                  <td />
                 </tr>
               </tfoot>
             </table>
