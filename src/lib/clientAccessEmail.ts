@@ -1,54 +1,45 @@
 export type ClientAccessEmailPayload = {
   to: string;
   clientId: string;
-  setupCode: string;
   companyName?: string | null;
   contactName?: string | null;
-  expiresAt?: string | null;
 };
 
 export function buildClientAccessEmail(payload: ClientAccessEmailPayload) {
   const name = payload.contactName?.trim() || "there";
   const company = payload.companyName?.trim() || "your project";
-  const expires = payload.expiresAt
-    ? new Date(payload.expiresAt).toLocaleDateString()
-    : "soon";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-  const subject = `Your GC Contract Manager access codes for ${company}`;
+  const subject = `Your GC Contract Manager Client ID for ${company}`;
   const text = [
     `Hi ${name},`,
     "",
     "Your general contractor created client access for you in GC Contract Manager.",
     "",
     `Client ID: ${payload.clientId}`,
-    `Setup code: ${payload.setupCode}`,
-    `Setup code expires: ${expires}`,
     "",
     "How to get started:",
     `1. Go to ${appUrl}/login`,
-    "2. Create an account with your email (any email you use) and a password",
-    "3. Sign in, then enter your Client ID and setup code when prompted",
-    "4. After that, you can sign in with your email or Client ID",
+    "2. Create an account with your email and a password (use your personal name or business name — whichever your GC listed)",
+    "3. Sign in — the site will show your Client ID for that project when your name matches",
+    "4. Enter the Client ID to activate (you only see that project)",
     "",
     "If you did not expect this message, you can ignore it.",
   ].join("\n");
 
   const html = `
     <div style="font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#1f2937">
-      <h2 style="margin:0 0 12px">Your client access codes</h2>
+      <h2 style="margin:0 0 12px">Your Client ID</h2>
       <p>Hi ${escapeHtml(name)},</p>
       <p>Your general contractor created client access for <strong>${escapeHtml(company)}</strong> in GC Contract Manager.</p>
       <table style="border-collapse:collapse;margin:16px 0">
         <tr><td style="padding:6px 12px;background:#f3f4f6"><strong>Client ID</strong></td><td style="padding:6px 12px;font-family:monospace">${escapeHtml(payload.clientId)}</td></tr>
-        <tr><td style="padding:6px 12px;background:#f3f4f6"><strong>Setup code</strong></td><td style="padding:6px 12px;font-family:monospace">${escapeHtml(payload.setupCode)}</td></tr>
-        <tr><td style="padding:6px 12px;background:#f3f4f6"><strong>Expires</strong></td><td style="padding:6px 12px">${escapeHtml(expires)}</td></tr>
       </table>
       <ol>
         <li>Go to <a href="${escapeHtml(appUrl)}/login">${escapeHtml(appUrl)}/login</a></li>
-        <li>Create an account with your email and a password</li>
-        <li>Sign in, then enter your Client ID and setup code</li>
-        <li>Later you can sign in with email or Client ID</li>
+        <li>Create an account with your email and name</li>
+        <li>Sign in — the site shows your Client ID when your name (or spouse/partner name) matches</li>
+        <li>Activate with the Client ID, then sign in with email or Client ID anytime</li>
       </ol>
       <p style="color:#6b7280;font-size:12px">If you did not expect this message, you can ignore it.</p>
     </div>

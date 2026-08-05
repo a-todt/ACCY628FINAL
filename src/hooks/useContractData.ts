@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { scopeDataForClientRole } from "@/lib/clientScope";
+import {
+  scopeDataForAssignedStaffRole,
+  type ContractAssignmentRow,
+} from "@/lib/staffScope";
 import { createClient } from "@/lib/supabase/client";
 import type {
   ChangeOrder,
@@ -26,6 +30,7 @@ interface ContractDataState {
   fieldLogs: FieldLog[];
   milestones: Milestone[];
   userProfiles: UserProfile[];
+  assignments: ContractAssignmentRow[];
 }
 
 const EMPTY_STATE: ContractDataState = {
@@ -38,6 +43,7 @@ const EMPTY_STATE: ContractDataState = {
   fieldLogs: [],
   milestones: [],
   userProfiles: [],
+  assignments: [],
 };
 
 export function useContractData() {
@@ -62,6 +68,7 @@ export function useContractData() {
         fieldLogsRes,
         milestonesRes,
         userProfilesRes,
+        assignmentsRes,
       ] = await Promise.all([
         supabase.from("contracts").select("*").order("created_at", { ascending: false }),
         supabase
@@ -90,6 +97,7 @@ export function useContractData() {
           .order("log_date", { ascending: false }),
         supabase.from("milestones").select("*").order("due_date", { ascending: true }),
         supabase.from("user_profiles").select("*").order("full_name", { ascending: true }),
+        supabase.from("contract_assignments").select("contract_id, user_id, assignment_role"),
       ]);
 
       const firstError =
@@ -101,7 +109,8 @@ export function useContractData() {
         paymentsRes.error ??
         fieldLogsRes.error ??
         milestonesRes.error ??
-        userProfilesRes.error;
+        userProfilesRes.error ??
+        assignmentsRes.error;
 
       if (firstError) throw firstError;
 
@@ -115,6 +124,7 @@ export function useContractData() {
         fieldLogs: (fieldLogsRes.data as FieldLog[]) ?? [],
         milestones: (milestonesRes.data as Milestone[]) ?? [],
         userProfiles: (userProfilesRes.data as UserProfile[]) ?? [],
+        assignments: (assignmentsRes.data as ContractAssignmentRow[]) ?? [],
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load contract data");
@@ -127,11 +137,16 @@ export function useContractData() {
     void Promise.resolve().then(() => load());
   }, [load]);
 
-  const scoped = useMemo(
-    () =>
-      scopeDataForClientRole(data, effectiveRole, profile?.role, user?.id),
-    [data, effectiveRole, profile?.role, user?.id]
-  );
+  const scoped = useMemo(() => {
+    const forClient = scopeDataForClientRole(data, effectiveRole, profile?.role, user?.id);
+    return scopeDataForAssignedStaffRole(
+      forClient,
+      data.assignments,
+      effectiveRole,
+      profile?.role,
+      user?.id
+    );
+  }, [data, effectiveRole, profile?.role, user?.id]);
 
   return {
     ...scoped,

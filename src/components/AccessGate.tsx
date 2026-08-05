@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Lock, KeyRound, Building2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
 import type { AccessInfo } from "@/hooks/useAccessStatus";
+import { requestClientSignupAccessMatch } from "@/lib/clientSignupAccessEmail";
 import { ROLE_LABELS } from "@/lib/roles";
 
 export function AccessGate({
@@ -18,10 +19,62 @@ export function AccessGate({
   const { refreshProfile, signOut, profile } = useAuth();
   const [inviteCode, setInviteCode] = useState("");
   const [clientId, setClientId] = useState("");
-  const [setupCode, setSetupCode] = useState("");
+  const [matchedCompany, setMatchedCompany] = useState<string | null>(null);
+  const [matchedContract, setMatchedContract] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
+  const matchAttempted = useRef(false);
+
+  const applyMatchResult = (result: Awaited<ReturnType<typeof requestClientSignupAccessMatch>>) => {
+    if (result.matched && result.clientId) {
+      setClientId(result.clientId);
+      setMatchedCompany(result.companyName ?? null);
+      setMatchedContract(result.contractName ?? null);
+      const projectBit = result.contractName ? ` for project “${result.contractName}”` : "";
+      setMessage(
+        result.sent
+          ? `Matched your account${projectBit}. Your Client ID is shown below${
+              result.to ? ` (also emailed to ${result.to})` : ""
+            }.`
+          : `Matched your account${projectBit} by name. Your Client ID is below — it only unlocks this project.`
+      );
+      return true;
+    }
+    if (result.reason === "ambiguous") {
+      setMessage(
+        "More than one customer matched your name. Ask your GC to set unique contact/spouse names, or enter Client ID manually."
+      );
+    } else if (result.reason === "no_match") {
+      setMessage(
+        "No project invite matched your name yet. Ask your GC to invite you on a specific project (person or business name), then tap Find my Client ID."
+      );
+    } else if (result.reason || result.error) {
+      setMessage(`Could not look up Client ID yet (${result.reason || result.error}). Try Find my Client ID.`);
+    }
+    return false;
+  };
+
+  const lookupClientCodes = async () => {
+    setLookingUp(true);
+    setError(null);
+    try {
+      const result = await requestClientSignupAccessMatch();
+      applyMatchResult(result);
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (matchAttempted.current) return;
+    if (access.status !== "needs_client_setup" && access.role !== "client") return;
+    if (access.status === "ready") return;
+    matchAttempted.current = true;
+    void lookupClientCodes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once when gate appears
+  }, [access.status, access.role]);
 
   const finish = async () => {
     await refreshProfile();
@@ -36,7 +89,6 @@ export function AccessGate({
     setMessage(null);
     try {
       const supabase = createClient();
-      // Ensure role is subcontractor before/after accept
       if (profile?.id) {
         await supabase
           .from("user_profiles")
@@ -66,9 +118,8 @@ export function AccessGate({
       if (profile?.id) {
         await supabase.from("user_profiles").update({ role: "client" }).eq("id", profile.id);
       }
-      const { error: rpcError } = await supabase.rpc("claim_customer_with_setup", {
+      const { error: rpcError } = await supabase.rpc("claim_customer_by_client_id", {
         p_client_id: clientId.trim(),
-        p_setup_code: setupCode.trim(),
       });
       if (rpcError) throw rpcError;
       setMessage("Client access linked. Loading your project…");
@@ -132,32 +183,53 @@ export function AccessGate({
       ) : null}
 
       {access.status === "needs_client_setup" || access.role === "client" ? (
-        <SectionCard title="Enter Client ID + setup code">
-          <form onSubmit={onClaimClient} className="space-y-4">
-            <FormField label="Client ID" hint="Provided by your GC when they added you as a customer.">
-              <input
-                className="input input-bordered font-mono uppercase"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                required
-                placeholder="CLT-XXXXXXXX"
-              />
-            </FormField>
-            <FormField label="Setup code">
-              <input
-                className="input input-bordered font-mono uppercase"
-                value={setupCode}
-                onChange={(e) => setSetupCode(e.target.value)}
-                required
-                placeholder="XXXXXXXX"
-              />
-            </FormField>
-            <button type="submit" className="btn btn-primary" disabled={busy}>
-              <Building2 className="h-4 w-4" />
-              Activate client access
-            </button>
-          </form>
-        </SectionCard>
+        <>
+          {clientId ? (
+            <SectionCard title="Your Client ID">
+              <p className="text-sm opacity-80 mb-3">
+                Matched{matchedCompany ? ` as ${matchedCompany}` : " by name"}
+                {matchedContract ? ` · project: ${matchedContract}` : ""}. This ID only unlocks that
+                project (not other jobs).
+              </p>
+              <div className="rounded-lg bg-base-200 p-4">
+                <p className="text-xs opacity-60 mb-1">Client ID</p>
+                <p className="font-mono font-semibold text-2xl tracking-wide">{clientId}</p>
+              </div>
+            </SectionCard>
+          ) : null}
+
+          <SectionCard title="Enter Client ID">
+            <form onSubmit={onClaimClient} className="space-y-4">
+              <FormField
+                label="Client ID"
+                hint="Shown above when your name or spouse/partner name matches."
+              >
+                <input
+                  className="input input-bordered font-mono uppercase"
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  required
+                  placeholder="CLT-XXXX"
+                />
+              </FormField>
+              <div className="flex flex-wrap gap-2">
+                <button type="submit" className="btn btn-primary" disabled={busy || !clientId}>
+                  <Building2 className="h-4 w-4" />
+                  Activate client access
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={lookingUp || busy}
+                  onClick={() => void lookupClientCodes()}
+                >
+                  {lookingUp ? <span className="loading loading-spinner loading-sm" /> : null}
+                  Find my Client ID
+                </button>
+              </div>
+            </form>
+          </SectionCard>
+        </>
       ) : null}
 
       {access.status === "locked" &&
@@ -174,7 +246,6 @@ export function AccessGate({
         </SectionCard>
       ) : null}
 
-      {/* Allow switching paths if they picked the wrong signup role */}
       {access.status === "locked" ? (
         <SectionCard title="Have a code instead?">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -191,24 +262,14 @@ export function AccessGate({
               </button>
             </form>
             <form onSubmit={onClaimClient} className="space-y-2">
-              <p className="text-xs font-medium opacity-70">Client ID setup</p>
+              <p className="text-xs font-medium opacity-70">Client ID</p>
               <input
                 className="input input-bordered input-sm w-full font-mono"
-                placeholder="Client ID"
+                placeholder="CLT-XXXX"
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
               />
-              <input
-                className="input input-bordered input-sm w-full font-mono"
-                placeholder="Setup code"
-                value={setupCode}
-                onChange={(e) => setSetupCode(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="btn btn-sm btn-outline w-full"
-                disabled={busy || !clientId || !setupCode}
-              >
+              <button type="submit" className="btn btn-sm btn-outline w-full" disabled={busy || !clientId}>
                 Claim client access
               </button>
             </form>

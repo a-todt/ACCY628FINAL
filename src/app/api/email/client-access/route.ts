@@ -5,10 +5,8 @@ import { sendClientAccessEmail } from "@/lib/clientAccessEmail";
 type Body = {
   to?: string;
   clientId?: string;
-  setupCode?: string;
   companyName?: string | null;
   contactName?: string | null;
-  expiresAt?: string | null;
   customerId?: string | null;
 };
 
@@ -36,22 +34,16 @@ export async function POST(request: Request) {
     const body = (await request.json()) as Body;
     const to = body.to?.trim();
     const clientId = body.clientId?.trim();
-    const setupCode = body.setupCode?.trim();
 
-    if (!to || !clientId || !setupCode) {
-      return NextResponse.json(
-        { error: "to, clientId, and setupCode are required." },
-        { status: 400 }
-      );
+    if (!to || !clientId) {
+      return NextResponse.json({ error: "to and clientId are required." }, { status: 400 });
     }
 
     const result = await sendClientAccessEmail({
       to,
       clientId,
-      setupCode,
       companyName: body.companyName,
       contactName: body.contactName,
-      expiresAt: body.expiresAt,
     });
 
     if (result.sent) {

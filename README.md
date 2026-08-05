@@ -52,9 +52,12 @@ Open http://localhost:3000
 |-------|----------|------|
 | admin@gcmanager.demo | Demo123! | Admin |
 | pm@gcmanager.demo | Demo123! | Project Manager |
+| pm2@gcmanager.demo | Demo123! | Project Manager (Alex Chen) |
 | client@gcmanager.demo | Demo123! | Client |
 | field@gcmanager.demo | Demo123! | Field Supervisor |
+| field2@gcmanager.demo | Demo123! | Field Supervisor (Casey Morgan) |
 | sub@gcmanager.demo | Demo123! | Subcontractor |
+| sub2@gcmanager.demo | Demo123! | Subcontractor (Taylor Quinn) |
 
 ### Fix / reset demo data
 
