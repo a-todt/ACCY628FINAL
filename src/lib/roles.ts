@@ -85,13 +85,7 @@ export function canViewContractFinancials(role: UserRole): boolean {
   return role !== "subcontractor" && role !== "client";
 }
 
-export type NavCategoryId =
-  | "dashboard"
-  | "reports"
-  | "contracts"
-  | "finance"
-  | "insurance"
-  | "management";
+export type NavCategoryId = "dashboard" | "reports" | "contracts" | "finance" | "management";
 
 export interface NavItem {
   href: string;
@@ -107,12 +101,6 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
         id: "contracts" as const,
         href: role === "field_supervisor" ? "/contracts" : "/contracts/overview",
         label: "Contracts",
-        show: true,
-      },
-      {
-        id: "insurance" as const,
-        href: "/insurance",
-        label: "Insurance",
         show: true,
       },
       {
@@ -162,6 +150,11 @@ export function secondaryNavForCategory(
           label: "Field Logs",
           show: role !== "client",
         },
+        {
+          href: "/insurance",
+          label: "Insurance",
+          show: true,
+        },
       ] as Array<NavItem & { show: boolean }>
     )
       .filter((item) => item.show)
@@ -178,10 +171,6 @@ export function secondaryNavForCategory(
     )
       .filter((item) => item.show)
       .map(({ href, label }) => ({ href, label }));
-  }
-
-  if (category === "insurance") {
-    return [{ href: "/insurance", label: "Policies & COIs" }];
   }
 
   if (category === "management") {
@@ -208,11 +197,11 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
     pathname.startsWith("/contracts") ||
     pathname.startsWith("/change-orders") ||
     pathname.startsWith("/subcontractors") ||
-    pathname.startsWith("/field-logs")
+    pathname.startsWith("/field-logs") ||
+    pathname.startsWith("/insurance")
   ) {
     return "contracts";
   }
-  if (pathname.startsWith("/insurance")) return "insurance";
   if (
     pathname.startsWith("/finance") ||
     pathname.startsWith("/costs") ||

@@ -327,10 +327,7 @@ export default function ContractDetailPage() {
                 </thead>
                 <tbody>
                   {contractFieldLogs.map((log) => (
-                    <tr
-                      key={log.id}
-                      className={isBadWeather(log.weather_conditions) ? "bg-error/10" : undefined}
-                    >
+                    <tr key={log.id}>
                       <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
                       <td>
                         {userProfiles.find((p) => p.id === log.user_id)?.full_name ??
