@@ -62,7 +62,7 @@ export function canManageRoles(role: UserRole): boolean {
   return role === "admin";
 }
 
-export type NavCategoryId = "dashboard" | "reports" | "contracts" | "finance";
+export type NavCategoryId = "dashboard" | "reports" | "contracts" | "finance" | "insurance";
 
 export interface NavItem {
   href: string;
@@ -83,6 +83,12 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
       { id: "contracts" as const, href: "/contracts/overview", label: "Contracts", show: true },
+      {
+        id: "insurance" as const,
+        href: "/insurance",
+        label: "Insurance",
+        show: true,
+      },
       {
         id: "finance" as const,
         href: "/finance",
@@ -134,6 +140,10 @@ export function secondaryNavForCategory(
       .map(({ href, label }) => ({ href, label }));
   }
 
+  if (category === "insurance") {
+    return [{ href: "/insurance", label: "Policies & COIs" }];
+  }
+
   return [];
 }
 
@@ -148,6 +158,7 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
   ) {
     return "contracts";
   }
+  if (pathname.startsWith("/insurance")) return "insurance";
   if (
     pathname.startsWith("/finance") ||
     pathname.startsWith("/costs") ||
@@ -171,6 +182,7 @@ export function isNavItemActive(pathname: string, href: string): boolean {
   if (href === "/contracts/overview") return pathname.startsWith("/contracts/overview");
   if (href === "/contracts/new") return pathname.startsWith("/contracts/new");
   if (href === "/finance") return pathname === "/finance";
+  if (href === "/insurance") return pathname.startsWith("/insurance");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
