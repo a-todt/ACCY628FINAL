@@ -1,5 +1,6 @@
 export type UserRole =
   | "admin"
+  | "owner"
   | "project_manager"
   | "field_supervisor"
   | "subcontractor"
@@ -24,6 +25,93 @@ export interface UserProfile {
   email: string | null;
   full_name: string | null;
   role: UserRole;
+  employee_id?: string | null;
+  is_active?: boolean;
+  phone?: string | null;
+  title?: string | null;
+  deactivated_at?: string | null;
+  created_at: string;
+}
+
+export interface CompanySettings {
+  id: string;
+  company_name: string;
+  gc_license_number: string | null;
+  gc_license_state: string | null;
+  gc_license_expiration: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  logo_url: string | null;
+  default_retainage_percent: number;
+  default_payment_terms: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface EmployeeCertification {
+  id: string;
+  user_id: string;
+  certification_name: string;
+  certification_number: string | null;
+  issuing_body: string | null;
+  issued_date: string | null;
+  expiration_date: string | null;
+  notes: string | null;
+  created_at: string;
+  user_profiles?: { full_name: string | null; email: string | null; role: UserRole } | null;
+}
+
+export interface ContractAssignment {
+  id: string;
+  contract_id: string;
+  user_id: string;
+  assignment_role: "project_manager" | "field_supervisor";
+  created_at: string;
+  contracts?: { contract_name: string } | null;
+  user_profiles?: { full_name: string | null; email: string | null; role: UserRole } | null;
+}
+
+export interface Customer {
+  id: string;
+  company_name: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  billing_address: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  user_id: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SubcontractorInvite {
+  id: string;
+  subcontractor_id: string;
+  invite_code: string;
+  email: string | null;
+  expires_at: string | null;
+  accepted_at: string | null;
+  accepted_by: string | null;
+  created_by: string | null;
+  created_at: string;
+  subcontractors?: { company_name: string; contract_id: string } | null;
+}
+
+export interface AccessAuditEntry {
+  id: string;
+  actor_user_id: string | null;
+  actor_email: string | null;
+  action: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  details: Record<string, unknown> | null;
+  ip_address: string | null;
   created_at: string;
 }
 
@@ -93,6 +181,9 @@ export interface Subcontractor {
   status: SubStatus;
   scope_of_work: string | null;
   user_id: string | null;
+  license_number?: string | null;
+  license_state?: string | null;
+  license_expiration?: string | null;
   created_at: string;
   contracts?: { contract_name: string } | null;
 }

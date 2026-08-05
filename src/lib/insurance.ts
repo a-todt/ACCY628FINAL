@@ -20,6 +20,7 @@ export const POLICY_TYPES: InsurancePolicyType[] = [
 export function canViewInsurance(role: UserRole): boolean {
   return (
     role === "admin" ||
+    role === "owner" ||
     role === "project_manager" ||
     role === "field_supervisor" ||
     role === "subcontractor" ||
@@ -28,11 +29,16 @@ export function canViewInsurance(role: UserRole): boolean {
 }
 
 export function canManageInsurance(role: UserRole): boolean {
-  return role === "admin" || role === "project_manager";
+  return role === "admin" || role === "owner" || role === "project_manager";
 }
 
 export function canUploadSubInsurance(role: UserRole): boolean {
-  return role === "admin" || role === "project_manager" || role === "subcontractor";
+  return (
+    role === "admin" ||
+    role === "owner" ||
+    role === "project_manager" ||
+    role === "subcontractor"
+  );
 }
 
 export type PolicyHealth = "active" | "expiring" | "expired" | "missing_dates";

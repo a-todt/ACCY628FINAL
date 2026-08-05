@@ -1,40 +1,54 @@
 import type { UserRole } from "./types";
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Admin",
+  admin: "Admin (Internal)",
+  owner: "Owner / Executive",
   project_manager: "Project Manager",
   field_supervisor: "Field Supervisor",
   subcontractor: "Subcontractor",
   client: "Client",
 };
 
-export const ALL_ROLES: UserRole[] = [
-  "admin",
+/** Roles assignable to real company users (excludes internal admin). */
+export const COMPANY_ROLES: UserRole[] = [
+  "owner",
   "project_manager",
   "field_supervisor",
   "subcontractor",
   "client",
 ];
 
+export const ALL_ROLES: UserRole[] = ["admin", ...COMPANY_ROLES];
+
+export function canManageCompany(role: UserRole): boolean {
+  return role === "owner";
+}
+
+/** Internal team tools (role switcher targets, /admin/roles). */
+export function canManageRoles(role: UserRole): boolean {
+  return role === "admin";
+}
+
 export function canManageContracts(role: UserRole): boolean {
-  return role === "admin" || role === "project_manager";
+  return role === "admin" || role === "owner" || role === "project_manager";
 }
 
 export function canCreateInvoices(role: UserRole): boolean {
-  return role === "admin" || role === "project_manager";
+  return role === "admin" || role === "owner" || role === "project_manager";
 }
 
 export function canCreateChangeOrders(role: UserRole): boolean {
-  return role === "admin" || role === "project_manager";
+  return role === "admin" || role === "owner" || role === "project_manager";
 }
 
 export function canManageSubcontractors(role: UserRole): boolean {
-  return role === "admin" || role === "project_manager";
+  return role === "admin" || role === "owner" || role === "project_manager";
 }
 
 export function canEnterCosts(role: UserRole): boolean {
   return (
     role === "admin" ||
+    role === "owner" ||
     role === "project_manager" ||
     role === "field_supervisor" ||
     role === "subcontractor"
@@ -44,6 +58,7 @@ export function canEnterCosts(role: UserRole): boolean {
 export function canCreateFieldLogs(role: UserRole): boolean {
   return (
     role === "admin" ||
+    role === "owner" ||
     role === "project_manager" ||
     role === "field_supervisor" ||
     role === "subcontractor"
@@ -51,22 +66,11 @@ export function canCreateFieldLogs(role: UserRole): boolean {
 }
 
 export function canViewCosts(role: UserRole): boolean {
-  return role !== "client";
+  return role !== "client" && role !== "subcontractor";
 }
 
 export function canViewReports(role: UserRole): boolean {
-  return role === "admin" || role === "project_manager";
-}
-
-export function canManageRoles(role: UserRole): boolean {
-  return role === "admin";
-}
-
-export type NavCategoryId = "dashboard" | "reports" | "contracts" | "finance" | "insurance";
-
-export interface NavItem {
-  href: string;
-  label: string;
+  return role === "admin" || role === "owner" || role === "project_manager";
 }
 
 export function canViewInvoices(role: UserRole): boolean {
@@ -75,6 +79,23 @@ export function canViewInvoices(role: UserRole): boolean {
 
 export function canViewFinance(role: UserRole): boolean {
   return canViewCosts(role) || canViewInvoices(role);
+}
+
+export function canViewContractFinancials(role: UserRole): boolean {
+  return role !== "subcontractor" && role !== "client";
+}
+
+export type NavCategoryId =
+  | "dashboard"
+  | "reports"
+  | "contracts"
+  | "finance"
+  | "insurance"
+  | "management";
+
+export interface NavItem {
+  href: string;
+  label: string;
 }
 
 export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCategoryId }> {
@@ -100,6 +121,12 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
         label: "Costing and Invoicing",
         show: canViewFinance(role),
       },
+      {
+        id: "management" as const,
+        href: "/management",
+        label: "Admin / Management",
+        show: canManageCompany(role),
+      },
     ] as Array<NavItem & { id: NavCategoryId; show: boolean }>
   )
     .filter((item) => item.show)
@@ -116,7 +143,6 @@ export function secondaryNavForCategory(
         {
           href: "/contracts/overview",
           label: "Overview",
-          // Field supervisors use All Contracts (summary + supervised details).
           show: role !== "field_supervisor",
         },
         { href: "/contracts", label: "All Contracts", show: true },
@@ -125,7 +151,11 @@ export function secondaryNavForCategory(
         {
           href: "/subcontractors",
           label: "Subcontractors",
-          show: role === "admin" || role === "project_manager" || role === "subcontractor",
+          show:
+            role === "admin" ||
+            role === "owner" ||
+            role === "project_manager" ||
+            role === "subcontractor",
         },
         {
           href: "/field-logs",
@@ -154,12 +184,26 @@ export function secondaryNavForCategory(
     return [{ href: "/insurance", label: "Policies & COIs" }];
   }
 
+  if (category === "management") {
+    return [
+      { href: "/management", label: "Overview" },
+      { href: "/management?tab=settings", label: "Company Settings" },
+      { href: "/management?tab=team", label: "Team" },
+      { href: "/management?tab=assignments", label: "Assignments" },
+      { href: "/management?tab=parties", label: "External Parties" },
+      { href: "/management?tab=compliance", label: "Compliance" },
+      { href: "/management?tab=audit", label: "Audit Log" },
+    ];
+  }
+
   return [];
 }
 
 export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (pathname.startsWith("/dashboard")) return "dashboard";
-  if (pathname.startsWith("/reports") || pathname.startsWith("/admin")) return "reports";
+  if (pathname.startsWith("/reports")) return "reports";
+  if (pathname.startsWith("/admin")) return "reports";
+  if (pathname.startsWith("/management")) return "management";
   if (
     pathname.startsWith("/contracts") ||
     pathname.startsWith("/change-orders") ||
@@ -181,6 +225,10 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
 
 export function isNavItemActive(pathname: string, href: string): boolean {
   if (href === "/dashboard") return pathname === "/dashboard";
+  if (href === "/management") return pathname.startsWith("/management");
+  if (href.startsWith("/management?")) {
+    return pathname.startsWith("/management");
+  }
   if (href === "/contracts") {
     return (
       pathname === "/contracts" ||
@@ -205,6 +253,8 @@ export function roleBadgeClass(role: UserRole): string {
   switch (role) {
     case "admin":
       return "badge-primary";
+    case "owner":
+      return "badge-secondary";
     case "project_manager":
       return "badge-secondary";
     case "field_supervisor":

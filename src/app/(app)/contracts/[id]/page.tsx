@@ -8,7 +8,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { WeatherBadge } from "@/components/WeatherBadge";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
-import { canViewCosts, statusBadgeClass } from "@/lib/roles";
+import { canViewContractFinancials, canViewCosts, statusBadgeClass } from "@/lib/roles";
 import { isBadWeather } from "@/lib/weather";
 
 export default function ContractDetailPage() {
@@ -63,6 +63,7 @@ export default function ContractDetailPage() {
   }
 
   const showCosts = canViewCosts(effectiveRole);
+  const showFinancials = canViewContractFinancials(effectiveRole);
   const isClient = effectiveRole === "client";
   const metrics = computeContractMetrics(contract, changeOrders, invoices, costEntries, milestones, payments);
 
@@ -100,8 +101,15 @@ export default function ContractDetailPage() {
             value={[contract.project_address, contract.city, contract.state].filter(Boolean).join(", ")}
           />
           <InfoField label="Contract Type" value={labelize(contract.contract_type)} />
-          <InfoField label="Original Value" value={money(contract.original_value)} />
-          <InfoField label="Retainage %" value={contract.retainage_percent != null ? `${contract.retainage_percent}%` : null} />
+          {showFinancials ? (
+            <InfoField label="Original Value" value={money(contract.original_value)} />
+          ) : null}
+          {showFinancials ? (
+            <InfoField
+              label="Retainage %"
+              value={contract.retainage_percent != null ? `${contract.retainage_percent}%` : null}
+            />
+          ) : null}
           <InfoField label="Start Date" value={contract.start_date} />
           <InfoField label="End Date" value={contract.end_date} />
           <InfoField label="Created" value={new Date(contract.created_at).toLocaleDateString()} />
@@ -121,11 +129,15 @@ export default function ContractDetailPage() {
       </SectionCard>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        <StatCard title="Revised Value" value={money(metrics.revisedValue)} hint={`${money(metrics.approvedChangeOrders)} approved COs`} />
-        <StatCard title="Total Billed" value={money(metrics.totalBilled)} />
-        <StatCard title="Total Collected" value={money(metrics.totalCollected)} tone="success" />
-        <StatCard title="Outstanding" value={money(metrics.outstanding)} tone={metrics.outstanding > 0 ? "warning" : "default"} />
-        <StatCard title="Retainage Held" value={money(metrics.retainageHeld)} />
+        {showFinancials ? (
+          <>
+            <StatCard title="Revised Value" value={money(metrics.revisedValue)} hint={`${money(metrics.approvedChangeOrders)} approved COs`} />
+            <StatCard title="Total Billed" value={money(metrics.totalBilled)} />
+            <StatCard title="Total Collected" value={money(metrics.totalCollected)} tone="success" />
+            <StatCard title="Outstanding" value={money(metrics.outstanding)} tone={metrics.outstanding > 0 ? "warning" : "default"} />
+            <StatCard title="Retainage Held" value={money(metrics.retainageHeld)} />
+          </>
+        ) : null}
         <StatCard title="Completion" value={percent(metrics.completionPercent)} />
         {showCosts ? (
           <>
