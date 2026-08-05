@@ -155,9 +155,24 @@ function AdminDashboard({
       acc.outstanding += metrics.outstanding;
       acc.totalCosts += metrics.totalCosts;
       acc.grossProfit += metrics.grossProfit;
+      acc.earnedRevenue += metrics.earnedRevenue;
+      acc.recognizedGrossProfit += metrics.recognizedGrossProfit;
+      acc.billingsInExcess += metrics.billingsInExcess;
+      acc.unbilledRevenue += metrics.unbilledRevenue;
       return acc;
     },
-    { revisedValue: 0, totalBilled: 0, totalCollected: 0, outstanding: 0, totalCosts: 0, grossProfit: 0 }
+    {
+      revisedValue: 0,
+      totalBilled: 0,
+      totalCollected: 0,
+      outstanding: 0,
+      totalCosts: 0,
+      grossProfit: 0,
+      earnedRevenue: 0,
+      recognizedGrossProfit: 0,
+      billingsInExcess: 0,
+      unbilledRevenue: 0,
+    }
   );
 
   const activeContracts = contracts.filter((c) => c.status === "active").length;
@@ -168,7 +183,9 @@ function AdminDashboard({
   const overpaidSubs = subcontractors.filter(
     (s) => Number(s.amount_paid ?? 0) > Number(s.subcontract_value ?? 0)
   );
-  const unprofitableContracts = perContract.filter(({ metrics }) => metrics.grossProfit < 0);
+  const unprofitableContracts = perContract.filter(
+    ({ metrics }) => metrics.recognizedGrossProfit < 0 && metrics.earnedRevenue > 0
+  );
 
   const contractValueData = perContract.map(({ contract, metrics }) => ({
     name: shortName(contract.contract_name),
@@ -198,7 +215,8 @@ function AdminDashboard({
 
   const grossProfitData = perContract.map(({ contract, metrics }) => ({
     name: shortName(contract.contract_name),
-    "Gross Profit": Math.round(metrics.grossProfit),
+    "Recognized GP": Math.round(metrics.recognizedGrossProfit),
+    "Billing Profit": Math.round(metrics.grossProfit),
   }));
 
   const warnings: string[] = [];
@@ -236,12 +254,29 @@ function AdminDashboard({
         <StatCard title="Total Billed" value={money(totals.totalBilled)} icon={FileText} />
         <StatCard title="Total Collected" value={money(totals.totalCollected)} icon={Banknote} tone="success" />
         <StatCard title="Outstanding AR" value={money(totals.outstanding)} tone={totals.outstanding > 0 ? "warning" : "default"} />
+        <StatCard title="Earned Revenue" value={money(totals.earnedRevenue)} icon={TrendingUp} />
+        <StatCard
+          title="Billings in Excess"
+          value={money(totals.billingsInExcess)}
+          tone={totals.billingsInExcess > 0 ? "warning" : "default"}
+        />
+        <StatCard
+          title="Unbilled Revenue"
+          value={money(totals.unbilledRevenue)}
+          tone={totals.unbilledRevenue > 0 ? "warning" : "default"}
+        />
         <StatCard title="Total Job Costs" value={money(totals.totalCosts)} icon={Wrench} />
         <StatCard
-          title="Gross Profit"
+          title="Recognized Gross Profit"
+          value={money(totals.recognizedGrossProfit)}
+          hint={totals.earnedRevenue > 0 ? percent(totals.recognizedGrossProfit / totals.earnedRevenue) : undefined}
+          icon={TrendingUp}
+          tone={totals.recognizedGrossProfit >= 0 ? "success" : "error"}
+        />
+        <StatCard
+          title="Billing Profit"
           value={money(totals.grossProfit)}
           hint={totals.totalBilled > 0 ? percent(totals.grossProfit / totals.totalBilled) : undefined}
-          icon={TrendingUp}
           tone={totals.grossProfit >= 0 ? "success" : "error"}
         />
         <StatCard title="Pending Change Orders" value={String(pendingCOs)} icon={ClipboardList} tone={pendingCOs > 0 ? "warning" : "default"} />
@@ -319,7 +354,7 @@ function AdminDashboard({
           </div>
         </SectionCard>
 
-        <SectionCard title="Gross Profit by Project">
+        <SectionCard title="Recognized vs Billing Profit by Project">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={grossProfitData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
@@ -327,11 +362,9 @@ function AdminDashboard({
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={80} />
                 <Tooltip formatter={(value) => money(Number(value))} />
-                <Bar dataKey="Gross Profit" radius={[4, 4, 0, 0]}>
-                  {grossProfitData.map((entry) => (
-                    <Cell key={entry.name} fill={entry["Gross Profit"] >= 0 ? CHART_COLORS[3] : CHART_COLORS[4]} />
-                  ))}
-                </Bar>
+                <Legend />
+                <Bar dataKey="Recognized GP" fill={CHART_COLORS[3]} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Billing Profit" fill={CHART_COLORS[1]} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -570,16 +603,19 @@ function ClientDashboard({ contracts, changeOrders, invoices, costEntries, miles
                 <div className="card-body p-4 gap-2">
                   <p className="font-medium truncate">{contract.contract_name}</p>
                   <span className={`badge badge-sm w-fit ${statusBadgeClass(contract.status)}`}>{labelize(contract.status)}</span>
-                  <div className="mt-1">
-                    <div className="flex items-center justify-between text-xs opacity-70 mb-1">
-                      <span>Completion</span>
-                      <span>{percent(metrics.completionPercent)}</span>
+                  <div className="mt-1 text-sm space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="opacity-70">Invoiced</span>
+                      <span className="font-medium">{money(metrics.totalBilled)}</span>
                     </div>
-                    <progress
-                      className="progress progress-primary w-full"
-                      value={Math.round(metrics.completionPercent * 100)}
-                      max={100}
-                    />
+                    <div className="flex items-center justify-between">
+                      <span className="opacity-70">Paid</span>
+                      <span className="font-medium">{money(metrics.totalCollected)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="opacity-70">Outstanding</span>
+                      <span className="font-medium">{money(metrics.outstanding)}</span>
+                    </div>
                   </div>
                 </div>
               </Link>
