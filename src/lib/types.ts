@@ -325,3 +325,17 @@ export interface ContractMetrics {
   completionPercent: number;
   pendingChangeOrders: number;
 }
+
+export type AttachmentEntityType = "field_log" | "invoice";
+
+export interface Attachment {
+  id: string;
+  entity_type: AttachmentEntityType;
+  entity_id: string;
+  file_name: string;
+  storage_path: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+}

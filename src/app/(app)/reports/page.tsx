@@ -1,15 +1,23 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Download, FileDown } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
 import { canViewReports } from "@/lib/roles";
+
+type ExportSection =
+  | "profitability"
+  | "ar_aging"
+  | "costs"
+  | "retainage"
+  | "change_orders";
 
 const AGING_BUCKETS = ["Current", "1-30 Days", "31-60 Days", "61-90 Days", "90+ Days"] as const;
 
@@ -24,6 +32,7 @@ function agingBucket(days: number): (typeof AGING_BUCKETS)[number] {
 export default function ReportsPage() {
   const router = useRouter();
   const { effectiveRole } = useAuth();
+  const [csvSection, setCsvSection] = useState<ExportSection>("profitability");
   const {
     contracts,
     changeOrders,
@@ -130,9 +139,147 @@ export default function ReportsPage() {
 
   const totalOutstanding = AGING_BUCKETS.reduce((sum, bucket) => sum + arAging.totals[bucket], 0);
 
+  const exportCsv = () => {
+    if (csvSection === "profitability") {
+      downloadCsv(
+        "contract-profitability.csv",
+        profitability.map(({ contract, metrics }) => ({
+          Contract: contract.contract_name,
+          "Revised Value": metrics.revisedValue,
+          Billed: metrics.totalBilled,
+          Collected: metrics.totalCollected,
+          Costs: metrics.totalCosts,
+          "Gross Profit": metrics.grossProfit,
+          Margin: metrics.grossMargin,
+        }))
+      );
+      return;
+    }
+    if (csvSection === "ar_aging") {
+      downloadCsv(
+        "ar-aging.csv",
+        arAging.rows.map(({ invoice, outstanding, bucket }) => ({
+          "Invoice #": invoice.invoice_number,
+          Project: invoice.contracts?.contract_name,
+          "Due Date": invoice.due_date,
+          Bucket: bucket,
+          Outstanding: outstanding,
+        }))
+      );
+      return;
+    }
+    if (csvSection === "costs") {
+      downloadCsv(
+        "costs-by-category.csv",
+        costsByCategory.map((row) => ({ Category: row.name, Total: row.total }))
+      );
+      return;
+    }
+    if (csvSection === "retainage") {
+      downloadCsv(
+        "retainage-summary.csv",
+        retainageSummary.map((row) => ({
+          Contract: row.contract.contract_name,
+          "Invoice Retainage": row.invoiceRetainage,
+          "Sub Retainage Est": row.subRetainage,
+        }))
+      );
+      return;
+    }
+    downloadCsv(
+      "change-order-summary.csv",
+      changeOrderSummary.byContract.map((row) => ({
+        Contract: row.contract.contract_name,
+        Pending: row.pending,
+        "Approved Value": row.approved,
+        Rejected: row.rejected,
+      }))
+    );
+  };
+
+  const exportPdf = () => {
+    downloadPdfTables("reports-summary.pdf", "GC Contract Manager — Reports", [
+      {
+        title: "Contract Profitability",
+        columns: ["Contract", "Revised", "Billed", "Collected", "Costs", "Profit", "Margin"],
+        rows: profitability.map(({ contract, metrics }) => [
+          contract.contract_name ?? "",
+          money(metrics.revisedValue),
+          money(metrics.totalBilled),
+          money(metrics.totalCollected),
+          money(metrics.totalCosts),
+          money(metrics.grossProfit),
+          percent(metrics.grossMargin),
+        ]),
+      },
+      {
+        title: "AR Aging",
+        columns: ["Invoice #", "Project", "Due", "Bucket", "Outstanding"],
+        rows: arAging.rows.map(({ invoice, outstanding, bucket }) => [
+          invoice.invoice_number ?? "",
+          invoice.contracts?.contract_name ?? "",
+          invoice.due_date ?? "",
+          bucket,
+          money(outstanding),
+        ]),
+      },
+      {
+        title: "Cost by Category",
+        columns: ["Category", "Total"],
+        rows: costsByCategory.map((row) => [row.name, money(row.total)]),
+      },
+      {
+        title: "Retainage Summary",
+        columns: ["Contract", "Invoice Retainage", "Sub Retainage Est."],
+        rows: retainageSummary.map((row) => [
+          row.contract.contract_name ?? "",
+          money(row.invoiceRetainage),
+          money(row.subRetainage),
+        ]),
+      },
+      {
+        title: "Change Orders by Contract",
+        columns: ["Contract", "Pending", "Approved Value", "Rejected"],
+        rows: changeOrderSummary.byContract.map((row) => [
+          row.contract.contract_name ?? "",
+          row.pending,
+          money(row.approved),
+          row.rejected,
+        ]),
+      },
+    ]);
+  };
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" subtitle="Portfolio-wide financial and operational insights." />
+      <PageHeader
+        title="Reports"
+        subtitle="Portfolio-wide financial and operational insights."
+        actions={
+          <>
+            <select
+              className="select select-bordered select-sm"
+              value={csvSection}
+              onChange={(e) => setCsvSection(e.target.value as ExportSection)}
+              aria-label="CSV export section"
+            >
+              <option value="profitability">Profitability</option>
+              <option value="ar_aging">AR Aging</option>
+              <option value="costs">Cost by Category</option>
+              <option value="retainage">Retainage</option>
+              <option value="change_orders">Change Orders</option>
+            </select>
+            <button type="button" className="btn btn-outline btn-sm" onClick={exportCsv}>
+              <Download className="h-4 w-4" />
+              Export CSV
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={exportPdf}>
+              <FileDown className="h-4 w-4" />
+              Export PDF
+            </button>
+          </>
+        }
+      />
 
       <SectionCard title="Contract Profitability">
         <div className="overflow-x-auto">

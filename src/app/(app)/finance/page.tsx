@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CircleDollarSign, Receipt } from "lucide-react";
+import { CircleDollarSign, Download, FileDown, Receipt } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { canViewCosts, canViewInvoices, statusBadgeClass } from "@/lib/roles";
 
@@ -117,6 +118,68 @@ export default function FinanceOverviewPage() {
       <PageHeader
         title="Costing and Invoicing"
         subtitle="Summary of cost tracking and invoices — filter and sort across the category."
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() =>
+                downloadCsv(
+                  "finance-overview.csv",
+                  allRows.map((row) => ({
+                    Section: row.section,
+                    Name: row.name,
+                    Project: row.project,
+                    Status: labelize(row.status),
+                    Detail: row.detail,
+                    Amount: row.amount,
+                    Date: row.date,
+                  }))
+                )
+              }
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() =>
+                downloadPdfTables("finance-overview.pdf", "GC Contract Manager — Finance Overview", [
+                  {
+                    title: "Summary",
+                    columns: ["Metric", "Value"],
+                    rows: [
+                      ...(showCosts ? [["Total Costs", money(totalCosts)]] : []),
+                      ...(showInvoices
+                        ? [
+                            ["Total Billed", money(totalBilled)],
+                            ["Collected", money(Math.max(totalCollected, totalPayments))],
+                            ["Overdue Invoices", String(overdueCount)],
+                          ]
+                        : []),
+                    ],
+                  },
+                  {
+                    title: "Filtered rows",
+                    columns: ["Section", "Name", "Project", "Status", "Amount", "Date"],
+                    rows: allRows.map((row) => [
+                      row.section,
+                      row.name,
+                      row.project,
+                      labelize(row.status),
+                      money(row.amount),
+                      row.date ?? "",
+                    ]),
+                  },
+                ])
+              }
+            >
+              <FileDown className="h-4 w-4" />
+              Export PDF
+            </button>
+          </>
+        }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">

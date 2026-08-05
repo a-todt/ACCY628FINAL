@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
@@ -126,6 +127,10 @@ export default function InvoiceDetailPage() {
           tone={balanceRemaining > 0 ? (overdue ? "error" : "warning") : "success"}
         />
       </div>
+
+      <SectionCard title="Attachments">
+        <AttachmentPanel entityType="invoice" entityId={invoice.id} />
+      </SectionCard>
 
       <SectionCard title={`Payment History (${invoicePayments.length})`}>
         {invoicePayments.length === 0 ? (
