@@ -235,20 +235,58 @@ export default function ManagementPage() {
     }
   };
 
+  const emailClientAccess = async (opts: {
+    to: string | null | undefined;
+    clientId: string | null | undefined;
+    setupCode: string | null | undefined;
+    companyName?: string | null;
+    contactName?: string | null;
+    expiresAt?: string | null;
+    customerId?: string | null;
+  }) => {
+    if (!opts.to || !opts.clientId || !opts.setupCode) {
+      return { sent: false as const, reason: "Missing email or access codes." };
+    }
+    const res = await fetch("/api/email/client-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: opts.to,
+        clientId: opts.clientId,
+        setupCode: opts.setupCode,
+        companyName: opts.companyName,
+        contactName: opts.contactName,
+        expiresAt: opts.expiresAt,
+        customerId: opts.customerId,
+      }),
+    });
+    const data = (await res.json()) as { sent?: boolean; reason?: string; error?: string };
+    if (!res.ok) {
+      return { sent: false as const, reason: data.error || data.reason || "Email failed." };
+    }
+    return {
+      sent: Boolean(data.sent),
+      reason: data.reason,
+    };
+  };
+
   const onAddCustomer = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setMessage(null);
     const form = new FormData(e.currentTarget);
+    const contactEmail = String(form.get("contact_email") || "").trim() || null;
+    const companyName = String(form.get("company_name") || "").trim();
+    const contactName = String(form.get("contact_name") || "").trim() || null;
     try {
       const supabase = createClient();
       const { data, error: insertError } = await supabase
         .from("customers")
         .insert({
-          company_name: String(form.get("company_name") || "").trim(),
-          contact_name: String(form.get("contact_name") || "").trim() || null,
-          contact_email: String(form.get("contact_email") || "").trim() || null,
+          company_name: companyName,
+          contact_name: contactName,
+          contact_email: contactEmail,
           contact_phone: String(form.get("contact_phone") || "").trim() || null,
           billing_address: String(form.get("billing_address") || "").trim() || null,
           city: String(form.get("city") || "").trim() || null,
@@ -266,10 +304,29 @@ export default function ManagementPage() {
       const row = Array.isArray(provisioned) ? provisioned[0] : provisioned;
 
       await logAction("customer_created", "customers", data.id);
+
+      let emailNote = "";
+      if (contactEmail && row?.client_id && row?.setup_code) {
+        const emailed = await emailClientAccess({
+          to: contactEmail,
+          clientId: row.client_id,
+          setupCode: row.setup_code,
+          companyName,
+          contactName,
+          expiresAt: row.expires_at,
+          customerId: data.id,
+        });
+        emailNote = emailed.sent
+          ? ` Access email sent to ${contactEmail}.`
+          : ` Codes ready to copy${emailed.reason ? ` (${emailed.reason})` : ""}.`;
+      } else if (!contactEmail) {
+        emailNote = " Add an email next time to auto-send access codes.";
+      }
+
       setMessage(
         row
-          ? `Customer added. Client ID: ${row.client_id} · Setup code: ${row.setup_code}`
-          : "Customer added."
+          ? `Customer added. Client ID: ${row.client_id} · Setup code: ${row.setup_code}.${emailNote}`
+          : `Customer added.${emailNote}`
       );
       e.currentTarget.reset();
       await admin.refresh();
@@ -285,20 +342,72 @@ export default function ManagementPage() {
     setError(null);
     try {
       const supabase = createClient();
+      const customer = admin.customers.find((c) => c.id === customerId);
       const { data, error: provisionError } = await supabase.rpc("provision_customer_access", {
         p_customer_id: customerId,
         p_days_valid: 30,
       });
       if (provisionError) throw provisionError;
       const row = Array.isArray(data) ? data[0] : data;
+
+      let emailNote = "";
+      if (customer?.contact_email && row?.client_id && row?.setup_code) {
+        const emailed = await emailClientAccess({
+          to: customer.contact_email,
+          clientId: row.client_id,
+          setupCode: row.setup_code,
+          companyName: customer.company_name,
+          contactName: customer.contact_name,
+          expiresAt: row.expires_at,
+          customerId,
+        });
+        emailNote = emailed.sent
+          ? ` Email sent to ${customer.contact_email}.`
+          : ` ${emailed.reason || "Email not sent."}`;
+      }
+
       setMessage(
         row
-          ? `New access codes — Client ID: ${row.client_id} · Setup code: ${row.setup_code}`
-          : "Access codes refreshed."
+          ? `New access codes — Client ID: ${row.client_id} · Setup code: ${row.setup_code}.${emailNote}`
+          : `Access codes refreshed.${emailNote}`
       );
       await admin.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to provision client access.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onEmailCustomerAccess = async (customerId: string) => {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const customer = admin.customers.find((c) => c.id === customerId);
+      if (!customer) throw new Error("Customer not found.");
+      if (!customer.contact_email) throw new Error("Add a contact email before sending.");
+      if (!customer.client_id || !customer.setup_code) {
+        // Generate fresh codes first, then email
+        await onProvisionCustomer(customerId);
+        return;
+      }
+      const emailed = await emailClientAccess({
+        to: customer.contact_email,
+        clientId: customer.client_id,
+        setupCode: customer.setup_code,
+        companyName: customer.company_name,
+        contactName: customer.contact_name,
+        expiresAt: customer.setup_code_expires_at,
+        customerId,
+      });
+      if (!emailed.sent) {
+        setError(emailed.reason || "Could not send email.");
+      } else {
+        setMessage(`Access email sent to ${customer.contact_email}.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to email client access.");
     } finally {
       setBusy(false);
     }
@@ -647,7 +756,9 @@ export default function ManagementPage() {
             <form onSubmit={onAddCustomer} className="grid gap-4 md:grid-cols-2">
               <FormField label="Company Name"><input name="company_name" className="input input-bordered" required /></FormField>
               <FormField label="Contact Name"><input name="contact_name" className="input input-bordered" /></FormField>
-              <FormField label="Email"><input name="contact_email" type="email" className="input input-bordered" /></FormField>
+              <FormField label="Email" hint="If provided, Client ID + setup code are emailed automatically (when Resend is configured).">
+                <input name="contact_email" type="email" className="input input-bordered" />
+              </FormField>
               <FormField label="Phone"><input name="contact_phone" className="input input-bordered" /></FormField>
               <FormField label="Billing Address"><input name="billing_address" className="input input-bordered" /></FormField>
               <FormField label="City / State">
@@ -703,6 +814,15 @@ export default function ManagementPage() {
                             onClick={() => onProvisionCustomer(c.id)}
                           >
                             New codes
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            disabled={busy || !c.contact_email}
+                            onClick={() => onEmailCustomerAccess(c.id)}
+                            title={c.contact_email ? "Email Client ID + setup code" : "Add email first"}
+                          >
+                            Email codes
                           </button>
                           {c.contact_email ? (
                             <button
