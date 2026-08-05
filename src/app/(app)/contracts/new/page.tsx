@@ -8,7 +8,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { canManageContracts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
-import type { ContractType, MilestoneStatus } from "@/lib/types";
+import type { ContractType, MilestoneStatus, RevenueRecognitionMethod } from "@/lib/types";
 
 interface MilestoneRow {
   milestone_name: string;
@@ -35,6 +35,8 @@ const EMPTY_FORM = {
   contract_type: "fixed_price" as ContractType,
   original_value: "",
   retainage_percent: "10",
+  revenue_recognition_method: "percentage_of_completion" as RevenueRecognitionMethod,
+  estimated_total_cost: "",
   start_date: "",
   end_date: "",
   status: "active" as const,
@@ -113,6 +115,8 @@ export default function NewContractPage() {
           contract_type: form.contract_type,
           original_value: form.original_value ? Number(form.original_value) : null,
           retainage_percent: form.retainage_percent ? Number(form.retainage_percent) : null,
+          revenue_recognition_method: form.revenue_recognition_method,
+          estimated_total_cost: form.estimated_total_cost ? Number(form.estimated_total_cost) : null,
           start_date: form.start_date || null,
           end_date: form.end_date || null,
           status: form.status,
@@ -264,6 +268,41 @@ export default function NewContractPage() {
                   className="grow"
                   value={form.original_value}
                   onChange={(e) => updateField("original_value", e.target.value)}
+                />
+              </label>
+            </FormField>
+            <FormField label="Revenue Recognition">
+              <select
+                className="select select-bordered"
+                value={form.revenue_recognition_method}
+                onChange={(e) =>
+                  updateField(
+                    "revenue_recognition_method",
+                    e.target.value as RevenueRecognitionMethod
+                  )
+                }
+              >
+                <option value="percentage_of_completion">Percentage of Completion (cost-to-cost)</option>
+                <option value="completed_contract">Completed Contract</option>
+              </select>
+            </FormField>
+            <FormField
+              label="Estimated Total Cost"
+              hint={
+                form.revenue_recognition_method === "percentage_of_completion"
+                  ? "Required for POC earned revenue"
+                  : "Optional for completed-contract jobs"
+              }
+            >
+              <label className="input input-bordered flex items-center gap-2">
+                $
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="grow"
+                  value={form.estimated_total_cost}
+                  onChange={(e) => updateField("estimated_total_cost", e.target.value)}
                 />
               </label>
             </FormField>

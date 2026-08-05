@@ -8,6 +8,7 @@ export type UserRole =
 
 export type ContractType = "fixed_price" | "cost_plus" | "time_and_materials";
 export type ContractStatus = "active" | "completed" | "on_hold" | "canceled";
+export type RevenueRecognitionMethod = "percentage_of_completion" | "completed_contract";
 export type ChangeOrderStatus = "pending" | "approved" | "rejected";
 export type CostCategory =
   | "labor"
@@ -134,6 +135,8 @@ export interface Contract {
   contract_type: ContractType | null;
   original_value: number | null;
   retainage_percent: number | null;
+  revenue_recognition_method?: RevenueRecognitionMethod | null;
+  estimated_total_cost?: number | null;
   start_date: string | null;
   end_date: string | null;
   status: ContractStatus;
@@ -320,10 +323,18 @@ export interface ContractMetrics {
   outstanding: number;
   retainageHeld: number;
   totalCosts: number;
+  /** Billing profit proxy: totalBilled − totalCosts (contract-to-cash view). */
   grossProfit: number;
   grossMargin: number;
   completionPercent: number;
   pendingChangeOrders: number;
+  revenueRecognitionMethod: RevenueRecognitionMethod;
+  earnedRevenue: number;
+  recognizedGrossProfit: number;
+  recognizedGrossMargin: number;
+  billingsInExcess: number;
+  unbilledRevenue: number;
+  missingCostEstimate: boolean;
 }
 
 export type AttachmentEntityType =

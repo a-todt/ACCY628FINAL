@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, Suspense, useState } from "react";
+import { Fragment, Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown, Paperclip, Pencil, Trash2 } from "lucide-react";
@@ -18,7 +18,14 @@ import {
   policyHealth,
   policyHealthBadge,
 } from "@/lib/insurance";
-import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
+import {
+  computeContractMetrics,
+  labelize,
+  money,
+  percent,
+  recognitionMethodLabel,
+  recognitionMethodShort,
+} from "@/lib/metrics";
 import {
   canCancelOrDeleteContracts,
   canManageContracts,
@@ -27,7 +34,12 @@ import {
   statusBadgeClass,
 } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
-import type { ContractInsuranceRequirement, ContractStatus, InsurancePolicy } from "@/lib/types";
+import type {
+  ContractInsuranceRequirement,
+  ContractStatus,
+  InsurancePolicy,
+  RevenueRecognitionMethod,
+} from "@/lib/types";
 
 const STATUS_OPTIONS: ContractStatus[] = ["active", "on_hold", "completed", "canceled"];
 
@@ -78,6 +90,24 @@ function ContractDetailContent() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [logRefreshKey, setLogRefreshKey] = useState(0);
+  const [recognitionMethod, setRecognitionMethod] = useState<RevenueRecognitionMethod>(
+    "percentage_of_completion"
+  );
+  const [estimatedTotalCost, setEstimatedTotalCost] = useState("");
+  const [savingRecognition, setSavingRecognition] = useState(false);
+
+  useEffect(() => {
+    const current = contracts.find((c) => c.id === contractId);
+    if (!current) return;
+    setRecognitionMethod(
+      current.revenue_recognition_method === "completed_contract"
+        ? "completed_contract"
+        : "percentage_of_completion"
+    );
+    setEstimatedTotalCost(
+      current.estimated_total_cost != null ? String(current.estimated_total_cost) : ""
+    );
+  }, [contracts, contractId]);
 
   const enterEditMode = () => {
     if (!canEdit) return;
@@ -220,6 +250,29 @@ function ContractDetailContent() {
     }
   };
 
+  const saveRecognitionSettings = async () => {
+    setActionError(null);
+    setActionSuccess(null);
+    setSavingRecognition(true);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("contracts")
+        .update({
+          revenue_recognition_method: recognitionMethod,
+          estimated_total_cost: estimatedTotalCost ? Number(estimatedTotalCost) : null,
+        })
+        .eq("id", contract.id);
+      if (updateError) throw updateError;
+      setActionSuccess("Revenue recognition settings saved.");
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save recognition settings.");
+    } finally {
+      setSavingRecognition(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -336,6 +389,22 @@ function ContractDetailContent() {
               {showFinancials ? (
                 <InfoField label="Original Value" value={money(contract.original_value)} />
               ) : null}
+              {showCosts ? (
+                <>
+                  <InfoField
+                    label="Revenue Recognition"
+                    value={recognitionMethodLabel(metrics.revenueRecognitionMethod)}
+                  />
+                  <InfoField
+                    label="Estimated Total Cost"
+                    value={
+                      contract.estimated_total_cost != null
+                        ? money(contract.estimated_total_cost)
+                        : "Not set"
+                    }
+                  />
+                </>
+              ) : null}
               {showFinancials ? (
                 <InfoField
                   label="Retainage %"
@@ -361,6 +430,61 @@ function ContractDetailContent() {
           </>
         )}
 
+        {showCosts && canEdit ? (
+          <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3 items-end border-t border-base-300 pt-4">
+            <label className="form-control">
+              <span className="label-text text-xs uppercase tracking-wide opacity-60 mb-1">
+                Recognition Method
+              </span>
+              <select
+                className="select select-bordered select-sm"
+                value={recognitionMethod}
+                onChange={(e) =>
+                  setRecognitionMethod(e.target.value as RevenueRecognitionMethod)
+                }
+              >
+                <option value="percentage_of_completion">Percentage of Completion</option>
+                <option value="completed_contract">Completed Contract</option>
+              </select>
+            </label>
+            <label className="form-control">
+              <span className="label-text text-xs uppercase tracking-wide opacity-60 mb-1">
+                Estimated Total Cost
+              </span>
+              <label className="input input-bordered input-sm flex items-center gap-2">
+                $
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="grow"
+                  value={estimatedTotalCost}
+                  onChange={(e) => setEstimatedTotalCost(e.target.value)}
+                />
+              </label>
+            </label>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={savingRecognition}
+              onClick={() => void saveRecognitionSettings()}
+            >
+              {savingRecognition ? (
+                <span className="loading loading-spinner loading-xs" />
+              ) : (
+                "Save Recognition"
+              )}
+            </button>
+          </div>
+        ) : null}
+        {showCosts && metrics.missingCostEstimate ? (
+          <div className="mt-3">
+            <AlertBanner type="warning">
+              Set an estimated total cost to calculate percentage-of-completion earned revenue.
+            </AlertBanner>
+          </div>
+        ) : null}
+
         {!isClient ? (
           <div className="mt-6 border-t border-base-300 pt-4">
             <p className="text-xs uppercase tracking-wide opacity-60 mb-3">Insurance Policies</p>
@@ -383,14 +507,37 @@ function ContractDetailContent() {
             <StatCard title="Retainage Held" value={money(metrics.retainageHeld)} />
           </>
         ) : null}
-        <StatCard title="Completion" value={percent(metrics.completionPercent)} />
+        {showCosts ? (
+          <StatCard
+            title="Recognition %"
+            value={percent(metrics.completionPercent)}
+            hint={recognitionMethodShort(metrics.revenueRecognitionMethod)}
+          />
+        ) : null}
         {showCosts ? (
           <>
+            <StatCard title="Earned Revenue" value={money(metrics.earnedRevenue)} />
+            <StatCard
+              title="Billings in Excess"
+              value={money(metrics.billingsInExcess)}
+              tone={metrics.billingsInExcess > 0 ? "warning" : "default"}
+            />
+            <StatCard
+              title="Unbilled Revenue"
+              value={money(metrics.unbilledRevenue)}
+              tone={metrics.unbilledRevenue > 0 ? "warning" : "default"}
+            />
             <StatCard title="Total Costs" value={money(metrics.totalCosts)} />
             <StatCard
-              title="Gross Profit"
+              title="Recognized Gross Profit"
+              value={money(metrics.recognizedGrossProfit)}
+              hint={percent(metrics.recognizedGrossMargin)}
+              tone={metrics.recognizedGrossProfit >= 0 ? "success" : "error"}
+            />
+            <StatCard
+              title="Billing Profit"
               value={money(metrics.grossProfit)}
-              hint={percent(metrics.grossMargin)}
+              hint={`${percent(metrics.grossMargin)} billed − costs`}
               tone={metrics.grossProfit >= 0 ? "success" : "error"}
             />
           </>

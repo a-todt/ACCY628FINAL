@@ -9,7 +9,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
-import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
+import {
+  computeContractMetrics,
+  daysPastDue,
+  labelize,
+  money,
+  percent,
+  recognitionMethodShort,
+} from "@/lib/metrics";
 import { canViewReports } from "@/lib/roles";
 
 type ExportSection =
@@ -139,6 +146,24 @@ export default function ReportsPage() {
 
   const totalOutstanding = AGING_BUCKETS.reduce((sum, bucket) => sum + arAging.totals[bucket], 0);
 
+  const recognitionPortfolio = profitability.reduce(
+    (acc, { metrics }) => {
+      acc.earnedRevenue += metrics.earnedRevenue;
+      acc.billingsInExcess += metrics.billingsInExcess;
+      acc.unbilledRevenue += metrics.unbilledRevenue;
+      acc.recognizedGrossProfit += metrics.recognizedGrossProfit;
+      acc.totalBilled += metrics.totalBilled;
+      return acc;
+    },
+    {
+      earnedRevenue: 0,
+      billingsInExcess: 0,
+      unbilledRevenue: 0,
+      recognizedGrossProfit: 0,
+      totalBilled: 0,
+    }
+  );
+
   const exportCsv = () => {
     if (csvSection === "profitability") {
       downloadCsv(
@@ -151,6 +176,9 @@ export default function ReportsPage() {
           Costs: metrics.totalCosts,
           "Gross Profit": metrics.grossProfit,
           Margin: metrics.grossMargin,
+          "Recognition Method": recognitionMethodShort(metrics.revenueRecognitionMethod),
+          "Earned Revenue": metrics.earnedRevenue,
+          "Recognized GP": metrics.recognizedGrossProfit,
         }))
       );
       return;
@@ -199,6 +227,18 @@ export default function ReportsPage() {
 
   const exportPdf = () => {
     downloadPdfTables("reports-summary.pdf", "GC Contract Manager — Reports", [
+      {
+        title: "Revenue Recognition",
+        columns: ["Contract", "Method", "% Complete", "Earned", "Billed", "Recognized GP"],
+        rows: profitability.map(({ contract, metrics }) => [
+          contract.contract_name ?? "",
+          recognitionMethodShort(metrics.revenueRecognitionMethod),
+          percent(metrics.completionPercent),
+          money(metrics.earnedRevenue),
+          money(metrics.totalBilled),
+          money(metrics.recognizedGrossProfit),
+        ]),
+      },
       {
         title: "Contract Profitability",
         columns: ["Contract", "Revised", "Billed", "Collected", "Costs", "Profit", "Margin"],
@@ -281,6 +321,69 @@ export default function ReportsPage() {
         }
       />
 
+      <SectionCard title="Revenue Recognition">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <StatCard title="Earned Revenue" value={money(recognitionPortfolio.earnedRevenue)} />
+          <StatCard
+            title="Billings in Excess"
+            value={money(recognitionPortfolio.billingsInExcess)}
+            tone={recognitionPortfolio.billingsInExcess > 0 ? "warning" : "default"}
+          />
+          <StatCard
+            title="Unbilled Revenue"
+            value={money(recognitionPortfolio.unbilledRevenue)}
+            tone={recognitionPortfolio.unbilledRevenue > 0 ? "warning" : "default"}
+          />
+          <StatCard
+            title="Recognized Gross Profit"
+            value={money(recognitionPortfolio.recognizedGrossProfit)}
+            tone={recognitionPortfolio.recognizedGrossProfit >= 0 ? "success" : "error"}
+          />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="table table-sm">
+            <thead>
+              <tr>
+                <th>Contract</th>
+                <th>Method</th>
+                <th className="text-right">% Complete</th>
+                <th className="text-right">Earned</th>
+                <th className="text-right">Billed</th>
+                <th className="text-right">Over / Under</th>
+                <th className="text-right">Recognized GP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profitability.map(({ contract, metrics }) => (
+                <tr key={contract.id}>
+                  <td>{contract.contract_name}</td>
+                  <td>
+                    <span className="badge badge-outline badge-sm">
+                      {recognitionMethodShort(metrics.revenueRecognitionMethod)}
+                    </span>
+                  </td>
+                  <td className="text-right">{percent(metrics.completionPercent)}</td>
+                  <td className="text-right">{money(metrics.earnedRevenue)}</td>
+                  <td className="text-right">{money(metrics.totalBilled)}</td>
+                  <td className="text-right">
+                    {metrics.billingsInExcess > 0
+                      ? `+${money(metrics.billingsInExcess)} excess`
+                      : metrics.unbilledRevenue > 0
+                        ? `${money(metrics.unbilledRevenue)} unbilled`
+                        : money(0)}
+                  </td>
+                  <td
+                    className={`text-right ${metrics.recognizedGrossProfit < 0 ? "text-error" : ""}`}
+                  >
+                    {money(metrics.recognizedGrossProfit)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
       <SectionCard title="Contract Profitability">
         <div className="overflow-x-auto">
           <table className="table table-sm">
@@ -291,8 +394,9 @@ export default function ReportsPage() {
                 <th className="text-right">Billed</th>
                 <th className="text-right">Collected</th>
                 <th className="text-right">Costs</th>
-                <th className="text-right">Gross Profit</th>
-                <th className="text-right">Margin</th>
+                <th className="text-right">Billing Profit</th>
+                <th className="text-right">Recognized GP</th>
+                <th className="text-right">Rec. Margin</th>
               </tr>
             </thead>
             <tbody>
@@ -306,7 +410,10 @@ export default function ReportsPage() {
                   <td className={`text-right ${metrics.grossProfit < 0 ? "text-error" : ""}`}>
                     {money(metrics.grossProfit)}
                   </td>
-                  <td className="text-right">{percent(metrics.grossMargin)}</td>
+                  <td className={`text-right ${metrics.recognizedGrossProfit < 0 ? "text-error" : ""}`}>
+                    {money(metrics.recognizedGrossProfit)}
+                  </td>
+                  <td className="text-right">{percent(metrics.recognizedGrossMargin)}</td>
                 </tr>
               ))}
             </tbody>
