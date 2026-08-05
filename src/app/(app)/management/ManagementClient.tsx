@@ -235,20 +235,59 @@ export default function ManagementPage() {
     }
   };
 
+  const emailClientAccess = async (opts: {
+    to: string | null | undefined;
+    clientId: string | null | undefined;
+    companyName?: string | null;
+    contactName?: string | null;
+    customerId?: string | null;
+  }) => {
+    if (!opts.to || !opts.clientId) {
+      return { sent: false as const, reason: "Missing email or Client ID." };
+    }
+    const res = await fetch("/api/email/client-access", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: opts.to,
+        clientId: opts.clientId,
+        companyName: opts.companyName,
+        contactName: opts.contactName,
+        customerId: opts.customerId,
+      }),
+    });
+    const data = (await res.json()) as { sent?: boolean; reason?: string; error?: string };
+    if (!res.ok) {
+      return { sent: false as const, reason: data.error || data.reason || "Email failed." };
+    }
+    return {
+      sent: Boolean(data.sent),
+      reason: data.reason,
+    };
+  };
+
   const onAddCustomer = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setMessage(null);
     const form = new FormData(e.currentTarget);
+    const contactEmail = String(form.get("contact_email") || "").trim() || null;
+    const companyName = String(form.get("company_name") || "").trim();
+    const contactName = String(form.get("contact_name") || "").trim() || null;
+    const secondaryName = String(form.get("secondary_name") || "").trim() || null;
+    const contractId = String(form.get("contract_id") || "").trim();
+    if (!contractId) throw new Error("Select the project this Client ID unlocks.");
     try {
       const supabase = createClient();
       const { data, error: insertError } = await supabase
         .from("customers")
         .insert({
-          company_name: String(form.get("company_name") || "").trim(),
-          contact_name: String(form.get("contact_name") || "").trim() || null,
-          contact_email: String(form.get("contact_email") || "").trim() || null,
+          company_name: companyName,
+          contact_name: contactName,
+          secondary_name: secondaryName,
+          contact_email: contactEmail,
+          contract_id: contractId,
           contact_phone: String(form.get("contact_phone") || "").trim() || null,
           billing_address: String(form.get("billing_address") || "").trim() || null,
           city: String(form.get("city") || "").trim() || null,
@@ -266,10 +305,32 @@ export default function ManagementPage() {
       const row = Array.isArray(provisioned) ? provisioned[0] : provisioned;
 
       await logAction("customer_created", "customers", data.id);
+
+      let emailNote = "";
+      if (contactEmail && row?.client_id) {
+        const emailed = await emailClientAccess({
+          to: contactEmail,
+          clientId: row.client_id,
+          companyName,
+          contactName,
+          customerId: data.id,
+        });
+        emailNote = emailed.sent
+          ? ` Access email sent to ${contactEmail}.`
+          : ` Client ID ready — they can also get it on the site after signup (name or spouse/partner match).${
+              emailed.reason ? ` (${emailed.reason})` : ""
+            }.`;
+      } else if (!contactEmail) {
+        emailNote =
+          " They sign up with email + matching person or business name (or spouse/partner); the site shows Client ID for this project only.";
+      }
+
+      const projectName =
+        admin.contracts.find((c) => c.id === contractId)?.contract_name || "selected project";
       setMessage(
         row
-          ? `Customer added. Client ID: ${row.client_id} · Setup code: ${row.setup_code}`
-          : "Customer added."
+          ? `Client invited to ${projectName}. Client ID: ${row.client_id}.${emailNote}`
+          : `Client invited to ${projectName}.${emailNote}`
       );
       e.currentTarget.reset();
       await admin.refresh();
@@ -285,20 +346,68 @@ export default function ManagementPage() {
     setError(null);
     try {
       const supabase = createClient();
+      const customer = admin.customers.find((c) => c.id === customerId);
       const { data, error: provisionError } = await supabase.rpc("provision_customer_access", {
         p_customer_id: customerId,
         p_days_valid: 30,
       });
       if (provisionError) throw provisionError;
       const row = Array.isArray(data) ? data[0] : data;
+
+      let emailNote = "";
+      if (customer?.contact_email && row?.client_id) {
+        const emailed = await emailClientAccess({
+          to: customer.contact_email,
+          clientId: row.client_id,
+          companyName: customer.company_name,
+          contactName: customer.contact_name,
+          customerId,
+        });
+        emailNote = emailed.sent
+          ? ` Email sent to ${customer.contact_email}.`
+          : ` ${emailed.reason || "Email not sent."}`;
+      }
+
       setMessage(
         row
-          ? `New access codes — Client ID: ${row.client_id} · Setup code: ${row.setup_code}`
-          : "Access codes refreshed."
+          ? `New Client ID: ${row.client_id}.${emailNote}`
+          : `Client ID refreshed.${emailNote}`
       );
       await admin.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to provision client access.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onEmailCustomerAccess = async (customerId: string) => {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const customer = admin.customers.find((c) => c.id === customerId);
+      if (!customer) throw new Error("Customer not found.");
+      if (!customer.contact_email) throw new Error("Add a contact email before sending.");
+      if (!customer.client_id) {
+        // Generate a fresh Client ID first, then email
+        await onProvisionCustomer(customerId);
+        return;
+      }
+      const emailed = await emailClientAccess({
+        to: customer.contact_email,
+        clientId: customer.client_id,
+        companyName: customer.company_name,
+        contactName: customer.contact_name,
+        customerId,
+      });
+      if (!emailed.sent) {
+        setError(emailed.reason || "Could not send email.");
+      } else {
+        setMessage(`Access email sent to ${customer.contact_email}.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to email client access.");
     } finally {
       setBusy(false);
     }
@@ -318,6 +427,7 @@ export default function ManagementPage() {
         .update({
           contact_email: String(form.get("contact_email") || "").trim() || null,
           contact_name: String(form.get("contact_name") || "").trim() || null,
+          secondary_name: String(form.get("secondary_name") || "").trim() || null,
           contact_phone: String(form.get("contact_phone") || "").trim() || null,
         })
         .eq("id", customerId);
@@ -643,11 +753,48 @@ export default function ManagementPage() {
 
       {activeTab === "parties" ? (
         <div className="space-y-6">
-          <SectionCard title="Add Customer">
+          <SectionCard title="Invite client to a project">
+            <p className="text-sm opacity-70 -mt-2 mb-4">
+              Each Client ID unlocks <strong>one project only</strong>. Create a separate invite for a
+              house vs a business job so partners only see what applies to them.
+            </p>
             <form onSubmit={onAddCustomer} className="grid gap-4 md:grid-cols-2">
-              <FormField label="Company Name"><input name="company_name" className="input input-bordered" required /></FormField>
-              <FormField label="Contact Name"><input name="contact_name" className="input input-bordered" /></FormField>
-              <FormField label="Email"><input name="contact_email" type="email" className="input input-bordered" /></FormField>
+              <FormField label="Project (contract)" hint="Required — this Client ID only opens this job.">
+                <select name="contract_id" className="select select-bordered" required defaultValue="">
+                  <option value="" disabled>
+                    Select project
+                  </option>
+                  {admin.contracts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.contract_name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField
+                label="Company / business name"
+                hint="Can be a company (e.g. Durrett Construction) or household name."
+              >
+                <input name="company_name" className="input input-bordered" required />
+              </FormField>
+              <FormField
+                label="Contact name (person or business)"
+                hint="Must match what they type at signup — personal name or business name."
+              >
+                <input name="contact_name" className="input input-bordered" placeholder="Joe Durrett or Acme LLC" />
+              </FormField>
+              <FormField
+                label="Spouse / partner name (optional)"
+                hint="If set, either this person or the contact can claim this project's Client ID."
+              >
+                <input name="secondary_name" className="input input-bordered" placeholder="e.g. Jane Durrett" />
+              </FormField>
+              <FormField
+                label="Email"
+                hint="Optional. They use their own email at signup; matching is by name."
+              >
+                <input name="contact_email" type="email" className="input input-bordered" />
+              </FormField>
               <FormField label="Phone"><input name="contact_phone" className="input input-bordered" /></FormField>
               <FormField label="Billing Address"><input name="billing_address" className="input input-bordered" /></FormField>
               <FormField label="City / State">
@@ -657,22 +804,24 @@ export default function ManagementPage() {
                 </div>
               </FormField>
               <div className="md:col-span-2 flex justify-end">
-                <button type="submit" className="btn btn-primary" disabled={busy}>Add Customer</button>
+                <button type="submit" className="btn btn-primary" disabled={busy}>
+                  Invite client to project
+                </button>
               </div>
             </form>
           </SectionCard>
 
-          <SectionCard title="Customers">
+          <SectionCard title="Client project invites">
             {admin.customers.length === 0 ? (
-              <EmptyState title="No customers" message="Add clients here before they create accounts." />
+              <EmptyState title="No client invites" message="Invite a client to a specific project above." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="table table-sm">
                   <thead>
                     <tr>
-                      <th>Company</th>
+                      <th>Project</th>
+                      <th>Client</th>
                       <th>Client ID</th>
-                      <th>Setup code</th>
                       <th>Email</th>
                       <th>Status</th>
                       <th></th>
@@ -681,14 +830,17 @@ export default function ManagementPage() {
                   <tbody>
                     {admin.customers.map((c) => (
                       <tr key={c.id}>
+                        <td className="text-sm">
+                          {c.contracts?.contract_name || (c.contract_id ? "Linked project" : "No project")}
+                        </td>
                         <td>
                           <div className="font-medium">{c.company_name}</div>
-                          <div className="text-xs opacity-60">{c.contact_name || "—"}</div>
+                          <div className="text-xs opacity-60">
+                            {c.contact_name || "—"}
+                            {c.secondary_name ? ` · spouse/partner: ${c.secondary_name}` : ""}
+                          </div>
                         </td>
                         <td className="font-mono text-xs">{c.client_id || "—"}</td>
-                        <td className="font-mono text-xs">
-                          {c.claimed_at ? "—" : c.setup_code || "—"}
-                        </td>
                         <td>{c.contact_email || "—"}</td>
                         <td>
                           <span className={`badge badge-sm ${c.claimed_at || c.user_id ? "badge-success" : "badge-warning"}`}>
@@ -702,7 +854,16 @@ export default function ManagementPage() {
                             disabled={busy}
                             onClick={() => onProvisionCustomer(c.id)}
                           >
-                            New codes
+                            New ID
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            disabled={busy || !c.contact_email}
+                            onClick={() => onEmailCustomerAccess(c.id)}
+                            title={c.contact_email ? "Email Client ID" : "Add email first"}
+                          >
+                            Email ID
                           </button>
                           {c.contact_email ? (
                             <button
@@ -739,6 +900,9 @@ export default function ManagementPage() {
               </FormField>
               <FormField label="Contact name">
                 <input name="contact_name" className="input input-bordered" />
+              </FormField>
+              <FormField label="Spouse / partner name (optional)">
+                <input name="secondary_name" className="input input-bordered" />
               </FormField>
               <FormField label="Email" hint="Editable anytime — used for password resets after they claim access.">
                 <input name="contact_email" type="email" className="input input-bordered" />

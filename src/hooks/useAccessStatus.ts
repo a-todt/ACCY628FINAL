@@ -58,8 +58,11 @@ export function useAccessStatus() {
     }
 
     const raw = data as Record<string, unknown>;
+    const rawStatus = String(raw.status ?? "locked");
+    // DB historically returned "ok"; app AccessStatus uses "ready"
+    const status = (rawStatus === "ok" ? "ready" : rawStatus) as AccessStatus;
     setInfo({
-      status: (raw.status as AccessStatus) ?? "locked",
+      status,
       role: (raw.role as UserRole) ?? null,
       reason: (raw.reason as string) ?? null,
       assignment_count: Number(raw.assignment_count ?? 0),
