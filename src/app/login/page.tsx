@@ -14,6 +14,12 @@ type Mode = "login" | "signup" | "forgot";
 
 const SIGNUP_ROLES: UserRole[] = COMPANY_ROLES.filter((r) => r !== "owner");
 
+const FEATURES = [
+  "Built specifically for general contractors",
+  "Manage all your projects in one place",
+  "Generate a WIP schedule instantly",
+] as const;
+
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -153,33 +159,30 @@ export default function LoginPage() {
       />
 
       <div className="relative z-10 min-h-screen grid lg:grid-cols-2">
-        <div className="hidden lg:flex flex-col justify-between p-12 text-base-content">
-          <NailItLogo size="lg" />
-          <div className="max-w-lg space-y-5">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-              GC Contract Manager
-            </p>
-            <h1 className="text-4xl font-semibold leading-tight tracking-tight">
-              From signed contract to collected cash — in one place.
-            </h1>
-            <p className="text-lg opacity-80">
-              Clients and subcontractors are invited by the GC. Staff get access after the Owner
-              assigns them to projects.
-            </p>
+        <div className="flex flex-col min-h-[42vh] lg:min-h-screen p-6 sm:p-10 lg:p-12 text-base-content">
+          <div className="w-fit rounded-2xl shadow-xl ring-4 ring-base-100/40">
+            <NailItLogo size="xl" />
           </div>
-          <p className="text-sm opacity-60">Built for construction operations teams.</p>
+
+          <div className="flex-1 flex flex-col justify-center max-w-lg space-y-6 pb-6 lg:pb-8">
+            <p className="text-xl sm:text-2xl font-medium leading-snug opacity-90">
+              Know exactly where every project stands
+            </p>
+            <ul className="list-disc list-inside space-y-3 text-base sm:text-lg font-medium marker:text-primary">
+              {FEATURES.map((feature) => (
+                <li key={feature}>{feature}</li>
+              ))}
+            </ul>
+          </div>
+
+          <p className="text-sm opacity-60 max-w-md">
+            Your data is private. Only you can see your projects.
+          </p>
         </div>
 
-        <div className="flex items-center justify-center p-4 sm:p-8">
+        <div className="flex items-center justify-center p-4 sm:p-8 lg:py-12">
           <div className="card w-full max-w-md bg-base-100 shadow-2xl border border-base-300">
             <div className="card-body gap-5">
-              <div className="flex flex-col items-center gap-3 text-center sm:items-start sm:text-left">
-                <NailItLogo size="md" className="mx-auto sm:mx-0" />
-                <p className="text-xs font-medium uppercase tracking-[0.16em] opacity-60">
-                  GC Contract Manager
-                </p>
-              </div>
-
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-2xl font-semibold">

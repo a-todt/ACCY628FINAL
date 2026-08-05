@@ -6,6 +6,7 @@ import { Pencil, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminData } from "@/hooks/useAdminData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { AuditLogPanel } from "@/components/AuditLogPanel";
 import {
   ColumnAutocompleteHeader,
   ColumnSortHeader,
@@ -25,7 +26,13 @@ import {
   complianceLabel,
 } from "@/lib/compliance";
 import { createClient } from "@/lib/supabase/client";
-import type { ContractAssignment, UserProfile, UserRole } from "@/lib/types";
+import type {
+  ContractAssignment,
+  Customer,
+  Subcontractor,
+  UserProfile,
+  UserRole,
+} from "@/lib/types";
 
 type TabId = "settings" | "team" | "parties" | "compliance" | "audit";
 type TeamSortKey =
@@ -38,6 +45,8 @@ type TeamSortKey =
   | "status"
   | "assignments"
   | "assign";
+type ClientSortKey = "project" | "client" | "contact" | "billing" | "client_id" | "status";
+type SubSortKey = "company" | "contract" | "trade" | "license" | "status";
 
 const TABS: TabId[] = ["settings", "team", "parties", "compliance", "audit"];
 const STAFF_EDIT_ROLES: UserRole[] = ["owner", "project_manager", "field_supervisor"];
@@ -79,6 +88,20 @@ export default function ManagementPage() {
   const [contractFilter, setContractFilter] = useState("");
   const [teamSortKey, setTeamSortKey] = useState<TeamSortKey>("full_name");
   const [teamSortDir, setTeamSortDir] = useState<ColumnSortDir>("asc");
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [clientNameFilter, setClientNameFilter] = useState("");
+  const [clientProjectFilter, setClientProjectFilter] = useState("");
+  const [clientEmailFilter, setClientEmailFilter] = useState("");
+  const [clientSortKey, setClientSortKey] = useState<ClientSortKey>("client");
+  const [clientSortDir, setClientSortDir] = useState<ColumnSortDir>("asc");
+  const [addingSubcontractor, setAddingSubcontractor] = useState(false);
+  const [editingSubcontractor, setEditingSubcontractor] = useState<Subcontractor | null>(null);
+  const [subNameFilter, setSubNameFilter] = useState("");
+  const [subProjectFilter, setSubProjectFilter] = useState("");
+  const [subTradeFilter, setSubTradeFilter] = useState("");
+  const [subSortKey, setSubSortKey] = useState<SubSortKey>("company");
+  const [subSortDir, setSubSortDir] = useState<ColumnSortDir>("asc");
 
   const staffProfiles = useMemo(
     () =>
@@ -181,6 +204,117 @@ export default function ManagementPage() {
     } else {
       setTeamSortKey(key);
       setTeamSortDir("asc");
+    }
+  };
+
+  const filteredCustomers = useMemo(() => {
+    const next = admin.customers.filter((customer) => {
+      if (!matchesColumnFilter(customer.company_name, clientNameFilter)) return false;
+      if (!matchesColumnFilter(customer.contracts?.contract_name, clientProjectFilter)) return false;
+      if (!matchesColumnFilter(customer.contact_email, clientEmailFilter)) return false;
+      return true;
+    });
+    return [...next].sort((a, b) => {
+      if (clientSortKey === "project") {
+        return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, clientSortDir);
+      }
+      if (clientSortKey === "client") {
+        return compareValues(a.company_name, b.company_name, clientSortDir);
+      }
+      if (clientSortKey === "contact") {
+        return compareValues(a.contact_email, b.contact_email, clientSortDir);
+      }
+      if (clientSortKey === "billing") {
+        return compareValues(a.billing_address, b.billing_address, clientSortDir);
+      }
+      if (clientSortKey === "client_id") {
+        return compareValues(a.client_id, b.client_id, clientSortDir);
+      }
+      return compareValues(
+        a.claimed_at || a.user_id ? "Linked" : "Pending setup",
+        b.claimed_at || b.user_id ? "Linked" : "Pending setup",
+        clientSortDir
+      );
+    });
+  }, [
+    admin.customers,
+    clientNameFilter,
+    clientProjectFilter,
+    clientEmailFilter,
+    clientSortKey,
+    clientSortDir,
+  ]);
+
+  const clientNameOptions = useMemo(
+    () => uniqueSorted(admin.customers.map((customer) => customer.company_name)),
+    [admin.customers]
+  );
+  const clientProjectOptions = useMemo(
+    () => uniqueSorted(admin.customers.map((customer) => customer.contracts?.contract_name)),
+    [admin.customers]
+  );
+  const clientEmailOptions = useMemo(
+    () => uniqueSorted(admin.customers.map((customer) => customer.contact_email)),
+    [admin.customers]
+  );
+
+  const onClientSort = (key: ClientSortKey) => {
+    if (clientSortKey === key) {
+      setClientSortDir((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setClientSortKey(key);
+      setClientSortDir("asc");
+    }
+  };
+
+  const filteredSubcontractors = useMemo(() => {
+    const next = admin.subcontractors.filter((sub) => {
+      if (!matchesColumnFilter(sub.company_name, subNameFilter)) return false;
+      if (!matchesColumnFilter(sub.contracts?.contract_name, subProjectFilter)) return false;
+      if (!matchesColumnFilter(sub.trade, subTradeFilter)) return false;
+      return true;
+    });
+    return [...next].sort((a, b) => {
+      if (subSortKey === "company") {
+        return compareValues(a.company_name, b.company_name, subSortDir);
+      }
+      if (subSortKey === "contract") {
+        return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, subSortDir);
+      }
+      if (subSortKey === "trade") return compareValues(a.trade, b.trade, subSortDir);
+      if (subSortKey === "license") {
+        return compareValues(a.license_expiration, b.license_expiration, subSortDir);
+      }
+      return compareValues(a.user_id ? "Linked" : "Pending invite", b.user_id ? "Linked" : "Pending invite", subSortDir);
+    });
+  }, [
+    admin.subcontractors,
+    subNameFilter,
+    subProjectFilter,
+    subTradeFilter,
+    subSortKey,
+    subSortDir,
+  ]);
+
+  const subNameOptions = useMemo(
+    () => uniqueSorted(admin.subcontractors.map((sub) => sub.company_name)),
+    [admin.subcontractors]
+  );
+  const subProjectOptions = useMemo(
+    () => uniqueSorted(admin.subcontractors.map((sub) => sub.contracts?.contract_name)),
+    [admin.subcontractors]
+  );
+  const subTradeOptions = useMemo(
+    () => uniqueSorted(admin.subcontractors.map((sub) => sub.trade)),
+    [admin.subcontractors]
+  );
+
+  const onSubSort = (key: SubSortKey) => {
+    if (subSortKey === key) {
+      setSubSortDir((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSubSortKey(key);
+      setSubSortDir("asc");
     }
   };
 
@@ -490,6 +624,7 @@ export default function ManagementPage() {
           ? `Client invited to ${projectName}. Client ID: ${row.client_id}.${emailNote}`
           : `Client invited to ${projectName}.${emailNote}`
       );
+      setAddingCustomer(false);
       e.currentTarget.reset();
       await admin.refresh();
     } catch (err) {
@@ -583,15 +718,22 @@ export default function ManagementPage() {
       const { error: updateError } = await supabase
         .from("customers")
         .update({
+          contract_id: String(form.get("contract_id") || "").trim() || null,
+          company_name: String(form.get("company_name") || "").trim(),
           contact_email: String(form.get("contact_email") || "").trim() || null,
           contact_name: String(form.get("contact_name") || "").trim() || null,
           secondary_name: String(form.get("secondary_name") || "").trim() || null,
           contact_phone: String(form.get("contact_phone") || "").trim() || null,
+          billing_address: String(form.get("billing_address") || "").trim() || null,
+          city: String(form.get("city") || "").trim() || null,
+          state: String(form.get("state") || "").trim() || null,
+          is_active: String(form.get("is_active") || "true") === "true",
         })
         .eq("id", customerId);
       if (updateError) throw updateError;
       await logAction("customer_updated", "customers", customerId);
       setMessage("Customer contact updated.");
+      setEditingCustomer(null);
       await admin.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update customer.");
@@ -656,6 +798,7 @@ export default function ManagementPage() {
       if (inviteError) throw inviteError;
 
       setMessage(`Subcontractor added. Invite code: ${code}`);
+      setAddingSubcontractor(false);
       e.currentTarget.reset();
       await admin.refresh();
     } catch (err) {
@@ -680,6 +823,40 @@ export default function ManagementPage() {
       await admin.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate invite.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSaveSubcontractor = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingSubcontractor) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    const form = new FormData(e.currentTarget);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("subcontractors")
+        .update({
+          contract_id: String(form.get("contract_id") || ""),
+          company_name: String(form.get("company_name") || "").trim(),
+          contact_name: String(form.get("contact_name") || "").trim() || null,
+          contact_email: String(form.get("contact_email") || "").trim() || null,
+          trade: String(form.get("trade") || "").trim() || null,
+          license_number: String(form.get("license_number") || "").trim() || null,
+          license_state: String(form.get("license_state") || "").trim() || null,
+          license_expiration: String(form.get("license_expiration") || "") || null,
+        })
+        .eq("id", editingSubcontractor.id);
+      if (updateError) throw updateError;
+      await logAction("subcontractor_updated", "subcontractors", editingSubcontractor.id);
+      setMessage("Subcontractor updated.");
+      setEditingSubcontractor(null);
+      await admin.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update subcontractor.");
     } finally {
       setBusy(false);
     }
@@ -1347,244 +1524,608 @@ export default function ManagementPage() {
 
       {activeTab === "parties" ? (
         <div className="space-y-6">
-          <SectionCard title="Invite client to a project">
-            <p className="text-sm opacity-70 -mt-2 mb-4">
-              Each Client ID unlocks <strong>one project only</strong>. Create a separate invite for a
-              house vs a business job so partners only see what applies to them.
-            </p>
-            <form onSubmit={onAddCustomer} className="grid gap-4 md:grid-cols-2">
-              <FormField label="Project (contract)" hint="Required — this Client ID only opens this job.">
-                <select name="contract_id" className="select select-bordered" required defaultValue="">
-                  <option value="" disabled>
-                    Select project
-                  </option>
-                  {admin.contracts.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.contract_name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField
-                label="Company / business name"
-                hint="Can be a company (e.g. Durrett Construction) or household name."
+          <SectionCard
+            title="Client Project Invites"
+            actions={
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setAddingCustomer(true)}
               >
-                <input name="company_name" className="input input-bordered" required />
-              </FormField>
-              <FormField
-                label="Contact name (person or business)"
-                hint="Must match what they type at signup — personal name or business name."
-              >
-                <input name="contact_name" className="input input-bordered" placeholder="Joe Durrett or Acme LLC" />
-              </FormField>
-              <FormField
-                label="Spouse / partner name (optional)"
-                hint="If set, either this person or the contact can claim this project's Client ID."
-              >
-                <input name="secondary_name" className="input input-bordered" placeholder="e.g. Jane Durrett" />
-              </FormField>
-              <FormField
-                label="Email"
-                hint="Optional. They use their own email at signup; matching is by name."
-              >
-                <input name="contact_email" type="email" className="input input-bordered" />
-              </FormField>
-              <FormField label="Phone"><input name="contact_phone" className="input input-bordered" /></FormField>
-              <FormField label="Billing Address"><input name="billing_address" className="input input-bordered" /></FormField>
-              <FormField label="City / State">
-                <div className="flex gap-2">
-                  <input name="city" className="input input-bordered grow" placeholder="City" />
-                  <input name="state" className="input input-bordered w-24" placeholder="ST" />
-                </div>
-              </FormField>
-              <div className="md:col-span-2 flex justify-end">
-                <button type="submit" className="btn btn-primary" disabled={busy}>
-                  Invite client to project
-                </button>
-              </div>
-            </form>
-          </SectionCard>
-
-          <SectionCard title="Client project invites">
+                <Plus className="h-4 w-4" />
+                Invite Client
+              </button>
+            }
+          >
             {admin.customers.length === 0 ? (
-              <EmptyState title="No client invites" message="Invite a client to a specific project above." />
+              <EmptyState title="No client invites" message="Invite a client to a specific project." />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="table table-sm">
+              <div className="w-full min-w-0 overflow-hidden">
+                <table className="table table-xs table-fixed w-full text-[11px]">
+                  <colgroup>
+                    <col className="w-[14%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[7%]" />
+                  </colgroup>
                   <thead>
-                    <tr>
-                      <th>Project</th>
-                      <th>Client</th>
-                      <th>Client ID</th>
-                      <th>Email</th>
-                      <th>Status</th>
-                      <th></th>
+                    <tr className="bg-base-200/80">
+                      <ColumnAutocompleteHeader
+                        label="Project"
+                        listId="client-filter-project"
+                        value={clientProjectFilter}
+                        onChange={setClientProjectFilter}
+                        options={clientProjectOptions}
+                        sortActive={clientSortKey === "project"}
+                        sortDir={clientSortDir}
+                        onSort={() => onClientSort("project")}
+                      />
+                      <ColumnAutocompleteHeader
+                        label="Client"
+                        listId="client-filter-name"
+                        value={clientNameFilter}
+                        onChange={setClientNameFilter}
+                        options={clientNameOptions}
+                        sortActive={clientSortKey === "client"}
+                        sortDir={clientSortDir}
+                        onSort={() => onClientSort("client")}
+                      />
+                      <ColumnAutocompleteHeader
+                        label="Contact"
+                        listId="client-filter-email"
+                        value={clientEmailFilter}
+                        onChange={setClientEmailFilter}
+                        options={clientEmailOptions}
+                        placeholder="Search email…"
+                        sortActive={clientSortKey === "contact"}
+                        sortDir={clientSortDir}
+                        onSort={() => onClientSort("contact")}
+                      />
+                      <ColumnSortHeader
+                        label="Billing Address"
+                        sortActive={clientSortKey === "billing"}
+                        sortDir={clientSortDir}
+                        onSort={() => onClientSort("billing")}
+                      />
+                      <ColumnSortHeader
+                        label="Client ID"
+                        sortActive={clientSortKey === "client_id"}
+                        sortDir={clientSortDir}
+                        onSort={() => onClientSort("client_id")}
+                      />
+                      <ColumnSortHeader
+                        label="Status"
+                        sortActive={clientSortKey === "status"}
+                        sortDir={clientSortDir}
+                        onSort={() => onClientSort("status")}
+                      />
+                      <th className="px-1 text-center align-middle">Access</th>
+                      <th className="px-1 text-center align-middle">Edit</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {admin.customers.map((c) => (
-                      <tr key={c.id}>
-                        <td className="text-sm">
-                          {c.contracts?.contract_name || (c.contract_id ? "Linked project" : "No project")}
-                        </td>
-                        <td>
-                          <div className="font-medium">{c.company_name}</div>
-                          <div className="text-xs opacity-60">
-                            {c.contact_name || "—"}
-                            {c.secondary_name ? ` · spouse/partner: ${c.secondary_name}` : ""}
-                          </div>
-                        </td>
-                        <td className="font-mono text-xs">{c.client_id || "—"}</td>
-                        <td>{c.contact_email || "—"}</td>
-                        <td>
-                          <span className={`badge badge-sm ${c.claimed_at || c.user_id ? "badge-success" : "badge-warning"}`}>
-                            {c.claimed_at || c.user_id ? "Linked" : "Pending setup"}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap">
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-xs"
-                            disabled={busy}
-                            onClick={() => onProvisionCustomer(c.id)}
-                          >
-                            New ID
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-xs"
-                            disabled={busy || !c.contact_email}
-                            onClick={() => onEmailCustomerAccess(c.id)}
-                            title={c.contact_email ? "Email Client ID" : "Add email first"}
-                          >
-                            Email ID
-                          </button>
-                          {c.contact_email ? (
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-xs"
-                              disabled={busy}
-                              onClick={() => onSendPasswordReset(c.contact_email)}
-                            >
-                              Reset pw
-                            </button>
-                          ) : null}
+                    {filteredCustomers.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-10 text-center opacity-60">
+                          No clients match the column filters.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredCustomers.map((customer) => (
+                        <tr key={customer.id} className="hover:bg-base-200/60">
+                          <td className="px-1 break-words">
+                            {customer.contracts?.contract_name ||
+                              (customer.contract_id ? "Linked project" : "No project")}
+                          </td>
+                          <td className="px-1 break-words">
+                            <div className="font-medium">{customer.company_name}</div>
+                            <div className="opacity-60">{customer.contact_name || "—"}</div>
+                            {customer.secondary_name ? (
+                              <div className="opacity-60">Partner: {customer.secondary_name}</div>
+                            ) : null}
+                          </td>
+                          <td className="px-1 break-all">
+                            <div>{customer.contact_email || "—"}</div>
+                            <div className="opacity-60">{customer.contact_phone || "—"}</div>
+                          </td>
+                          <td className="px-1 break-words">
+                            <div>{customer.billing_address || "—"}</div>
+                            <div className="opacity-60">
+                              {[customer.city, customer.state].filter(Boolean).join(", ") || "—"}
+                            </div>
+                          </td>
+                          <td className="px-1 break-all font-mono">{customer.client_id || "—"}</td>
+                          <td className="px-1 text-center">
+                            <span
+                              className={`badge badge-xs h-auto whitespace-normal text-center ${
+                                customer.claimed_at || customer.user_id
+                                  ? "badge-success"
+                                  : "badge-warning"
+                              }`}
+                            >
+                              {customer.claimed_at || customer.user_id ? "Linked" : "Pending setup"}
+                            </span>
+                            {customer.is_active === false ? (
+                              <div className="mt-1 text-error">Inactive</div>
+                            ) : null}
+                          </td>
+                          <td className="px-1">
+                            <div className="flex flex-wrap justify-center gap-0.5">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs h-6 min-h-6 px-1"
+                                disabled={busy}
+                                onClick={() => onProvisionCustomer(customer.id)}
+                              >
+                                New ID
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs h-6 min-h-6 px-1"
+                                disabled={busy || !customer.contact_email}
+                                onClick={() => onEmailCustomerAccess(customer.id)}
+                                title={customer.contact_email ? "Email Client ID" : "Add email first"}
+                              >
+                                Email ID
+                              </button>
+                              {customer.contact_email ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs h-6 min-h-6 px-1"
+                                  disabled={busy}
+                                  onClick={() => onSendPasswordReset(customer.contact_email)}
+                                >
+                                  Reset pw
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="px-1 text-center">
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs h-7 min-h-7 px-1"
+                              onClick={() => setEditingCustomer(customer)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             )}
           </SectionCard>
 
-          <SectionCard title="Edit customer contact">
-            <form onSubmit={onSaveCustomerEmail} className="grid gap-4 md:grid-cols-2">
-              <FormField label="Customer">
-                <select name="customer_id" className="select select-bordered" required defaultValue="">
-                  <option value="" disabled>
-                    Select customer
-                  </option>
-                  {admin.customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.company_name} ({c.client_id || "no ID"})
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Contact name">
-                <input name="contact_name" className="input input-bordered" />
-              </FormField>
-              <FormField label="Spouse / partner name (optional)">
-                <input name="secondary_name" className="input input-bordered" />
-              </FormField>
-              <FormField label="Email" hint="Editable anytime — used for password resets after they claim access.">
-                <input name="contact_email" type="email" className="input input-bordered" />
-              </FormField>
-              <FormField label="Phone">
-                <input name="contact_phone" className="input input-bordered" />
-              </FormField>
-              <div className="md:col-span-2 flex justify-end">
-                <button type="submit" className="btn btn-primary" disabled={busy}>
-                  Save contact
-                </button>
-              </div>
-            </form>
-          </SectionCard>
-
-          <SectionCard title="Add Subcontractor + Invite Code">
-            <form onSubmit={onAddSub} className="grid gap-4 md:grid-cols-2">
-              <FormField label="Contract">
-                <select name="contract_id" className="select select-bordered" required defaultValue="">
-                  <option value="" disabled>Select contract</option>
-                  {admin.contracts.map((c) => (
-                    <option key={c.id} value={c.id}>{c.contract_name}</option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Company Name"><input name="company_name" className="input input-bordered" required /></FormField>
-              <FormField label="Contact Name"><input name="contact_name" className="input input-bordered" /></FormField>
-              <FormField label="Contact Email"><input name="contact_email" type="email" className="input input-bordered" /></FormField>
-              <FormField label="Trade"><input name="trade" className="input input-bordered" /></FormField>
-              <FormField label="License Number"><input name="license_number" className="input input-bordered" /></FormField>
-              <FormField label="License State"><input name="license_state" className="input input-bordered" /></FormField>
-              <FormField label="License Expiration"><input type="date" name="license_expiration" className="input input-bordered" /></FormField>
-              <div className="md:col-span-2 flex justify-end">
-                <button type="submit" className="btn btn-primary" disabled={busy}>Add Sub &amp; Generate Invite</button>
-              </div>
-            </form>
-          </SectionCard>
-
-          <SectionCard title="Subcontractors & Invites">
-            <div className="overflow-x-auto mb-6">
-              <table className="table table-sm">
+          <SectionCard
+            title="Subcontractors"
+            actions={
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setAddingSubcontractor(true)}
+              >
+                <Plus className="h-4 w-4" />
+                Add Subcontractor
+              </button>
+            }
+          >
+            {admin.subcontractors.length === 0 ? (
+              <EmptyState title="No subcontractors" message="Add a subcontractor to a project." />
+            ) : (
+              <div className="w-full min-w-0 overflow-hidden">
+                <table className="table table-xs table-fixed w-full text-[11px]">
+                  <colgroup>
+                    <col className="w-[22%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[7%]" />
+                  </colgroup>
                 <thead>
-                  <tr><th>Company</th><th>Contract</th><th>License</th><th>Linked User</th><th></th></tr>
+                    <tr className="bg-base-200/80">
+                      <ColumnAutocompleteHeader
+                        label="Company / Contact"
+                        listId="sub-filter-name"
+                        value={subNameFilter}
+                        onChange={setSubNameFilter}
+                        options={subNameOptions}
+                        sortActive={subSortKey === "company"}
+                        sortDir={subSortDir}
+                        onSort={() => onSubSort("company")}
+                      />
+                      <ColumnAutocompleteHeader
+                        label="Contract"
+                        listId="sub-filter-project"
+                        value={subProjectFilter}
+                        onChange={setSubProjectFilter}
+                        options={subProjectOptions}
+                        sortActive={subSortKey === "contract"}
+                        sortDir={subSortDir}
+                        onSort={() => onSubSort("contract")}
+                      />
+                      <ColumnAutocompleteHeader
+                        label="Trade"
+                        listId="sub-filter-trade"
+                        value={subTradeFilter}
+                        onChange={setSubTradeFilter}
+                        options={subTradeOptions}
+                        sortActive={subSortKey === "trade"}
+                        sortDir={subSortDir}
+                        onSort={() => onSubSort("trade")}
+                      />
+                      <ColumnSortHeader
+                        label="License"
+                        sortActive={subSortKey === "license"}
+                        sortDir={subSortDir}
+                        onSort={() => onSubSort("license")}
+                      />
+                      <ColumnSortHeader
+                        label="Status"
+                        sortActive={subSortKey === "status"}
+                        sortDir={subSortDir}
+                        onSort={() => onSubSort("status")}
+                      />
+                      <th className="px-1 text-center align-middle">Access</th>
+                      <th className="px-1 text-center align-middle">Edit</th>
+                    </tr>
                 </thead>
                 <tbody>
-                  {admin.subcontractors.map((s) => (
-                    <tr key={s.id}>
-                      <td>{s.company_name}</td>
-                      <td>{s.contracts?.contract_name ?? "—"}</td>
-                      <td>
-                        {s.license_number || "—"}
-                        {s.license_expiration ? (
-                          <span className={`badge badge-xs ml-2 ${complianceBadgeClass(complianceFromExpiration(s.license_expiration))}`}>
-                            {complianceLabel(complianceFromExpiration(s.license_expiration))}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td>{s.user_id ? "Linked" : "Pending invite"}</td>
-                      <td>
-                        <button type="button" className="btn btn-ghost btn-xs" disabled={busy} onClick={() => onGenerateInvite(s.id, s.contact_email)}>
-                          New invite
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                    {filteredSubcontractors.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-10 text-center opacity-60">
+                          No subcontractors match the column filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSubcontractors.map((sub) => (
+                        <tr key={sub.id} className="hover:bg-base-200/60">
+                          <td className="px-1 break-words">
+                            <div className="font-medium">{sub.company_name}</div>
+                            <div className="opacity-60">{sub.contact_name || "—"}</div>
+                            <div className="break-all opacity-60">{sub.contact_email || "—"}</div>
+                          </td>
+                          <td className="px-1 break-words">{sub.contracts?.contract_name ?? "—"}</td>
+                          <td className="px-1 break-words">{sub.trade || "—"}</td>
+                          <td className="px-1 break-words">
+                            <div>
+                              {[sub.license_number, sub.license_state].filter(Boolean).join(" · ") || "—"}
+                            </div>
+                            <div className="opacity-60">{sub.license_expiration || "No expiration"}</div>
+                            {sub.license_expiration ? (
+                              <span
+                                className={`badge badge-xs mt-1 ${complianceBadgeClass(
+                                  complianceFromExpiration(sub.license_expiration)
+                                )}`}
+                              >
+                                {complianceLabel(complianceFromExpiration(sub.license_expiration))}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-1 text-center">
+                            <span className={`badge badge-xs ${sub.user_id ? "badge-success" : "badge-warning"}`}>
+                              {sub.user_id ? "Linked" : "Pending invite"}
+                            </span>
+                          </td>
+                          <td className="px-1 text-center">
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs h-7 min-h-7 px-1"
+                              disabled={busy}
+                              onClick={() => onGenerateInvite(sub.id, sub.contact_email)}
+                            >
+                              New invite
+                            </button>
+                          </td>
+                          <td className="px-1 text-center">
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs h-7 min-h-7 px-1"
+                              onClick={() => setEditingSubcontractor(sub)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                 </tbody>
               </table>
-            </div>
-            {admin.invites.length > 0 ? (
+              </div>
+            )}
+          </SectionCard>
+
+          {admin.invites.length > 0 ? (
+            <SectionCard title="Subcontractor Invite Codes">
               <div className="overflow-x-auto">
-                <table className="table table-sm">
+                <table className="table table-xs">
                   <thead>
-                    <tr><th>Code</th><th>Sub</th><th>Expires</th><th>Status</th></tr>
+                    <tr className="bg-base-200/80">
+                      <ColumnSortHeader label="Code" />
+                      <ColumnSortHeader label="Subcontractor" />
+                      <ColumnSortHeader label="Expires" />
+                      <ColumnSortHeader label="Status" />
+                    </tr>
                   </thead>
                   <tbody>
-                    {admin.invites.map((inv) => (
-                      <tr key={inv.id}>
-                        <td className="font-mono">{inv.invite_code}</td>
-                        <td>{inv.subcontractors?.company_name ?? inv.subcontractor_id}</td>
-                        <td>{inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : "—"}</td>
-                        <td>{inv.accepted_at ? "Accepted" : "Open"}</td>
+                    {admin.invites.map((invite) => (
+                      <tr key={invite.id} className="hover:bg-base-200/60">
+                        <td className="font-mono">{invite.invite_code}</td>
+                        <td>{invite.subcontractors?.company_name ?? invite.subcontractor_id}</td>
+                        <td>{invite.expires_at ? new Date(invite.expires_at).toLocaleDateString() : "—"}</td>
+                        <td>
+                          <span className={`badge badge-xs ${invite.accepted_at ? "badge-success" : "badge-warning"}`}>
+                            {invite.accepted_at ? "Accepted" : "Open"}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : null}
-          </SectionCard>
+            </SectionCard>
+          ) : null}
+
+          {addingCustomer ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-3xl">
+                <h3 className="mb-1 text-lg font-semibold">Invite Client to a Project</h3>
+                <p className="mb-4 text-sm opacity-60">
+                  Each Client ID unlocks one project only.
+                </p>
+                <form onSubmit={onAddCustomer} className="grid gap-3 md:grid-cols-2">
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Project (contract)</span>
+                    <select name="contract_id" className="select select-bordered w-full" required defaultValue="">
+                      <option value="" disabled>Select project</option>
+                      {admin.contracts.map((contract) => (
+                        <option key={contract.id} value={contract.id}>{contract.contract_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Company / Business Name</span>
+                    <input name="company_name" className="input input-bordered w-full" required />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Contact Name</span>
+                    <input name="contact_name" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Spouse / Partner Name</span>
+                    <input name="secondary_name" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Email</span>
+                    <input name="contact_email" type="email" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Phone</span>
+                    <input name="contact_phone" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Billing Address</span>
+                    <input name="billing_address" className="input input-bordered w-full" />
+                  </label>
+                  <div className="grid grid-cols-[1fr_5rem] gap-2">
+                    <label className="form-control">
+                      <span className="label-text mb-1 text-sm font-medium">City</span>
+                      <input name="city" className="input input-bordered w-full" />
+                    </label>
+                    <label className="form-control">
+                      <span className="label-text mb-1 text-sm font-medium">State</span>
+                      <input name="state" className="input input-bordered w-full" />
+                    </label>
+                  </div>
+                  <div className="modal-action mb-0 md:col-span-2">
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setAddingCustomer(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+                      {busy ? <span className="loading loading-spinner loading-xs" /> : null}
+                      Invite Client
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <button type="button" className="modal-backdrop" aria-label="Close" onClick={() => setAddingCustomer(false)} />
+            </div>
+          ) : null}
+
+          {editingCustomer ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-3xl">
+                <h3 className="mb-1 text-lg font-semibold">Edit Client</h3>
+                <p className="mb-4 text-sm opacity-60">
+                  Update contact details without changing existing access permissions.
+                </p>
+                <form onSubmit={onSaveCustomerEmail} className="grid gap-3 md:grid-cols-2">
+                  <input type="hidden" name="customer_id" value={editingCustomer.id} />
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Project (contract)</span>
+                    <select name="contract_id" className="select select-bordered w-full" required defaultValue={editingCustomer.contract_id ?? ""}>
+                      {admin.contracts.map((contract) => (
+                        <option key={contract.id} value={contract.id}>{contract.contract_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Company / Business Name</span>
+                    <input name="company_name" className="input input-bordered w-full" defaultValue={editingCustomer.company_name} required />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Contact Name</span>
+                    <input name="contact_name" className="input input-bordered w-full" defaultValue={editingCustomer.contact_name ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Spouse / Partner Name</span>
+                    <input name="secondary_name" className="input input-bordered w-full" defaultValue={editingCustomer.secondary_name ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Email</span>
+                    <input name="contact_email" type="email" className="input input-bordered w-full" defaultValue={editingCustomer.contact_email ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Phone</span>
+                    <input name="contact_phone" className="input input-bordered w-full" defaultValue={editingCustomer.contact_phone ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Billing Address</span>
+                    <input name="billing_address" className="input input-bordered w-full" defaultValue={editingCustomer.billing_address ?? ""} />
+                  </label>
+                  <div className="grid grid-cols-[1fr_5rem] gap-2">
+                    <label className="form-control">
+                      <span className="label-text mb-1 text-sm font-medium">City</span>
+                      <input name="city" className="input input-bordered w-full" defaultValue={editingCustomer.city ?? ""} />
+                    </label>
+                    <label className="form-control">
+                      <span className="label-text mb-1 text-sm font-medium">State</span>
+                      <input name="state" className="input input-bordered w-full" defaultValue={editingCustomer.state ?? ""} />
+                    </label>
+                  </div>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Status</span>
+                    <select name="is_active" className="select select-bordered w-full" defaultValue={editingCustomer.is_active === false ? "false" : "true"}>
+                      <option value="true">Active</option>
+                      <option value="false">Inactive</option>
+                    </select>
+                  </label>
+                  <div className="modal-action mb-0 md:col-span-2">
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setEditingCustomer(null)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+                      {busy ? <span className="loading loading-spinner loading-xs" /> : null}
+                      Save Client
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <button type="button" className="modal-backdrop" aria-label="Close" onClick={() => setEditingCustomer(null)} />
+            </div>
+          ) : null}
+
+          {addingSubcontractor ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-3xl">
+                <h3 className="mb-1 text-lg font-semibold">Add Subcontractor + Invite Code</h3>
+                <form onSubmit={onAddSub} className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Contract</span>
+                    <select name="contract_id" className="select select-bordered w-full" required defaultValue="">
+                      <option value="" disabled>Select contract</option>
+                      {admin.contracts.map((contract) => (
+                        <option key={contract.id} value={contract.id}>{contract.contract_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Company Name</span>
+                    <input name="company_name" className="input input-bordered w-full" required />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Contact Name</span>
+                    <input name="contact_name" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Contact Email</span>
+                    <input name="contact_email" type="email" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Trade</span>
+                    <input name="trade" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">License Number</span>
+                    <input name="license_number" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">License State</span>
+                    <input name="license_state" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">License Expiration</span>
+                    <input type="date" name="license_expiration" className="input input-bordered w-full" />
+                  </label>
+                  <div className="modal-action mb-0 md:col-span-2">
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setAddingSubcontractor(false)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+                      {busy ? <span className="loading loading-spinner loading-xs" /> : null}
+                      Add Sub &amp; Generate Invite
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <button type="button" className="modal-backdrop" aria-label="Close" onClick={() => setAddingSubcontractor(false)} />
+            </div>
+          ) : null}
+
+          {editingSubcontractor ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-3xl">
+                <h3 className="mb-1 text-lg font-semibold">Edit Subcontractor</h3>
+                <form onSubmit={onSaveSubcontractor} className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Contract</span>
+                    <select name="contract_id" className="select select-bordered w-full" required defaultValue={editingSubcontractor.contract_id}>
+                      {admin.contracts.map((contract) => (
+                        <option key={contract.id} value={contract.id}>{contract.contract_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Company Name</span>
+                    <input name="company_name" className="input input-bordered w-full" defaultValue={editingSubcontractor.company_name} required />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Contact Name</span>
+                    <input name="contact_name" className="input input-bordered w-full" defaultValue={editingSubcontractor.contact_name ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Contact Email</span>
+                    <input name="contact_email" type="email" className="input input-bordered w-full" defaultValue={editingSubcontractor.contact_email ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Trade</span>
+                    <input name="trade" className="input input-bordered w-full" defaultValue={editingSubcontractor.trade ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">License Number</span>
+                    <input name="license_number" className="input input-bordered w-full" defaultValue={editingSubcontractor.license_number ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">License State</span>
+                    <input name="license_state" className="input input-bordered w-full" defaultValue={editingSubcontractor.license_state ?? ""} />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">License Expiration</span>
+                    <input type="date" name="license_expiration" className="input input-bordered w-full" defaultValue={editingSubcontractor.license_expiration ?? ""} />
+                  </label>
+                  <div className="modal-action mb-0 md:col-span-2">
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setEditingSubcontractor(null)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+                      {busy ? <span className="loading loading-spinner loading-xs" /> : null}
+                      Save Subcontractor
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <button type="button" className="modal-backdrop" aria-label="Close" onClick={() => setEditingSubcontractor(null)} />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1670,34 +2211,7 @@ export default function ManagementPage() {
         </div>
       ) : null}
 
-      {activeTab === "audit" ? (
-        <SectionCard title="Access Audit Log">
-          {admin.auditLog.length === 0 ? (
-            <EmptyState title="No audit events yet" message="Management actions will appear here as you use this page." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="table table-sm">
-                <thead>
-                  <tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th></tr>
-                </thead>
-                <tbody>
-                  {admin.auditLog.map((row) => (
-                    <tr key={row.id}>
-                      <td className="whitespace-nowrap">{new Date(row.created_at).toLocaleString()}</td>
-                      <td>{row.actor_email || row.actor_user_id || "—"}</td>
-                      <td className="font-mono text-xs">{row.action}</td>
-                      <td>
-                        {row.entity_type || "—"}
-                        {row.entity_id ? ` · ${row.entity_id.slice(0, 8)}` : ""}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </SectionCard>
-      ) : null}
+      {activeTab === "audit" ? <AuditLogPanel /> : null}
     </div>
   );
 }

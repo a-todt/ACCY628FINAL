@@ -42,15 +42,18 @@ const CHART_COLORS = {
   actual: "#2563eb",
   active: "#22c55e",
   complete: "#3b82f6",
+  onHold: "#f59e0b",
   atRisk: "#ef4444",
 };
+
+type ProjectStatusBucket = "active" | "completed" | "on_hold" | "other";
 
 interface ProjectMetrics {
   project: DbRow;
   projectId: string;
   calcs: WIPCalculations;
   health: "healthy" | "watch" | "at_risk";
-  statusBucket: "active" | "complete" | "at_risk";
+  statusBucket: ProjectStatusBucket;
 }
 
 function shortName(name: string, len = 14): string {
@@ -63,14 +66,15 @@ function healthFromMargin(marginPct: number): ProjectMetrics["health"] {
   return "healthy";
 }
 
-function statusBucket(
-  status: string | null | undefined,
-  health: ProjectMetrics["health"]
-): ProjectMetrics["statusBucket"] {
-  if (health === "at_risk") return "at_risk";
-  const normalized = (status ?? "active").toLowerCase();
-  if (normalized === "completed" || normalized === "complete") return "complete";
-  return "active";
+/** Map projects.status to pie buckets (DB values, not margin health). */
+function statusBucket(status: string | null | undefined): ProjectStatusBucket {
+  const normalized = (status ?? "active").toLowerCase().replace(/\s+/g, "_");
+  if (normalized === "completed" || normalized === "complete") return "completed";
+  if (normalized === "on_hold" || normalized === "onhold" || normalized === "canceled") {
+    return "on_hold";
+  }
+  if (normalized === "active") return "active";
+  return "other";
 }
 
 function healthBadge(health: ProjectMetrics["health"]) {
@@ -192,7 +196,7 @@ export function RevenueRecognitionDashboard() {
           projectId,
           calcs,
           health,
-          statusBucket: statusBucket(colStr(project, P.status, "active"), health),
+          statusBucket: statusBucket(colStr(project, P.status, "active")),
         };
       }),
     [projects, costsByProject, billedByProject, retainageByProject]
@@ -242,14 +246,20 @@ export function RevenueRecognitionDashboard() {
   );
 
   const statusPieData = useMemo(() => {
-    const counts = { active: 0, complete: 0, at_risk: 0 };
+    const counts: Record<ProjectStatusBucket, number> = {
+      active: 0,
+      completed: 0,
+      on_hold: 0,
+      other: 0,
+    };
     for (const row of metrics) {
       counts[row.statusBucket] += 1;
     }
     return [
       { name: "Active", value: counts.active, color: CHART_COLORS.active },
-      { name: "Complete", value: counts.complete, color: CHART_COLORS.complete },
-      { name: "At Risk", value: counts.at_risk, color: CHART_COLORS.atRisk },
+      { name: "Completed", value: counts.completed, color: CHART_COLORS.complete },
+      { name: "On Hold", value: counts.on_hold, color: CHART_COLORS.onHold },
+      { name: "Other", value: counts.other, color: CHART_COLORS.estimated },
     ].filter((d) => d.value > 0);
   }, [metrics]);
 
@@ -364,30 +374,49 @@ export function RevenueRecognitionDashboard() {
 
         <div className="lg:col-span-2">
           <SectionCard title="Project Status Breakdown">
-            <div className="h-72 max-w-xl mx-auto">
-              {statusPieData.length === 0 ? (
-                <p className="text-sm opacity-60 py-16 text-center">No status data.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={statusPieData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={100}
-                      label={({ name, percent: p }) => `${name} ${((p ?? 0) * 100).toFixed(0)}%`}
-                    >
-                      {statusPieData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
+            <div className="grid md:grid-cols-[1fr_auto] gap-4 items-center">
+              <div className="h-72 w-full min-w-0">
+                {statusPieData.length === 0 ? (
+                  <p className="text-sm opacity-60 py-16 text-center">No status data.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={288} minWidth={200}>
+                    <PieChart>
+                      <Pie
+                        data={statusPieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={95}
+                        label={({ name, percent }) =>
+                          `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
+                        }
+                      >
+                        {statusPieData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => [`${Number(value)} project(s)`, "Count"]}
+                      />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              <ul className="space-y-2 text-sm px-2">
+                {statusPieData.map((entry) => (
+                  <li key={entry.name} className="flex items-center gap-2">
+                    <span
+                      className="inline-block size-3 rounded-sm shrink-0"
+                      style={{ backgroundColor: entry.color }}
+                      aria-hidden
+                    />
+                    <span className="font-medium">{entry.name}</span>
+                    <span className="opacity-70 tabular-nums">{entry.value}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </SectionCard>
         </div>
