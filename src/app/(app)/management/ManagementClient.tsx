@@ -1,20 +1,20 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import {
-  Building2,
-  ClipboardList,
-  Link2,
-  ShieldAlert,
-  UserPlus,
-  Users,
-} from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminData } from "@/hooks/useAdminData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import {
-  COMPANY_ROLES,
+  ColumnAutocompleteHeader,
+  ColumnSortHeader,
+  matchesColumnFilter,
+  uniqueSorted,
+  type ColumnSortDir,
+} from "@/components/ColumnAutocompleteHeader";
+import { compareValues } from "@/components/FilterSortBar";
+import {
   ROLE_LABELS,
   canManageCompany,
   roleBadgeClass,
@@ -25,34 +25,59 @@ import {
   complianceLabel,
 } from "@/lib/compliance";
 import { createClient } from "@/lib/supabase/client";
-import type { UserRole } from "@/lib/types";
+import type { ContractAssignment, UserProfile, UserRole } from "@/lib/types";
 
-type TabId = "settings" | "team" | "assignments" | "parties" | "compliance" | "audit";
+type TabId = "settings" | "team" | "parties" | "compliance" | "audit";
+type TeamSortKey =
+  | "full_name"
+  | "email"
+  | "employee_id"
+  | "title"
+  | "phone"
+  | "role"
+  | "status"
+  | "assignments"
+  | "assign";
 
-const TABS: { id: TabId; label: string; icon: typeof Building2 }[] = [
-  { id: "settings", label: "Company Settings", icon: Building2 },
-  { id: "team", label: "Team", icon: Users },
-  { id: "assignments", label: "Assignments", icon: ClipboardList },
-  { id: "parties", label: "External Parties", icon: UserPlus },
-  { id: "compliance", label: "Compliance", icon: ShieldAlert },
-  { id: "audit", label: "Audit Log", icon: Link2 },
-];
+const TABS: TabId[] = ["settings", "team", "parties", "compliance", "audit"];
+const STAFF_EDIT_ROLES: UserRole[] = ["owner", "project_manager", "field_supervisor"];
 
 function tabFromParam(value: string | null): TabId {
-  return TABS.find((t) => t.id === value)?.id ?? "settings";
+  return TABS.includes(value as TabId) ? (value as TabId) : "settings";
+}
+
+function SettingsValue({ value }: { value: string | number | null | undefined }) {
+  return <p className="font-medium min-h-10 flex items-center">{value === 0 || value ? String(value) : "—"}</p>;
+}
+
+function assignmentRoleFor(
+  role: string
+): "project_manager" | "field_supervisor" {
+  return role === "field_supervisor" ? "field_supervisor" : "project_manager";
+}
+
+function labelAssignmentRole(role: string) {
+  return role.replace(/_/g, " ");
 }
 
 export default function ManagementPage() {
   const { effectiveRole, user } = useAuth();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = tabFromParam(searchParams.get("tab"));
   const admin = useAdminData();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const setTab = (tab: TabId) => router.replace(`/management?tab=${tab}`);
+  const [editingSettings, setEditingSettings] = useState(false);
+  const [viewingAssignmentsFor, setViewingAssignmentsFor] = useState<UserProfile | null>(null);
+  const [editingAssignments, setEditingAssignments] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
+  const [nameFilter, setNameFilter] = useState("");
+  const [emailFilter, setEmailFilter] = useState("");
+  const [employeeIdFilter, setEmployeeIdFilter] = useState("");
+  const [contractFilter, setContractFilter] = useState("");
+  const [teamSortKey, setTeamSortKey] = useState<TeamSortKey>("full_name");
+  const [teamSortDir, setTeamSortDir] = useState<ColumnSortDir>("asc");
 
   const staffProfiles = useMemo(
     () =>
@@ -62,13 +87,101 @@ export default function ManagementPage() {
     [admin.profiles]
   );
 
-  const assignableStaff = useMemo(
-    () =>
-      admin.profiles.filter((p) =>
-        ["owner", "project_manager", "field_supervisor"].includes(p.role)
-      ),
-    [admin.profiles]
+  const assignmentCountByUser = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of admin.assignments) {
+      counts.set(a.user_id, (counts.get(a.user_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [admin.assignments]);
+
+  const assignedContractsByUser = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const a of admin.assignments) {
+      const name = a.contracts?.contract_name ?? "";
+      if (!name) continue;
+      const list = map.get(a.user_id) ?? [];
+      list.push(name);
+      map.set(a.user_id, list);
+    }
+    return map;
+  }, [admin.assignments]);
+
+  const filteredStaff = useMemo(() => {
+    const next = staffProfiles.filter((p) => {
+      if (!matchesColumnFilter(p.full_name, nameFilter)) return false;
+      if (!matchesColumnFilter(p.email, emailFilter)) return false;
+      if (!matchesColumnFilter(p.employee_id, employeeIdFilter)) return false;
+      if (contractFilter.trim()) {
+        const names = assignedContractsByUser.get(p.id) ?? [];
+        const q = contractFilter.trim().toLowerCase();
+        if (!names.some((name) => name.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+
+    return [...next].sort((a, b) => {
+      if (teamSortKey === "full_name") return compareValues(a.full_name, b.full_name, teamSortDir);
+      if (teamSortKey === "email") return compareValues(a.email, b.email, teamSortDir);
+      if (teamSortKey === "employee_id") {
+        return compareValues(a.employee_id, b.employee_id, teamSortDir);
+      }
+      if (teamSortKey === "title") return compareValues(a.title, b.title, teamSortDir);
+      if (teamSortKey === "phone") return compareValues(a.phone, b.phone, teamSortDir);
+      if (teamSortKey === "role") {
+        return compareValues(ROLE_LABELS[a.role], ROLE_LABELS[b.role], teamSortDir);
+      }
+      if (teamSortKey === "status") {
+        const aStatus = a.is_active === false ? "Inactive" : "Active";
+        const bStatus = b.is_active === false ? "Inactive" : "Active";
+        return compareValues(aStatus, bStatus, teamSortDir);
+      }
+      if (teamSortKey === "assignments" || teamSortKey === "assign") {
+        return compareValues(
+          assignmentCountByUser.get(a.id) ?? 0,
+          assignmentCountByUser.get(b.id) ?? 0,
+          teamSortDir
+        );
+      }
+      return 0;
+    });
+  }, [
+    staffProfiles,
+    nameFilter,
+    emailFilter,
+    employeeIdFilter,
+    contractFilter,
+    assignedContractsByUser,
+    teamSortKey,
+    teamSortDir,
+    assignmentCountByUser,
+  ]);
+
+  const nameOptions = useMemo(
+    () => uniqueSorted(staffProfiles.map((p) => p.full_name)),
+    [staffProfiles]
   );
+  const emailOptions = useMemo(
+    () => uniqueSorted(staffProfiles.map((p) => p.email)),
+    [staffProfiles]
+  );
+  const employeeIdOptions = useMemo(
+    () => uniqueSorted(staffProfiles.map((p) => p.employee_id)),
+    [staffProfiles]
+  );
+  const contractOptions = useMemo(
+    () => uniqueSorted(admin.assignments.map((a) => a.contracts?.contract_name)),
+    [admin.assignments]
+  );
+
+  const onTeamSort = (key: TeamSortKey) => {
+    if (teamSortKey === key) {
+      setTeamSortDir((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setTeamSortKey(key);
+      setTeamSortDir("asc");
+    }
+  };
 
   if (!canManageCompany(effectiveRole)) {
     return (
@@ -137,6 +250,7 @@ export default function ManagementPage() {
       if (updateError) throw updateError;
       await logAction("company_settings_updated", "company_settings", admin.company.id);
       setMessage("Company settings saved.");
+      setEditingSettings(false);
       await admin.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save settings.");
@@ -145,72 +259,22 @@ export default function ManagementPage() {
     }
   };
 
-  const onSaveTeamMember = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const onAssignContract = async (userId: string, contractId: string, userRole: string) => {
+    if (!contractId) return;
     setBusy(true);
     setError(null);
     setMessage(null);
-    const form = new FormData(e.currentTarget);
-    const profileId = String(form.get("profile_id") || "");
-    try {
-      const supabase = createClient();
-      const isActive = form.get("is_active") === "on";
-      const { error: updateError } = await supabase
-        .from("user_profiles")
-        .update({
-          full_name: String(form.get("full_name") || "").trim() || null,
-          employee_id: String(form.get("employee_id") || "").trim() || null,
-          title: String(form.get("title") || "").trim() || null,
-          phone: String(form.get("phone") || "").trim() || null,
-          role: String(form.get("role") || "field_supervisor") as UserRole,
-          is_active: isActive,
-          deactivated_at: isActive ? null : new Date().toISOString(),
-        })
-        .eq("id", profileId);
-      if (updateError) throw updateError;
-
-      const certName = String(form.get("cert_name") || "").trim();
-      if (certName) {
-        const { error: certError } = await supabase.from("employee_certifications").insert({
-          user_id: profileId,
-          certification_name: certName,
-          certification_number: String(form.get("cert_number") || "").trim() || null,
-          issuing_body: String(form.get("cert_body") || "").trim() || null,
-          expiration_date: String(form.get("cert_expiration") || "") || null,
-        });
-        if (certError) throw certError;
-      }
-
-      await logAction("team_member_updated", "user_profiles", profileId);
-      setMessage("Team member updated.");
-      await admin.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update team member.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onAssign = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    setMessage(null);
-    const form = new FormData(e.currentTarget);
     try {
       const supabase = createClient();
       const payload = {
-        contract_id: String(form.get("contract_id")),
-        user_id: String(form.get("user_id")),
-        assignment_role: String(form.get("assignment_role")) as
-          | "project_manager"
-          | "field_supervisor",
+        contract_id: contractId,
+        user_id: userId,
+        assignment_role: assignmentRoleFor(userRole),
       };
       const { error: insertError } = await supabase.from("contract_assignments").insert(payload);
       if (insertError) throw insertError;
       await logAction("assignment_created", "contract_assignments", payload.contract_id, payload);
-      setMessage("Assignment saved.");
-      e.currentTarget.reset();
+      setMessage("Contract assignment saved.");
       await admin.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to assign.");
@@ -227,6 +291,7 @@ export default function ManagementPage() {
       const { error: deleteError } = await supabase.from("contract_assignments").delete().eq("id", id);
       if (deleteError) throw deleteError;
       await logAction("assignment_removed", "contract_assignments", id);
+      setMessage("Assignment removed.");
       await admin.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove assignment.");
@@ -234,6 +299,58 @@ export default function ManagementPage() {
       setBusy(false);
     }
   };
+
+  const openAssignments = (profile: UserProfile) => {
+    setViewingAssignmentsFor(profile);
+    setEditingAssignments(false);
+  };
+
+  const closeAssignments = () => {
+    setViewingAssignmentsFor(null);
+    setEditingAssignments(false);
+  };
+
+  const closeStaffEdit = () => setEditingStaff(null);
+
+  const onSaveStaff = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingStaff) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    const form = new FormData(e.currentTarget);
+    const isActive = String(form.get("is_active") || "true") === "true";
+    const role = String(form.get("role") || editingStaff.role) as UserRole;
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("user_profiles")
+        .update({
+          full_name: String(form.get("full_name") || "").trim() || null,
+          email: String(form.get("email") || "").trim() || null,
+          employee_id: String(form.get("employee_id") || "").trim() || null,
+          title: String(form.get("title") || "").trim() || null,
+          phone: String(form.get("phone") || "").trim() || null,
+          role,
+          is_active: isActive,
+          deactivated_at: isActive ? null : editingStaff.deactivated_at ?? new Date().toISOString(),
+        })
+        .eq("id", editingStaff.id);
+      if (updateError) throw updateError;
+      await logAction("staff_updated", "user_profiles", editingStaff.id);
+      setMessage("Staff profile updated.");
+      setEditingStaff(null);
+      await admin.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update staff.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const viewedAssignments: ContractAssignment[] = viewingAssignmentsFor
+    ? admin.assignments.filter((a) => a.user_id === viewingAssignmentsFor.id)
+    : [];
 
   const onAddCustomer = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -423,222 +540,550 @@ export default function ManagementPage() {
     <div className="space-y-6">
       <PageHeader
         title="Admin / Management"
-        subtitle="Owner / Executive controls for company settings, team, assignments, and compliance."
+        subtitle="Owner / Executive controls for company settings, team, and compliance."
       />
 
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
       {message ? <AlertBanner type="success">{message}</AlertBanner> : null}
 
-      <div role="tablist" className="tabs tabs-boxed flex-wrap bg-base-100 border border-base-300 p-1">
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              className={`tab gap-2 ${activeTab === tab.id ? "tab-active" : ""}`}
-              onClick={() => setTab(tab.id)}
-            >
-              <Icon className="h-4 w-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
       {activeTab === "settings" && admin.company ? (
-        <SectionCard title="Company Settings">
-          <form onSubmit={onSaveSettings} className="grid gap-4 md:grid-cols-2">
-            <FormField label="Company Name">
-              <input name="company_name" className="input input-bordered" defaultValue={admin.company.company_name} required />
-            </FormField>
-            <FormField label="Logo URL">
-              <input name="logo_url" className="input input-bordered" defaultValue={admin.company.logo_url ?? ""} placeholder="https://..." />
-            </FormField>
-            <FormField label="GC License Number">
-              <input name="gc_license_number" className="input input-bordered" defaultValue={admin.company.gc_license_number ?? ""} />
-            </FormField>
-            <FormField label="License State">
-              <input name="gc_license_state" className="input input-bordered" defaultValue={admin.company.gc_license_state ?? ""} />
-            </FormField>
-            <FormField label="License Expiration">
-              <input type="date" name="gc_license_expiration" className="input input-bordered" defaultValue={admin.company.gc_license_expiration ?? ""} />
-            </FormField>
-            <FormField label="Default Retainage %">
-              <input type="number" step="0.1" name="default_retainage_percent" className="input input-bordered" defaultValue={admin.company.default_retainage_percent} />
-            </FormField>
-            <FormField label="Default Payment Terms">
-              <input name="default_payment_terms" className="input input-bordered" defaultValue={admin.company.default_payment_terms} />
-            </FormField>
-            <FormField label="Address Line 1">
-              <input name="address_line1" className="input input-bordered" defaultValue={admin.company.address_line1 ?? ""} />
-            </FormField>
-            <FormField label="Address Line 2">
-              <input name="address_line2" className="input input-bordered" defaultValue={admin.company.address_line2 ?? ""} />
-            </FormField>
-            <FormField label="City">
-              <input name="city" className="input input-bordered" defaultValue={admin.company.city ?? ""} />
-            </FormField>
-            <FormField label="State / Postal">
-              <div className="flex gap-2">
-                <input name="state" className="input input-bordered w-24" defaultValue={admin.company.state ?? ""} />
-                <input name="postal_code" className="input input-bordered grow" defaultValue={admin.company.postal_code ?? ""} />
+        <SectionCard
+          title="Company Settings"
+          actions={
+            canManageCompany(effectiveRole) ? (
+              editingSettings ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={busy}
+                  onClick={() => setEditingSettings(false)}
+                >
+                  Cancel
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setEditingSettings(true)}
+                >
+                  <Pencil className="h-4 w-4" /> Edit
+                </button>
+              )
+            ) : null
+          }
+        >
+          {editingSettings ? (
+            <form onSubmit={onSaveSettings} className="grid gap-4 md:grid-cols-2">
+              <FormField label="Company Name">
+                <input
+                  name="company_name"
+                  className="input input-bordered"
+                  defaultValue={admin.company.company_name}
+                  required
+                />
+              </FormField>
+              <FormField label="Logo URL">
+                <input
+                  name="logo_url"
+                  className="input input-bordered"
+                  defaultValue={admin.company.logo_url ?? ""}
+                  placeholder="https://..."
+                />
+              </FormField>
+              <FormField label="GC License Number">
+                <input
+                  name="gc_license_number"
+                  className="input input-bordered"
+                  defaultValue={admin.company.gc_license_number ?? ""}
+                />
+              </FormField>
+              <FormField label="License State">
+                <input
+                  name="gc_license_state"
+                  className="input input-bordered"
+                  defaultValue={admin.company.gc_license_state ?? ""}
+                />
+              </FormField>
+              <FormField label="License Expiration">
+                <input
+                  type="date"
+                  name="gc_license_expiration"
+                  className="input input-bordered"
+                  defaultValue={admin.company.gc_license_expiration ?? ""}
+                />
+              </FormField>
+              <FormField label="Default Retainage %">
+                <input
+                  type="number"
+                  step="0.1"
+                  name="default_retainage_percent"
+                  className="input input-bordered"
+                  defaultValue={admin.company.default_retainage_percent}
+                />
+              </FormField>
+              <FormField label="Default Payment Terms">
+                <input
+                  name="default_payment_terms"
+                  className="input input-bordered"
+                  defaultValue={admin.company.default_payment_terms}
+                />
+              </FormField>
+              <FormField label="Address Line 1">
+                <input
+                  name="address_line1"
+                  className="input input-bordered"
+                  defaultValue={admin.company.address_line1 ?? ""}
+                />
+              </FormField>
+              <FormField label="Address Line 2">
+                <input
+                  name="address_line2"
+                  className="input input-bordered"
+                  defaultValue={admin.company.address_line2 ?? ""}
+                />
+              </FormField>
+              <FormField label="City">
+                <input
+                  name="city"
+                  className="input input-bordered"
+                  defaultValue={admin.company.city ?? ""}
+                />
+              </FormField>
+              <FormField label="State / Postal">
+                <div className="flex gap-2">
+                  <input
+                    name="state"
+                    className="input input-bordered w-24"
+                    defaultValue={admin.company.state ?? ""}
+                  />
+                  <input
+                    name="postal_code"
+                    className="input input-bordered grow"
+                    defaultValue={admin.company.postal_code ?? ""}
+                  />
+                </div>
+              </FormField>
+              <div className="md:col-span-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={busy}
+                  onClick={() => setEditingSettings(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={busy}>
+                  {busy ? <span className="loading loading-spinner loading-sm" /> : null}
+                  Save Company Settings
+                </button>
               </div>
-            </FormField>
-            <div className="md:col-span-2 flex justify-end">
-              <button type="submit" className="btn btn-primary" disabled={busy}>Save Company Settings</button>
+            </form>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 text-sm">
+              <FormField label="Company Name">
+                <SettingsValue value={admin.company.company_name} />
+              </FormField>
+              <FormField label="Logo URL">
+                <SettingsValue value={admin.company.logo_url} />
+              </FormField>
+              <FormField label="GC License Number">
+                <SettingsValue value={admin.company.gc_license_number} />
+              </FormField>
+              <FormField label="License State">
+                <SettingsValue value={admin.company.gc_license_state} />
+              </FormField>
+              <FormField label="License Expiration">
+                <SettingsValue value={admin.company.gc_license_expiration} />
+              </FormField>
+              <FormField label="Default Retainage %">
+                <SettingsValue value={admin.company.default_retainage_percent} />
+              </FormField>
+              <FormField label="Default Payment Terms">
+                <SettingsValue value={admin.company.default_payment_terms} />
+              </FormField>
+              <FormField label="Address Line 1">
+                <SettingsValue value={admin.company.address_line1} />
+              </FormField>
+              <FormField label="Address Line 2">
+                <SettingsValue value={admin.company.address_line2} />
+              </FormField>
+              <FormField label="City">
+                <SettingsValue value={admin.company.city} />
+              </FormField>
+              <FormField label="State / Postal">
+                <SettingsValue
+                  value={
+                    [admin.company.state, admin.company.postal_code].filter(Boolean).join(" ") || null
+                  }
+                />
+              </FormField>
             </div>
-          </form>
+          )}
         </SectionCard>
       ) : null}
 
       {activeTab === "team" ? (
-        <div className="space-y-6">
+        <>
           <SectionCard title="Internal Employees">
             {staffProfiles.length === 0 ? (
-              <EmptyState title="No staff yet" message="Create users via auth, then edit them here." />
+              <EmptyState title="No staff yet" message="Create users via auth, then they will appear here." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="table table-sm">
                   <thead>
-                    <tr><th>Name</th><th>Employee ID</th><th>Role</th><th>Status</th></tr>
+                    <tr className="bg-base-200/80">
+                      <ColumnAutocompleteHeader
+                        label="Full Name"
+                        listId="team-filter-name"
+                        value={nameFilter}
+                        onChange={setNameFilter}
+                        options={nameOptions}
+                        sortActive={teamSortKey === "full_name"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("full_name")}
+                      />
+                      <ColumnAutocompleteHeader
+                        label="Email"
+                        listId="team-filter-email"
+                        value={emailFilter}
+                        onChange={setEmailFilter}
+                        options={emailOptions}
+                        sortActive={teamSortKey === "email"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("email")}
+                      />
+                      <ColumnAutocompleteHeader
+                        label="Employee ID"
+                        listId="team-filter-employee-id"
+                        value={employeeIdFilter}
+                        onChange={setEmployeeIdFilter}
+                        options={employeeIdOptions}
+                        sortActive={teamSortKey === "employee_id"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("employee_id")}
+                      />
+                      <ColumnSortHeader
+                        label="Title"
+                        sortActive={teamSortKey === "title"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("title")}
+                      />
+                      <ColumnSortHeader
+                        label="Phone"
+                        sortActive={teamSortKey === "phone"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("phone")}
+                      />
+                      <ColumnSortHeader
+                        label="Role"
+                        sortActive={teamSortKey === "role"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("role")}
+                      />
+                      <ColumnSortHeader
+                        label="Status"
+                        sortActive={teamSortKey === "status"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("status")}
+                      />
+                      <ColumnAutocompleteHeader
+                        label="Assigned Contracts"
+                        listId="team-filter-contracts"
+                        value={contractFilter}
+                        onChange={setContractFilter}
+                        options={contractOptions}
+                        placeholder="Search project…"
+                        sortActive={teamSortKey === "assignments"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("assignments")}
+                      />
+                      <ColumnSortHeader
+                        label="Assign Contract"
+                        sortActive={teamSortKey === "assign"}
+                        sortDir={teamSortDir}
+                        onSort={() => onTeamSort("assign")}
+                      />
+                      <th className="text-center align-middle">Edit</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {staffProfiles.map((p) => (
-                      <tr key={p.id}>
-                        <td>
-                          <div className="font-medium">{p.full_name || "—"}</div>
-                          <div className="text-xs opacity-60">{p.email}</div>
-                        </td>
-                        <td>{p.employee_id || "—"}</td>
-                        <td><span className={`badge badge-sm ${roleBadgeClass(p.role)}`}>{ROLE_LABELS[p.role]}</span></td>
-                        <td>
-                          <span className={`badge badge-sm ${p.is_active === false ? "badge-error" : "badge-success"}`}>
-                            {p.is_active === false ? "Inactive" : "Active"}
-                          </span>
+                    {filteredStaff.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="py-10 text-center opacity-60">
+                          No employees match the column filters.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredStaff.map((p) => {
+                        const assignments = admin.assignments.filter((a) => a.user_id === p.id);
+                        const assignedContractIds = new Set(assignments.map((a) => a.contract_id));
+                        const availableContracts = admin.contracts.filter(
+                          (c) => !assignedContractIds.has(c.id)
+                        );
+                        const listId = `assign-contract-${p.id}`;
+                        return (
+                          <tr key={p.id} className="hover:bg-base-200/60">
+                            <td className="font-medium">{p.full_name || "—"}</td>
+                            <td>{p.email || "—"}</td>
+                            <td>{p.employee_id || "—"}</td>
+                            <td>{p.title || "—"}</td>
+                            <td>{p.phone || "—"}</td>
+                            <td>
+                              <span className={`badge badge-sm ${roleBadgeClass(p.role)}`}>
+                                {ROLE_LABELS[p.role]}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                className={`badge badge-sm ${
+                                  p.is_active === false ? "badge-error" : "badge-success"
+                                }`}
+                              >
+                                {p.is_active === false ? "Inactive" : "Active"}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-xs"
+                                onClick={() => openAssignments(p)}
+                              >
+                                See Contracts
+                                {assignments.length > 0 ? ` (${assignments.length})` : ""}
+                              </button>
+                            </td>
+                            <td className="min-w-[200px]">
+                              <input
+                                className="input input-bordered input-xs w-full"
+                                list={listId}
+                                placeholder={
+                                  availableContracts.length === 0
+                                    ? "All contracts assigned"
+                                    : "Search contracts…"
+                                }
+                                disabled={busy || availableContracts.length === 0}
+                                onChange={(e) => {
+                                  const value = e.target.value.trim();
+                                  const match = availableContracts.find(
+                                    (c) => c.contract_name === value
+                                  );
+                                  if (match) {
+                                    e.target.value = "";
+                                    void onAssignContract(p.id, match.id, p.role);
+                                  }
+                                }}
+                              />
+                              <datalist id={listId}>
+                                {availableContracts.map((c) => (
+                                  <option key={c.id} value={c.contract_name} />
+                                ))}
+                              </datalist>
+                            </td>
+                            <td className="text-center">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => setEditingStaff(p)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit Staff
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
             )}
           </SectionCard>
 
-          <SectionCard title="Edit Employee">
-            <form onSubmit={onSaveTeamMember} className="grid gap-4 md:grid-cols-2">
-              <FormField label="Employee">
-                <select name="profile_id" className="select select-bordered" required defaultValue="">
-                  <option value="" disabled>Select employee</option>
-                  {staffProfiles.map((p) => (
-                    <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Full Name"><input name="full_name" className="input input-bordered" /></FormField>
-              <FormField label="Employee ID"><input name="employee_id" className="input input-bordered" placeholder="EMP-001" /></FormField>
-              <FormField label="Title"><input name="title" className="input input-bordered" /></FormField>
-              <FormField label="Phone"><input name="phone" className="input input-bordered" /></FormField>
-              <FormField label="Role">
-                <select name="role" className="select select-bordered" defaultValue="field_supervisor">
-                  {COMPANY_ROLES.filter((r) => r !== "client" && r !== "subcontractor").map((role) => (
-                    <option key={role} value={role}>{ROLE_LABELS[role]}</option>
-                  ))}
-                </select>
-              </FormField>
-              <label className="label cursor-pointer justify-start gap-3 md:col-span-2">
-                <input name="is_active" type="checkbox" className="toggle toggle-success" defaultChecked />
-                <span className="label-text">Active employee</span>
-              </label>
-              <div className="md:col-span-2 divider text-sm">Add certification (optional)</div>
-              <FormField label="Certification Name"><input name="cert_name" className="input input-bordered" placeholder="OSHA 30" /></FormField>
-              <FormField label="Cert Number"><input name="cert_number" className="input input-bordered" /></FormField>
-              <FormField label="Issuing Body"><input name="cert_body" className="input input-bordered" /></FormField>
-              <FormField label="Expiration"><input type="date" name="cert_expiration" className="input input-bordered" /></FormField>
-              <div className="md:col-span-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  disabled={busy}
-                  onClick={() => {
-                    const select = document.querySelector<HTMLSelectElement>(
-                      'form [name="profile_id"]'
-                    );
-                    const id = select?.value;
-                    const person = staffProfiles.find((p) => p.id === id);
-                    void onSendPasswordReset(person?.email);
-                  }}
-                >
-                  Send password reset
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={busy}>
-                  Save Employee
-                </button>
+          {editingStaff ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-lg">
+                <h3 className="font-semibold text-lg mb-1">Edit Staff</h3>
+                <p className="text-sm opacity-60 mb-4">
+                  Update profile details for{" "}
+                  {editingStaff.full_name || editingStaff.email || "this employee"}.
+                </p>
+                <form onSubmit={onSaveStaff} className="grid gap-3 sm:grid-cols-2">
+                  <FormField label="Full Name">
+                    <input
+                      name="full_name"
+                      className="input input-bordered w-full"
+                      defaultValue={editingStaff.full_name ?? ""}
+                    />
+                  </FormField>
+                  <FormField label="Email">
+                    <input
+                      name="email"
+                      type="email"
+                      className="input input-bordered w-full"
+                      defaultValue={editingStaff.email ?? ""}
+                    />
+                  </FormField>
+                  <FormField label="Employee ID">
+                    <input
+                      name="employee_id"
+                      className="input input-bordered w-full"
+                      defaultValue={editingStaff.employee_id ?? ""}
+                    />
+                  </FormField>
+                  <FormField label="Title">
+                    <input
+                      name="title"
+                      className="input input-bordered w-full"
+                      defaultValue={editingStaff.title ?? ""}
+                    />
+                  </FormField>
+                  <FormField label="Phone">
+                    <input
+                      name="phone"
+                      className="input input-bordered w-full"
+                      defaultValue={editingStaff.phone ?? ""}
+                    />
+                  </FormField>
+                  <FormField label="Role">
+                    <select
+                      name="role"
+                      className="select select-bordered w-full"
+                      defaultValue={
+                        STAFF_EDIT_ROLES.includes(editingStaff.role)
+                          ? editingStaff.role
+                          : "project_manager"
+                      }
+                    >
+                      {STAFF_EDIT_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {ROLE_LABELS[role]}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                  <FormField label="Status">
+                    <select
+                      name="is_active"
+                      className="select select-bordered w-full"
+                      defaultValue={editingStaff.is_active === false ? "false" : "true"}
+                    >
+                      <option value="true">Active</option>
+                      <option value="false">Inactive</option>
+                    </select>
+                  </FormField>
+                  <div className="modal-action sm:col-span-2 mt-2 mb-0">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={busy}
+                      onClick={closeStaffEdit}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+                      {busy ? (
+                        <span className="loading loading-spinner loading-xs" />
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </button>
+                  </div>
+                </form>
               </div>
-            </form>
-          </SectionCard>
-        </div>
-      ) : null}
+              <button
+                type="button"
+                className="modal-backdrop"
+                aria-label="Close"
+                onClick={closeStaffEdit}
+              />
+            </div>
+          ) : null}
 
-      {activeTab === "assignments" ? (
-        <div className="space-y-6">
-          <SectionCard title="Assign PM / Supervisor to Contract">
-            <form onSubmit={onAssign} className="grid gap-4 md:grid-cols-4 items-end">
-              <FormField label="Contract">
-                <select name="contract_id" className="select select-bordered" required defaultValue="">
-                  <option value="" disabled>Select contract</option>
-                  {admin.contracts.map((c) => (
-                    <option key={c.id} value={c.id}>{c.contract_name}</option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Staff">
-                <select name="user_id" className="select select-bordered" required defaultValue="">
-                  <option value="" disabled>Select person</option>
-                  {assignableStaff.map((p) => (
-                    <option key={p.id} value={p.id}>{p.full_name || p.email} ({ROLE_LABELS[p.role]})</option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField label="Assignment Role">
-                <select name="assignment_role" className="select select-bordered" defaultValue="project_manager">
-                  <option value="project_manager">Project Manager</option>
-                  <option value="field_supervisor">Field Supervisor</option>
-                </select>
-              </FormField>
-              <button type="submit" className="btn btn-primary" disabled={busy}>Assign</button>
-            </form>
-          </SectionCard>
+          {viewingAssignmentsFor ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-lg">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="font-semibold text-lg">
+                      {viewingAssignmentsFor.full_name || viewingAssignmentsFor.email || "Employee"}
+                    </h3>
+                    <p className="text-sm opacity-60">Assigned contracts</p>
+                  </div>
+                  {canManageCompany(effectiveRole) ? (
+                    editingAssignments ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() => setEditingAssignments(false)}
+                      >
+                        Done
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => setEditingAssignments(true)}
+                      >
+                        <Pencil className="h-4 w-4" /> Edit
+                      </button>
+                    )
+                  ) : null}
+                </div>
 
-          <SectionCard title="Current Assignments">
-            {admin.assignments.length === 0 ? (
-              <EmptyState title="No assignments" message="Assign PMs and supervisors to contracts." />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="table table-sm">
-                  <thead>
-                    <tr><th>Contract</th><th>Person</th><th>Role</th><th></th></tr>
-                  </thead>
-                  <tbody>
-                    {admin.assignments.map((a) => (
-                      <tr key={a.id}>
-                        <td>{a.contracts?.contract_name ?? a.contract_id}</td>
-                        <td>{a.user_profiles?.full_name || a.user_profiles?.email || a.user_id}</td>
-                        <td className="capitalize">{a.assignment_role.replace("_", " ")}</td>
-                        <td>
-                          <button type="button" className="btn btn-ghost btn-xs text-error" disabled={busy} onClick={() => onRemoveAssignment(a.id)}>
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {viewedAssignments.length === 0 ? (
+                  <p className="text-sm opacity-60 py-6 text-center">
+                    No contracts assigned yet.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="table table-sm">
+                      <thead>
+                        <tr>
+                          <th>Contract</th>
+                          <th>Assignment Role</th>
+                          {editingAssignments ? <th className="text-right">Actions</th> : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewedAssignments.map((a) => (
+                          <tr key={a.id}>
+                            <td>{a.contracts?.contract_name ?? a.contract_id}</td>
+                            <td className="capitalize">{labelAssignmentRole(a.assignment_role)}</td>
+                            {editingAssignments ? (
+                              <td className="text-right">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs text-error"
+                                  disabled={busy}
+                                  onClick={() => void onRemoveAssignment(a.id)}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="modal-action">
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={closeAssignments}>
+                    Close
+                  </button>
+                </div>
               </div>
-            )}
-          </SectionCard>
-        </div>
+              <button
+                type="button"
+                className="modal-backdrop"
+                aria-label="Close"
+                onClick={closeAssignments}
+              />
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {activeTab === "parties" ? (

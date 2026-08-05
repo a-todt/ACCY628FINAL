@@ -353,7 +353,6 @@ export function secondaryNavForCategory(
       { href: "/management", label: "Overview" },
       { href: "/management?tab=settings", label: "Company Settings" },
       { href: "/management?tab=team", label: "Team" },
-      { href: "/management?tab=assignments", label: "Assignments" },
       { href: "/management?tab=parties", label: "External Parties" },
       { href: "/management?tab=compliance", label: "Compliance" },
       { href: "/management?tab=audit", label: "Audit Log" },
