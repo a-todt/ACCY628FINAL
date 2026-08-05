@@ -106,7 +106,6 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
   return (
     [
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
-      { id: "alerts" as const, href: "/alerts", label: "Alerts", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
       {
         id: "contracts" as const,
