@@ -18,6 +18,7 @@ import {
 
 interface ProjectRow extends WIPProject {
   project_name: string;
+  contract_id: string | null;
   client_name: string | null;
   original_contract_value: number | null;
   status: string | null;
@@ -353,7 +354,18 @@ export default function WIPSchedulePage() {
               {rows.map(({ project, calcs, health }) => (
                 <tr key={project.id} className="hover:bg-base-200/50">
                   <td>{healthBadge(health)}</td>
-                  <td className="font-medium whitespace-nowrap">{project.project_name}</td>
+                  <td className="font-medium whitespace-nowrap">
+                    {project.contract_id ? (
+                      <Link
+                        href={`/contracts/${project.contract_id}`}
+                        className="link link-primary"
+                      >
+                        {project.project_name}
+                      </Link>
+                    ) : (
+                      project.project_name
+                    )}
+                  </td>
                   <td className="whitespace-nowrap">{periodEnd}</td>
                   <td className="text-right whitespace-nowrap">
                     {moneyExact(project.revised_contract_value)}

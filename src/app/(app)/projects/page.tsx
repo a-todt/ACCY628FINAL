@@ -9,13 +9,20 @@ import { createClient } from "@/lib/supabase/client";
 
 interface ProjectOption {
   id: string;
+  contract_id: string | null;
   project_name: string;
   revised_contract_value: number | null;
   estimated_total_cost: number | null;
   status: string | null;
 }
 
+interface ContractOption {
+  id: string;
+  contract_name: string;
+}
+
 const EMPTY_PROJECT = {
+  contract_id: "",
   project_name: "",
   client_name: "",
   original_contract_value: "",
@@ -56,6 +63,7 @@ export default function ProjectsPage() {
   const canEdit = canEnterCosts(effectiveRole);
 
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [contracts, setContracts] = useState<ContractOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -79,23 +87,32 @@ export default function ProjectsPage() {
     setError(null);
     const supabase = createClient();
     try {
-      const { data, error: loadError } = await supabase
-        .from("projects")
-        .select("id, project_name, revised_contract_value, estimated_total_cost, status")
-        .eq("user_id", user.id)
-        .order("project_name", { ascending: true });
-      if (loadError) throw loadError;
-      setProjects((data ?? []) as ProjectOption[]);
+      const [projectsRes, contractsRes] = await Promise.all([
+        supabase
+          .from("projects")
+          .select("id, contract_id, project_name, revised_contract_value, estimated_total_cost, status")
+          .eq("user_id", user.id)
+          .order("project_name", { ascending: true }),
+        supabase
+          .from("contracts")
+          .select("id, contract_name")
+          .order("contract_name", { ascending: true }),
+      ]);
+      if (projectsRes.error) throw projectsRes.error;
+      if (contractsRes.error) throw contractsRes.error;
+      setProjects((projectsRes.data ?? []) as ProjectOption[]);
+      setContracts((contractsRes.data ?? []) as ContractOption[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load projects");
       setProjects([]);
+      setContracts([]);
     } finally {
       setLoading(false);
     }
   }, [user, canView]);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(() => load());
   }, [load]);
 
   const onCreateProject = async (e: FormEvent) => {
@@ -148,6 +165,7 @@ export default function ProjectsPage() {
       const revisedValue = revised ?? originalValue;
       const { error: insertError } = await supabase.from("projects").insert({
         user_id: user.id,
+        contract_id: projectForm.contract_id || null,
         project_name: projectForm.project_name.trim(),
         client_name: projectForm.client_name.trim() || null,
         original_contract_value: originalValue,
@@ -166,6 +184,40 @@ export default function ProjectsPage() {
     } finally {
       setSavingProject(false);
     }
+  };
+
+  const onLinkContract = async (projectId: string, contractId: string) => {
+    setError(null);
+    setSuccess(null);
+    const previousContractId =
+      projects.find((project) => project.id === projectId)?.contract_id ?? null;
+    const nextContractId = contractId || null;
+
+    setProjects((current) =>
+      current.map((project) =>
+        project.id === projectId ? { ...project, contract_id: nextContractId } : project
+      )
+    );
+
+    const supabase = createClient();
+    const { error: updateError } = await supabase
+      .from("projects")
+      .update({ contract_id: nextContractId })
+      .eq("id", projectId);
+
+    if (updateError) {
+      setProjects((current) =>
+        current.map((project) =>
+          project.id === projectId
+            ? { ...project, contract_id: previousContractId }
+            : project
+        )
+      );
+      setError(updateError.message);
+      return;
+    }
+
+    setSuccess(nextContractId ? "Project linked to GC contract." : "GC contract link removed.");
   };
 
   const onAddCost = async (e: FormEvent) => {
@@ -316,6 +368,7 @@ export default function ProjectsPage() {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>GC Contract</th>
                   <th>Status</th>
                   <th className="text-right">Revised Value</th>
                   <th className="text-right">Est. Cost</th>
@@ -325,6 +378,22 @@ export default function ProjectsPage() {
                 {projects.map((p) => (
                   <tr key={p.id}>
                     <td className="font-medium">{p.project_name}</td>
+                    <td>
+                      <select
+                        className="select select-bordered select-sm w-full min-w-52"
+                        value={p.contract_id ?? ""}
+                        onChange={(event) => void onLinkContract(p.id, event.target.value)}
+                        disabled={!canEdit}
+                        aria-label={`GC contract for ${p.project_name}`}
+                      >
+                        <option value="">Not linked</option>
+                        {contracts.map((contract) => (
+                          <option key={contract.id} value={contract.id}>
+                            {contract.contract_name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td>
                       <span className="badge badge-ghost badge-sm">{p.status ?? "active"}</span>
                     </td>
@@ -354,6 +423,22 @@ export default function ProjectsPage() {
                   onChange={(e) => setProjectForm((p) => ({ ...p, project_name: e.target.value }))}
                   required
                 />
+              </FormField>
+              <FormField label="GC contract">
+                <select
+                  className="select select-bordered"
+                  value={projectForm.contract_id}
+                  onChange={(e) =>
+                    setProjectForm((p) => ({ ...p, contract_id: e.target.value }))
+                  }
+                >
+                  <option value="">Not linked</option>
+                  {contracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.contract_name}
+                    </option>
+                  ))}
+                </select>
               </FormField>
               <FormField label="Client name">
                 <input
