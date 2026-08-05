@@ -30,6 +30,8 @@ export interface UserProfile {
   phone?: string | null;
   title?: string | null;
   deactivated_at?: string | null;
+  must_set_email?: boolean;
+  onboarding_complete?: boolean;
   created_at: string;
 }
 
@@ -87,6 +89,10 @@ export interface Customer {
   user_id: string | null;
   notes: string | null;
   is_active: boolean;
+  client_id?: string | null;
+  setup_code?: string | null;
+  setup_code_expires_at?: string | null;
+  claimed_at?: string | null;
   created_at: string;
 }
 

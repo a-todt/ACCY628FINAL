@@ -6,6 +6,8 @@ import { HardHat, LogOut, Menu, UserCog } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { AccessGate } from "@/components/AccessGate";
+import { useAccessStatus } from "@/hooks/useAccessStatus";
 import {
   ROLE_LABELS,
   canManageRoles,
@@ -17,6 +19,7 @@ import {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, profile, effectiveRole, loading, signOut } = useAuth();
+  const access = useAccessStatus();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -30,13 +33,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.replace("/login");
   };
 
-  if (loading) {
+  if (loading || access.loading) {
     return (
       <div className="min-h-screen grid place-items-center bg-base-200">
         <span className="loading loading-spinner loading-lg text-primary" />
       </div>
     );
   }
+
+  const locked =
+    access.status === "locked" ||
+    access.status === "needs_invite" ||
+    access.status === "needs_client_setup" ||
+    access.status === "needs_email";
 
   return (
     <div className="min-h-screen bg-base-200">
@@ -50,27 +59,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               tabIndex={0}
               className="dropdown-content menu bg-base-100 rounded-box z-50 w-64 p-2 shadow border border-base-300"
             >
-              {primary.map((item) => (
-                <li key={item.id}>
-                  <Link href={item.href} className={activeCategory === item.id ? "active" : ""}>
-                    {item.label}
-                  </Link>
-                  {activeCategory === item.id && secondary.length > 0 ? (
-                    <ul>
-                      {secondary.map((sub) => (
-                        <li key={sub.href}>
-                          <Link
-                            href={sub.href}
-                            className={isNavItemActive(pathname, sub.href) ? "active" : ""}
-                          >
-                            {sub.label}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </li>
-              ))}
+              {!locked
+                ? primary.map((item) => (
+                    <li key={item.id}>
+                      <Link href={item.href} className={activeCategory === item.id ? "active" : ""}>
+                        {item.label}
+                      </Link>
+                      {activeCategory === item.id && secondary.length > 0 ? (
+                        <ul>
+                          {secondary.map((sub) => (
+                            <li key={sub.href}>
+                              <Link
+                                href={sub.href}
+                                className={isNavItemActive(pathname, sub.href) ? "active" : ""}
+                              >
+                                {sub.label}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  ))
+                : null}
               {showRoles ? (
                 <li>
                   <Link href="/admin/roles" className={pathname.startsWith("/admin/roles") ? "active" : ""}>
@@ -118,45 +129,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Primary category bar */}
-      <div className="hidden lg:block border-b border-base-300 bg-base-100">
-        <div className="px-6 overflow-x-auto">
-          <div role="tablist" className="tabs tabs-bordered">
-            {primary.map((item) => (
-              <Link
-                key={item.id}
-                href={item.href}
-                role="tab"
-                className={`tab whitespace-nowrap ${activeCategory === item.id ? "tab-active" : ""}`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Secondary feature bar */}
-      {secondary.length > 0 ? (
-        <div className="hidden lg:block border-b border-base-300 bg-base-200/80">
-          <div className="px-6 overflow-x-auto">
-            <div role="tablist" className="tabs tabs-sm">
-              {secondary.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  role="tab"
-                  className={`tab whitespace-nowrap ${isNavItemActive(pathname, item.href) ? "tab-active font-medium" : ""}`}
-                >
-                  {item.label}
-                </Link>
-              ))}
+      {!locked ? (
+        <>
+          <div className="hidden lg:block border-b border-base-300 bg-base-100">
+            <div className="px-6 overflow-x-auto">
+              <div role="tablist" className="tabs tabs-bordered">
+                {primary.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    role="tab"
+                    className={`tab whitespace-nowrap ${activeCategory === item.id ? "tab-active" : ""}`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+
+          {secondary.length > 0 ? (
+            <div className="hidden lg:block border-b border-base-300 bg-base-200/80">
+              <div className="px-6 overflow-x-auto">
+                <div role="tablist" className="tabs tabs-sm">
+                  {secondary.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      role="tab"
+                      className={`tab whitespace-nowrap ${isNavItemActive(pathname, item.href) ? "tab-active font-medium" : ""}`}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
-      <main className="px-4 py-6 lg:px-8 max-w-[1400px] mx-auto w-full">{children}</main>
+      <main className="px-4 py-6 lg:px-8 max-w-[1400px] mx-auto w-full">
+        {locked ? <AccessGate access={access} onResolved={() => access.refresh()} /> : children}
+      </main>
     </div>
   );
 }
