@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
-import { Plus } from "lucide-react";
+import { useMemo, useState, type FormEvent, Fragment } from "react";
+import { Paperclip, Plus } from "lucide-react";
+import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
@@ -39,6 +40,7 @@ export default function ChangeOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("submitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const isClient = effectiveRole === "client";
 
@@ -85,21 +87,27 @@ export default function ChangeOrdersPage() {
     setSaving(true);
     try {
       const supabase = createClient();
-      const { error: insertError } = await supabase.from("change_orders").insert({
-        contract_id: form.contract_id,
-        change_order_number: form.change_order_number.trim() || null,
-        description: form.description.trim() || null,
-        reason: form.reason.trim() || null,
-        amount: form.amount ? Number(form.amount) : null,
-        status: form.status,
-        date_submitted: form.date_submitted || null,
-        date_resolved: form.date_resolved || null,
-        notes: form.notes.trim() || null,
-      });
+      const { data, error: insertError } = await supabase
+        .from("change_orders")
+        .insert({
+          contract_id: form.contract_id,
+          change_order_number: form.change_order_number.trim() || null,
+          description: form.description.trim() || null,
+          reason: form.reason.trim() || null,
+          amount: form.amount ? Number(form.amount) : null,
+          status: form.status,
+          date_submitted: form.date_submitted || null,
+          date_resolved: form.date_resolved || null,
+          notes: form.notes.trim() || null,
+        })
+        .select("id")
+        .single();
       if (insertError) throw insertError;
 
-      setSuccess("Change order added successfully.");
+      setSuccess("Change order added successfully. You can attach files below.");
       setForm(EMPTY_FORM);
+      setShowForm(false);
+      if (data?.id) setExpandedId(data.id);
       await refresh();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to save change order.");
@@ -305,24 +313,52 @@ export default function ChangeOrdersPage() {
                   <th>Submitted</th>
                   <th>Resolved</th>
                   {!isClient ? <th>Notes</th> : null}
+                  <th className="text-right">Files</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((co) => (
-                  <tr key={co.id}>
-                    <td>{co.contracts?.contract_name ?? "—"}</td>
-                    <td>{co.change_order_number ?? "—"}</td>
-                    <td className="max-w-xs truncate">{co.description ?? "—"}</td>
-                    <td className="max-w-xs truncate">{co.reason ?? "—"}</td>
-                    <td className="text-right">{money(co.amount)}</td>
-                    <td>
-                      <span className={`badge badge-sm ${statusBadgeClass(co.status)}`}>{labelize(co.status)}</span>
-                    </td>
-                    <td className="whitespace-nowrap">{co.date_submitted ?? "—"}</td>
-                    <td className="whitespace-nowrap">{co.date_resolved ?? "—"}</td>
-                    {!isClient ? <td className="max-w-xs truncate">{co.notes ?? "—"}</td> : null}
-                  </tr>
-                ))}
+                {filtered.map((co) => {
+                  const expanded = expandedId === co.id;
+                  const colSpan = isClient ? 9 : 10;
+                  return (
+                    <Fragment key={co.id}>
+                      <tr>
+                        <td>{co.contracts?.contract_name ?? "—"}</td>
+                        <td>{co.change_order_number ?? "—"}</td>
+                        <td className="max-w-xs truncate">{co.description ?? "—"}</td>
+                        <td className="max-w-xs truncate">{co.reason ?? "—"}</td>
+                        <td className="text-right">{money(co.amount)}</td>
+                        <td>
+                          <span className={`badge badge-sm ${statusBadgeClass(co.status)}`}>
+                            {labelize(co.status)}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap">{co.date_submitted ?? "—"}</td>
+                        <td className="whitespace-nowrap">{co.date_resolved ?? "—"}</td>
+                        {!isClient ? <td className="max-w-xs truncate">{co.notes ?? "—"}</td> : null}
+                        <td className="text-right">
+                          <button
+                            type="button"
+                            className={`btn btn-ghost btn-xs ${expanded ? "btn-active" : ""}`}
+                            title="Attachments"
+                            onClick={() => setExpandedId(expanded ? null : co.id)}
+                          >
+                            <Paperclip className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                      {expanded ? (
+                        <tr>
+                          <td colSpan={colSpan} className="bg-base-200/40">
+                            <div className="p-3 max-w-2xl">
+                              <AttachmentPanel entityType="change_order" entityId={co.id} />
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
