@@ -618,3 +618,18 @@ where p.role = 'project_manager'
   and p.email = 'pm@gcmanager.demo'
 on conflict (contract_id, user_id) do update
   set assignment_role = excluded.assignment_role;
+
+-- Optional FK so PostgREST can embed user_profiles on assignments
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'contract_assignments_user_profiles_fkey'
+  ) then
+    alter table public.contract_assignments
+      add constraint contract_assignments_user_profiles_fkey
+      foreign key (user_id) references public.user_profiles (id)
+      on delete cascade;
+  end if;
+exception when others then
+  raise notice 'skip contract_assignments_user_profiles_fkey: %', sqlerrm;
+end $$;
