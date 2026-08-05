@@ -1,17 +1,31 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
-import { Plus } from "lucide-react";
+import { Fragment, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { labelize, money } from "@/lib/metrics";
 import { canEnterCosts, canViewCosts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
-import type { CostCategory } from "@/lib/types";
+import type { CostCategory, CostEntry } from "@/lib/types";
 
 const CATEGORIES: CostCategory[] = ["labor", "materials", "subcontractor", "equipment", "permits", "other"];
+const CHART_COLORS = ["#ea580c", "#16a34a", "#0ea5e9", "#f59e0b", "#8b5cf6", "#ef4444", "#64748b"];
 
 const EMPTY_FORM = {
   contract_id: "",
@@ -22,12 +36,33 @@ const EMPTY_FORM = {
   notes: "",
 };
 
+type ViewMode = "by_job" | "by_category" | "matrix" | "entries";
 type SortKey = "date" | "category" | "contract" | "amount";
+
+function shortName(name: string, len = 18): string {
+  return name.length > len ? `${name.slice(0, len - 1)}…` : name;
+}
+
+function costMatchesFilters(
+  cost: CostEntry,
+  search: string,
+  categoryFilter: string,
+  jobFilter: string
+): boolean {
+  if (categoryFilter !== "all" && cost.category !== categoryFilter) return false;
+  if (jobFilter !== "all" && cost.contract_id !== jobFilter) return false;
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [cost.description, cost.contracts?.contract_name, cost.category ? labelize(cost.category) : null, cost.notes]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
+}
 
 export default function CostsPage() {
   const { effectiveRole, user } = useAuth();
-  const { contracts, costEntries, userProfiles, loading, error, refresh } =
-    useContractData();
+  const { contracts, costEntries, userProfiles, loading, error, refresh } = useContractData();
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -36,53 +71,146 @@ export default function CostsPage() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [jobFilter, setJobFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [viewMode, setViewMode] = useState<ViewMode>("by_job");
+  const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   const canEnter = canEnterCosts(effectiveRole);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const next = costEntries.filter((cost) => {
-      if (categoryFilter !== "all" && cost.category !== categoryFilter) return false;
-      if (!q) return true;
-      const haystack = [cost.description, cost.contracts?.contract_name, cost.category ? labelize(cost.category) : null]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
-    });
+  const scopedEntries = useMemo(
+    () => costEntries.filter((cost) => costMatchesFilters(cost, search, categoryFilter, jobFilter)),
+    [costEntries, search, categoryFilter, jobFilter]
+  );
 
-    return [...next].sort((a, b) => {
+  const filtered = useMemo(() => {
+    return [...scopedEntries].sort((a, b) => {
       if (sortKey === "date") return compareValues(a.date_incurred, b.date_incurred, sortDir);
       if (sortKey === "category") return compareValues(a.category, b.category, sortDir);
       if (sortKey === "contract") return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
       return compareValues(Number(a.amount ?? 0), Number(b.amount ?? 0), sortDir);
     });
-  }, [costEntries, search, categoryFilter, sortKey, sortDir]);
+  }, [scopedEntries, sortKey, sortDir]);
+
+  const grandTotal = scopedEntries.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
+
+  const byJob = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        contractId: string;
+        name: string;
+        total: number;
+        entryCount: number;
+        byCategory: Map<CostCategory, number>;
+        entries: CostEntry[];
+      }
+    >();
+
+    for (const cost of scopedEntries) {
+      const key = cost.contract_id;
+      const name = cost.contracts?.contract_name ?? "Unknown job";
+      const amount = Number(cost.amount ?? 0);
+      const category = (cost.category ?? "other") as CostCategory;
+      let row = map.get(key);
+      if (!row) {
+        row = {
+          contractId: key,
+          name,
+          total: 0,
+          entryCount: 0,
+          byCategory: new Map(),
+          entries: [],
+        };
+        map.set(key, row);
+      }
+      row.total += amount;
+      row.entryCount += 1;
+      row.byCategory.set(category, (row.byCategory.get(category) ?? 0) + amount);
+      row.entries.push(cost);
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [scopedEntries]);
 
   const byCategory = useMemo(() => {
-    const totals = new Map<string, number>();
-    for (const cost of costEntries) {
-      const key = cost.category ?? "other";
-      totals.set(key, (totals.get(key) ?? 0) + Number(cost.amount ?? 0));
-    }
-    return Array.from(totals.entries()).sort((a, b) => b[1] - a[1]);
-  }, [costEntries]);
+    const map = new Map<
+      string,
+      {
+        category: CostCategory;
+        total: number;
+        entryCount: number;
+        byJob: Map<string, { contractId: string; name: string; total: number }>;
+        entries: CostEntry[];
+      }
+    >();
 
-  const byContract = useMemo(() => {
-    const totals = new Map<string, { name: string; total: number }>();
-    for (const cost of costEntries) {
-      const key = cost.contract_id;
-      const name = cost.contracts?.contract_name ?? "Unknown";
-      const existing = totals.get(key);
-      if (existing) existing.total += Number(cost.amount ?? 0);
-      else totals.set(key, { name, total: Number(cost.amount ?? 0) });
-    }
-    return Array.from(totals.values()).sort((a, b) => b.total - a.total);
-  }, [costEntries]);
+    for (const cost of scopedEntries) {
+      const category = (cost.category ?? "other") as CostCategory;
+      const amount = Number(cost.amount ?? 0);
+      let row = map.get(category);
+      if (!row) {
+        row = {
+          category,
+          total: 0,
+          entryCount: 0,
+          byJob: new Map(),
+          entries: [],
+        };
+        map.set(category, row);
+      }
+      row.total += amount;
+      row.entryCount += 1;
+      row.entries.push(cost);
 
-  const grandTotal = costEntries.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
+      const jobKey = cost.contract_id;
+      const jobName = cost.contracts?.contract_name ?? "Unknown job";
+      const jobRow = row.byJob.get(jobKey);
+      if (jobRow) jobRow.total += amount;
+      else row.byJob.set(jobKey, { contractId: jobKey, name: jobName, total: amount });
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [scopedEntries]);
+
+  const matrixRows = useMemo(() => {
+    return byJob.map((job) => {
+      const cells = Object.fromEntries(
+        CATEGORIES.map((category) => [category, job.byCategory.get(category) ?? 0])
+      ) as Record<CostCategory, number>;
+      return { ...job, cells };
+    });
+  }, [byJob]);
+
+  const categoryChartData = byCategory.map((row) => ({
+    name: labelize(row.category),
+    total: row.total,
+  }));
+
+  const jobChartData = byJob.map((row) => ({
+    name: shortName(row.name),
+    total: row.total,
+  }));
+
+  const toggleJob = (id: string) => {
+    setExpandedJobs((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
 
   const updateField = <K extends keyof typeof EMPTY_FORM>(key: K, value: (typeof EMPTY_FORM)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -151,7 +279,7 @@ export default function CostsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Cost Tracker"
-        subtitle="Internal job costs across all projects."
+        subtitle="Track job costs by project and by category."
         actions={
           canEnter ? (
             <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
@@ -160,6 +288,37 @@ export default function CostsPage() {
           ) : undefined
         }
       />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard title="Total Costs" value={money(grandTotal)} hint={`${scopedEntries.length} entries`} />
+        <StatCard title="Jobs with Costs" value={String(byJob.length)} />
+        <StatCard title="Categories Used" value={String(byCategory.length)} />
+        <StatCard
+          title="Avg Cost / Job"
+          value={byJob.length > 0 ? money(grandTotal / byJob.length) : money(0)}
+        />
+      </div>
+
+      <div role="tablist" className="tabs tabs-boxed bg-base-100 border border-base-300 w-fit flex-wrap">
+        {(
+          [
+            ["by_job", "By Job"],
+            ["by_category", "By Category"],
+            ["matrix", "Job × Category"],
+            ["entries", "All Entries"],
+          ] as const
+        ).map(([mode, label]) => (
+          <button
+            key={mode}
+            type="button"
+            role="tab"
+            className={`tab ${viewMode === mode ? "tab-active" : ""}`}
+            onClick={() => setViewMode(mode)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <FilterSortBar
         search={search}
@@ -175,25 +334,44 @@ export default function CostsPage() {
         sortDir={sortDir}
         onSortKeyChange={(v) => setSortKey(v as SortKey)}
         onSortDirChange={setSortDir}
-        resultCount={filtered.length}
+        resultCount={scopedEntries.length}
         filters={
-          <label className="form-control w-full lg:w-44">
-            <span className="label py-1">
-              <span className="label-text text-xs opacity-70">Category</span>
-            </span>
-            <select
-              className="select select-bordered select-sm"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-            >
-              <option value="all">All categories</option>
-              {CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {labelize(category)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <>
+            <label className="form-control w-full lg:w-52">
+              <span className="label py-1">
+                <span className="label-text text-xs opacity-70">Job</span>
+              </span>
+              <select
+                className="select select-bordered select-sm"
+                value={jobFilter}
+                onChange={(e) => setJobFilter(e.target.value)}
+              >
+                <option value="all">All jobs</option>
+                {contracts.map((contract) => (
+                  <option key={contract.id} value={contract.id}>
+                    {contract.contract_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-control w-full lg:w-44">
+              <span className="label py-1">
+                <span className="label-text text-xs opacity-70">Category</span>
+              </span>
+              <select
+                className="select select-bordered select-sm"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="all">All categories</option>
+                {CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {labelize(category)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
         }
       />
 
@@ -276,79 +454,259 @@ export default function CostsPage() {
         </SectionCard>
       ) : null}
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <SectionCard title="Costs by Category">
-          {byCategory.length === 0 ? (
-            <p className="text-sm opacity-60 py-6 text-center">No cost entries yet.</p>
-          ) : (
+      {scopedEntries.length === 0 ? (
+        <EmptyState
+          title={costEntries.length === 0 ? "No cost entries" : "No matching costs"}
+          message={
+            costEntries.length === 0
+              ? "Log your first cost entry to start tracking job costs by project and category."
+              : "Try adjusting your search or filters."
+          }
+        />
+      ) : null}
+
+      {scopedEntries.length > 0 && viewMode === "by_job" ? (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <SectionCard title={`Costs by Job (${byJob.length})`}>
             <div className="overflow-x-auto">
               <table className="table table-sm">
                 <thead>
                   <tr>
-                    <th>Category</th>
+                    <th className="w-8" />
+                    <th>Job</th>
+                    <th className="text-right">Entries</th>
                     <th className="text-right">Total</th>
                     <th className="text-right">% of Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {byCategory.map(([category, total]) => (
-                    <tr key={category}>
-                      <td>{labelize(category)}</td>
-                      <td className="text-right">{money(total)}</td>
-                      <td className="text-right">{grandTotal > 0 ? `${((total / grandTotal) * 100).toFixed(1)}%` : "—"}</td>
-                    </tr>
-                  ))}
+                  {byJob.map((job) => {
+                    const open = expandedJobs.has(job.contractId);
+                    const categoryRows = Array.from(job.byCategory.entries()).sort((a, b) => b[1] - a[1]);
+                    return (
+                      <Fragment key={job.contractId}>
+                        <tr className="hover cursor-pointer" onClick={() => toggleJob(job.contractId)}>
+                          <td>
+                            {open ? (
+                              <ChevronDown className="h-4 w-4 opacity-60" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 opacity-60" />
+                            )}
+                          </td>
+                          <td>
+                            <Link
+                              href={`/contracts/${job.contractId}`}
+                              className="link link-primary font-medium"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {job.name}
+                            </Link>
+                          </td>
+                          <td className="text-right">{job.entryCount}</td>
+                          <td className="text-right font-medium">{money(job.total)}</td>
+                          <td className="text-right">
+                            {grandTotal > 0 ? `${((job.total / grandTotal) * 100).toFixed(1)}%` : "—"}
+                          </td>
+                        </tr>
+                        {open
+                          ? categoryRows.map(([category, total]) => (
+                              <tr key={`${job.contractId}-${category}`} className="bg-base-200/40">
+                                <td />
+                                <td className="pl-8 text-sm opacity-80">{labelize(category)}</td>
+                                <td />
+                                <td className="text-right text-sm">{money(total)}</td>
+                                <td className="text-right text-sm">
+                                  {job.total > 0 ? `${((total / job.total) * 100).toFixed(1)}%` : "—"}
+                                </td>
+                              </tr>
+                            ))
+                          : null}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="font-semibold">
+                    <td />
                     <td>Total</td>
+                    <td className="text-right">{scopedEntries.length}</td>
                     <td className="text-right">{money(grandTotal)}</td>
                     <td className="text-right">100%</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
-          )}
-        </SectionCard>
+          </SectionCard>
 
-        <SectionCard title="Costs by Contract">
-          {byContract.length === 0 ? (
-            <p className="text-sm opacity-60 py-6 text-center">No cost entries yet.</p>
-          ) : (
+          <SectionCard title="Job Cost Chart">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={jobChartData} margin={{ top: 8, right: 8, left: 8, bottom: 48 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" height={60} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={72} />
+                  <Tooltip formatter={(value) => money(Number(value))} />
+                  <Bar dataKey="total" fill="#ea580c" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {scopedEntries.length > 0 && viewMode === "by_category" ? (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <SectionCard title={`Costs by Category (${byCategory.length})`}>
             <div className="overflow-x-auto">
               <table className="table table-sm">
                 <thead>
                   <tr>
-                    <th>Project</th>
+                    <th className="w-8" />
+                    <th>Category</th>
+                    <th className="text-right">Entries</th>
                     <th className="text-right">Total</th>
+                    <th className="text-right">% of Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {byContract.map((row) => (
-                    <tr key={row.name}>
-                      <td>{row.name}</td>
-                      <td className="text-right">{money(row.total)}</td>
-                    </tr>
-                  ))}
+                  {byCategory.map((row) => {
+                    const open = expandedCategories.has(row.category);
+                    const jobRows = Array.from(row.byJob.values()).sort((a, b) => b.total - a.total);
+                    return (
+                      <Fragment key={row.category}>
+                        <tr className="hover cursor-pointer" onClick={() => toggleCategory(row.category)}>
+                          <td>
+                            {open ? (
+                              <ChevronDown className="h-4 w-4 opacity-60" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 opacity-60" />
+                            )}
+                          </td>
+                          <td className="font-medium">{labelize(row.category)}</td>
+                          <td className="text-right">{row.entryCount}</td>
+                          <td className="text-right font-medium">{money(row.total)}</td>
+                          <td className="text-right">
+                            {grandTotal > 0 ? `${((row.total / grandTotal) * 100).toFixed(1)}%` : "—"}
+                          </td>
+                        </tr>
+                        {open
+                          ? jobRows.map((job) => (
+                              <tr key={`${row.category}-${job.contractId}`} className="bg-base-200/40">
+                                <td />
+                                <td className="pl-8 text-sm">
+                                  <Link href={`/contracts/${job.contractId}`} className="link link-primary">
+                                    {job.name}
+                                  </Link>
+                                </td>
+                                <td />
+                                <td className="text-right text-sm">{money(job.total)}</td>
+                                <td className="text-right text-sm">
+                                  {row.total > 0 ? `${((job.total / row.total) * 100).toFixed(1)}%` : "—"}
+                                </td>
+                              </tr>
+                            ))
+                          : null}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
+                <tfoot>
+                  <tr className="font-semibold">
+                    <td />
+                    <td>Total</td>
+                    <td className="text-right">{scopedEntries.length}</td>
+                    <td className="text-right">{money(grandTotal)}</td>
+                    <td className="text-right">100%</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
-          )}
-        </SectionCard>
-      </div>
+          </SectionCard>
 
-      {costEntries.length === 0 ? (
-        <EmptyState title="No cost entries" message="Log your first cost entry to start tracking job costs." />
-      ) : filtered.length === 0 ? (
-        <EmptyState title="No cost entries found" message="Try adjusting your search or filters." />
-      ) : (
+          <SectionCard title="Category Mix">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={categoryChartData}
+                    dataKey="total"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={95}
+                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                  >
+                    {categoryChartData.map((entry, index) => (
+                      <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => money(Number(value))} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {scopedEntries.length > 0 && viewMode === "matrix" ? (
+        <SectionCard title="Job × Category Matrix">
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Job</th>
+                  {CATEGORIES.map((category) => (
+                    <th key={category} className="text-right whitespace-nowrap">
+                      {labelize(category)}
+                    </th>
+                  ))}
+                  <th className="text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matrixRows.map((job) => (
+                  <tr key={job.contractId} className="hover">
+                    <td>
+                      <Link href={`/contracts/${job.contractId}`} className="link link-primary font-medium">
+                        {job.name}
+                      </Link>
+                    </td>
+                    {CATEGORIES.map((category) => (
+                      <td key={category} className="text-right whitespace-nowrap">
+                        {job.cells[category] > 0 ? money(job.cells[category]) : "—"}
+                      </td>
+                    ))}
+                    <td className="text-right font-medium">{money(job.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="font-semibold">
+                  <td>Total</td>
+                  {CATEGORIES.map((category) => {
+                    const total = byCategory.find((c) => c.category === category)?.total ?? 0;
+                    return (
+                      <td key={category} className="text-right whitespace-nowrap">
+                        {total > 0 ? money(total) : "—"}
+                      </td>
+                    );
+                  })}
+                  <td className="text-right">{money(grandTotal)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {scopedEntries.length > 0 && viewMode === "entries" ? (
         <SectionCard title={`All Cost Entries (${filtered.length})`}>
           <div className="overflow-x-auto">
             <table className="table table-sm">
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Project</th>
+                  <th>Job</th>
                   <th>Category</th>
                   <th>Description</th>
                   <th>Submitted By</th>
@@ -357,9 +715,13 @@ export default function CostsPage() {
               </thead>
               <tbody>
                 {filtered.map((cost) => (
-                  <tr key={cost.id}>
+                  <tr key={cost.id} className="hover">
                     <td className="whitespace-nowrap">{cost.date_incurred ?? "—"}</td>
-                    <td>{cost.contracts?.contract_name ?? "—"}</td>
+                    <td>
+                      <Link href={`/contracts/${cost.contract_id}`} className="link link-primary">
+                        {cost.contracts?.contract_name ?? "—"}
+                      </Link>
+                    </td>
                     <td>{labelize(cost.category)}</td>
                     <td className="max-w-xs truncate">{cost.description ?? "—"}</td>
                     <td>
@@ -374,7 +736,7 @@ export default function CostsPage() {
             </table>
           </div>
         </SectionCard>
-      )}
+      ) : null}
     </div>
   );
 }
