@@ -20,49 +20,189 @@ export const COMPANY_ROLES: UserRole[] = [
 
 export const ALL_ROLES: UserRole[] = ["admin", ...COMPANY_ROLES];
 
-export function canManageCompany(role: UserRole): boolean {
-  return role === "owner";
+export type PermissionKey =
+  | "manageCompany"
+  | "manageRoles"
+  | "manageContracts"
+  | "manageInvoices"
+  | "recordPayments"
+  | "manageChangeOrders"
+  | "approveChangeOrders"
+  | "manageSubcontractors"
+  | "enterCosts"
+  | "createFieldLogs"
+  | "manageFieldLogEntries"
+  | "viewCosts"
+  | "viewReports"
+  | "viewAuditLog"
+  | "viewInvoices"
+  | "viewContractFinancials"
+  | "viewChangeOrders"
+  | "viewSubcontractors"
+  | "viewFieldLogs";
+
+type RolePermissions = Record<PermissionKey, boolean>;
+
+const FULL_ACCESS: RolePermissions = {
+  manageCompany: true,
+  manageRoles: true,
+  manageContracts: true,
+  manageInvoices: true,
+  recordPayments: true,
+  manageChangeOrders: true,
+  approveChangeOrders: true,
+  manageSubcontractors: true,
+  enterCosts: true,
+  createFieldLogs: true,
+  manageFieldLogEntries: true,
+  viewCosts: true,
+  viewReports: true,
+  viewAuditLog: true,
+  viewInvoices: true,
+  viewContractFinancials: true,
+  viewChangeOrders: true,
+  viewSubcontractors: true,
+  viewFieldLogs: true,
+};
+
+/**
+ * Application permission matrix.
+ *
+ * Row-level access (assigned projects, own subcontract, own field logs, and
+ * client-owned records) must also be enforced by queries and Supabase RLS.
+ */
+export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
+  admin: { ...FULL_ACCESS },
+  owner: { ...FULL_ACCESS },
+  project_manager: {
+    manageCompany: false,
+    manageRoles: false,
+    manageContracts: true,
+    manageInvoices: true,
+    recordPayments: true,
+    manageChangeOrders: true,
+    approveChangeOrders: true,
+    manageSubcontractors: true,
+    enterCosts: true,
+    createFieldLogs: true,
+    manageFieldLogEntries: true,
+    viewCosts: true,
+    viewReports: true,
+    viewAuditLog: false,
+    viewInvoices: true,
+    viewContractFinancials: true,
+    viewChangeOrders: true,
+    viewSubcontractors: true,
+    viewFieldLogs: true,
+  },
+  field_supervisor: {
+    manageCompany: false,
+    manageRoles: false,
+    manageContracts: false,
+    manageInvoices: false,
+    recordPayments: false,
+    manageChangeOrders: false,
+    approveChangeOrders: false,
+    manageSubcontractors: false,
+    enterCosts: true,
+    createFieldLogs: true,
+    manageFieldLogEntries: true,
+    viewCosts: true,
+    viewReports: false,
+    viewAuditLog: false,
+    viewInvoices: false,
+    viewContractFinancials: false,
+    viewChangeOrders: true,
+    viewSubcontractors: false,
+    viewFieldLogs: true,
+  },
+  subcontractor: {
+    manageCompany: false,
+    manageRoles: false,
+    manageContracts: false,
+    manageInvoices: false,
+    recordPayments: false,
+    manageChangeOrders: false,
+    approveChangeOrders: false,
+    manageSubcontractors: false,
+    enterCosts: true,
+    createFieldLogs: true,
+    manageFieldLogEntries: true,
+    viewCosts: false,
+    viewReports: false,
+    viewAuditLog: false,
+    viewInvoices: false,
+    viewContractFinancials: false,
+    viewChangeOrders: true,
+    viewSubcontractors: true,
+    viewFieldLogs: true,
+  },
+  client: {
+    manageCompany: false,
+    manageRoles: false,
+    manageContracts: false,
+    manageInvoices: false,
+    recordPayments: false,
+    manageChangeOrders: false,
+    approveChangeOrders: false,
+    manageSubcontractors: false,
+    enterCosts: false,
+    createFieldLogs: false,
+    manageFieldLogEntries: false,
+    viewCosts: false,
+    viewReports: false,
+    viewAuditLog: false,
+    viewInvoices: true,
+    viewContractFinancials: false,
+    viewChangeOrders: true,
+    viewSubcontractors: false,
+    viewFieldLogs: false,
+  },
+};
+
+export function hasPermission(role: UserRole, permission: PermissionKey): boolean {
+  return ROLE_PERMISSIONS[role][permission];
 }
 
-/** Internal team tools (role switcher targets, /admin/roles). */
+export function canManageCompany(role: UserRole): boolean {
+  return hasPermission(role, "manageCompany");
+}
+
+/** Role administration and internal role tools. */
 export function canManageRoles(role: UserRole): boolean {
-  return role === "admin";
+  return hasPermission(role, "manageRoles");
 }
 
 export function canManageContracts(role: UserRole): boolean {
-  return role === "admin" || role === "owner" || role === "project_manager";
+  return hasPermission(role, "manageContracts");
 }
 
 export function canCreateInvoices(role: UserRole): boolean {
-  return role === "admin" || role === "owner" || role === "project_manager";
+  return hasPermission(role, "manageInvoices");
+}
+
+export function canRecordPayments(role: UserRole): boolean {
+  return hasPermission(role, "recordPayments");
 }
 
 export function canCreateChangeOrders(role: UserRole): boolean {
-  return role === "admin" || role === "owner" || role === "project_manager";
+  return hasPermission(role, "manageChangeOrders");
+}
+
+export function canApproveChangeOrders(role: UserRole): boolean {
+  return hasPermission(role, "approveChangeOrders");
 }
 
 export function canManageSubcontractors(role: UserRole): boolean {
-  return role === "admin" || role === "owner" || role === "project_manager";
+  return hasPermission(role, "manageSubcontractors");
 }
 
 export function canEnterCosts(role: UserRole): boolean {
-  return (
-    role === "admin" ||
-    role === "owner" ||
-    role === "project_manager" ||
-    role === "field_supervisor" ||
-    role === "subcontractor"
-  );
+  return hasPermission(role, "enterCosts");
 }
 
 export function canCreateFieldLogs(role: UserRole): boolean {
-  return (
-    role === "admin" ||
-    role === "owner" ||
-    role === "project_manager" ||
-    role === "field_supervisor" ||
-    role === "subcontractor"
-  );
+  return hasPermission(role, "createFieldLogs");
 }
 
 /** Cancel/delete contracts — same as manage. */
@@ -70,26 +210,26 @@ export function canCancelOrDeleteContracts(role: UserRole): boolean {
   return canManageContracts(role);
 }
 
-/** Cancel/delete field logs — creators and managers. */
+/** Row ownership and project assignment must also be checked by RLS. */
 export function canManageFieldLogEntries(role: UserRole): boolean {
-  return canCreateFieldLogs(role);
+  return hasPermission(role, "manageFieldLogEntries");
 }
 
 export function canViewCosts(role: UserRole): boolean {
-  return role !== "client" && role !== "subcontractor";
+  return hasPermission(role, "viewCosts");
 }
 
 export function canViewReports(role: UserRole): boolean {
-  return role === "admin" || role === "owner" || role === "project_manager";
+  return hasPermission(role, "viewReports");
 }
 
-/** Full system audit log — internal admin only. */
+/** Full system audit log — Admin and Owner only. */
 export function canViewAuditLog(role: UserRole): boolean {
-  return role === "admin";
+  return hasPermission(role, "viewAuditLog");
 }
 
 export function canViewInvoices(role: UserRole): boolean {
-  return role !== "subcontractor" && role !== "field_supervisor";
+  return hasPermission(role, "viewInvoices");
 }
 
 export function canViewFinance(role: UserRole): boolean {
@@ -97,7 +237,19 @@ export function canViewFinance(role: UserRole): boolean {
 }
 
 export function canViewContractFinancials(role: UserRole): boolean {
-  return role !== "subcontractor" && role !== "client";
+  return hasPermission(role, "viewContractFinancials");
+}
+
+export function canViewChangeOrders(role: UserRole): boolean {
+  return hasPermission(role, "viewChangeOrders");
+}
+
+export function canViewSubcontractors(role: UserRole): boolean {
+  return hasPermission(role, "viewSubcontractors");
+}
+
+export function canViewFieldLogs(role: UserRole): boolean {
+  return hasPermission(role, "viewFieldLogs");
 }
 
 export type NavCategoryId =
@@ -163,20 +315,20 @@ export function secondaryNavForCategory(
         },
         { href: "/contracts", label: "All Contracts", show: true },
         { href: "/contracts/new", label: "Add Contract", show: canManageContracts(role) },
-        { href: "/change-orders", label: "Change Orders", show: true },
+        {
+          href: "/change-orders",
+          label: "Change Orders",
+          show: canViewChangeOrders(role),
+        },
         {
           href: "/subcontractors",
           label: "Subcontractors",
-          show:
-            role === "admin" ||
-            role === "owner" ||
-            role === "project_manager" ||
-            role === "subcontractor",
+          show: canViewSubcontractors(role),
         },
         {
           href: "/field-logs",
           label: "Field Logs",
-          show: role !== "client",
+          show: canViewFieldLogs(role),
         },
       ] as Array<NavItem & { show: boolean }>
     )
