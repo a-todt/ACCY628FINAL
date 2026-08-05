@@ -6,6 +6,7 @@ import { HardHat, LogOut, Menu, UserCog } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { AlertsBell } from "@/components/AlertsBell";
 import { AccessGate } from "@/components/AccessGate";
 import { useAccessStatus } from "@/hooks/useAccessStatus";
 import {
@@ -120,6 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="hidden sm:inline">Roles</span>
             </Link>
           ) : null}
+          {!locked ? <AlertsBell /> : null}
           <RoleSwitcher />
           <ThemeSelector compact />
           <button className="btn btn-ghost btn-sm" onClick={onLogout} title="Log out">

@@ -31,6 +31,7 @@ Supabase MCP was unavailable during setup, so apply SQL manually:
 1. Open [Supabase SQL Editor](https://supabase.com/dashboard/project/cetchmtjuvdaqfdbvfva/sql)
 2. Paste and run `supabase/FULL_SETUP.sql` (schema + RLS + seed)
    - Or run `supabase/migrations/20260804180000_gc_contract_manager.sql` then `supabase/seed.sql`
+3. For file attachments, also run [`supabase/migrations/20260805200000_attachments_and_storage.sql`](supabase/migrations/20260805200000_attachments_and_storage.sql). That creates the `attachments` table, RLS, and a private Storage bucket named `attachments`. If the bucket insert fails, create a **private** bucket named `attachments` in Supabase → Storage and re-run the policy statements from that migration.
 
 ### 3. Run locally
 
@@ -68,6 +69,9 @@ That seeds contracts and related demo data and confirms roles.
 
 - Role-based dashboards and navigation
 - Contracts, change orders, subcontractors, costs, invoices/payments, field logs
-- Reports (admin / PM)
+- Reports (admin / PM) with CSV / PDF export
+- Finance overview CSV / PDF export
+- Role-aware Alerts inbox (invoices, insurance, weather, change orders)
+- File attachments on field logs and invoices (Supabase Storage)
 - Theme selector (daisyUI)
 - Demo role switcher in the header (preview only)

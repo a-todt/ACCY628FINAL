@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
-import { Ban, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState, type FormEvent, Fragment } from "react";
+import { Ban, Paperclip, Plus, Trash2 } from "lucide-react";
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
+import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
@@ -50,6 +51,7 @@ export default function FieldLogsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [logRefreshKey, setLogRefreshKey] = useState(0);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -131,8 +133,10 @@ export default function FieldLogsPage() {
         log_date: payload.log_date,
       });
 
-      setSuccess("Field log submitted successfully.");
+      setSuccess("Field log submitted successfully. You can attach files below.");
       setForm(EMPTY_FORM);
+      setShowForm(false);
+      if (data?.id) setExpandedLogId(data.id);
       setLogRefreshKey((k) => k + 1);
       await refresh();
     } catch (err) {
@@ -408,14 +412,17 @@ export default function FieldLogsPage() {
                   <th>Weather</th>
                   <th>Status</th>
                   <th>Issues</th>
+                  <th className="text-right">Files</th>
                   {canManage ? <th className="text-right">Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((log) => {
                   const status = log.status ?? "active";
+                  const expanded = expandedLogId === log.id;
                   return (
-                    <tr key={log.id} className={status === "canceled" ? "opacity-60" : undefined}>
+                    <Fragment key={log.id}>
+                    <tr className={status === "canceled" ? "opacity-60" : undefined}>
                       <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
                       <td>{log.contracts?.contract_name ?? "—"}</td>
                       <td>
@@ -435,6 +442,16 @@ export default function FieldLogsPage() {
                         </span>
                       </td>
                       <td className="max-w-xs truncate">{log.issues_or_delays ?? "—"}</td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          className={`btn btn-ghost btn-xs ${expanded ? "btn-active" : ""}`}
+                          title="Attachments"
+                          onClick={() => setExpandedLogId(expanded ? null : log.id)}
+                        >
+                          <Paperclip className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
                       {canManage ? (
                         <td className="text-right">
                           {canActOnLog(log) ? (
@@ -464,6 +481,16 @@ export default function FieldLogsPage() {
                         </td>
                       ) : null}
                     </tr>
+                    {expanded ? (
+                      <tr>
+                        <td colSpan={canManage ? 11 : 10} className="bg-base-200/40">
+                          <div className="p-3 max-w-2xl">
+                            <AttachmentPanel entityType="field_log" entityId={log.id} />
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>

@@ -95,7 +95,7 @@ export function canViewContractFinancials(role: UserRole): boolean {
   return role !== "subcontractor" && role !== "client";
 }
 
-export type NavCategoryId = "dashboard" | "reports" | "contracts" | "finance" | "management";
+export type NavCategoryId = "dashboard" | "alerts" | "reports" | "contracts" | "finance" | "management";
 
 export interface NavItem {
   href: string;
@@ -106,6 +106,7 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
   return (
     [
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
+      { id: "alerts" as const, href: "/alerts", label: "Alerts", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
       {
         id: "contracts" as const,
@@ -195,6 +196,7 @@ export function secondaryNavForCategory(
 
 export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (pathname.startsWith("/dashboard")) return "dashboard";
+  if (pathname.startsWith("/alerts")) return "alerts";
   if (pathname.startsWith("/reports")) return "reports";
   if (pathname.startsWith("/admin")) return "reports";
   if (pathname.startsWith("/management")) return "management";
