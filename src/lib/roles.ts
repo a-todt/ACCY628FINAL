@@ -83,11 +83,6 @@ export function canViewReports(role: UserRole): boolean {
   return role === "admin" || role === "owner" || role === "project_manager";
 }
 
-/** Full system audit log — internal admin only. */
-export function canViewAuditLog(role: UserRole): boolean {
-  return role === "admin";
-}
-
 export function canViewInvoices(role: UserRole): boolean {
   return role !== "subcontractor" && role !== "field_supervisor";
 }
@@ -100,14 +95,7 @@ export function canViewContractFinancials(role: UserRole): boolean {
   return role !== "subcontractor" && role !== "client";
 }
 
-export type NavCategoryId =
-  | "dashboard"
-  | "alerts"
-  | "reports"
-  | "contracts"
-  | "finance"
-  | "audit"
-  | "management";
+export type NavCategoryId = "dashboard" | "alerts" | "reports" | "contracts" | "finance" | "management";
 
 export interface NavItem {
   href: string;
@@ -130,12 +118,6 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
         href: "/finance",
         label: "Costing and Invoicing",
         show: canViewFinance(role),
-      },
-      {
-        id: "audit" as const,
-        href: "/audit-log",
-        label: "Audit Log",
-        show: canViewAuditLog(role),
       },
       {
         id: "management" as const,
@@ -216,7 +198,6 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (pathname.startsWith("/alerts")) return "alerts";
   if (pathname.startsWith("/reports")) return "reports";
   if (pathname.startsWith("/admin")) return "reports";
-  if (pathname.startsWith("/audit-log")) return "audit";
   if (pathname.startsWith("/management")) return "management";
   if (
     pathname.startsWith("/contracts") ||
