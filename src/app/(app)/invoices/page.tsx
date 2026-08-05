@@ -2,16 +2,25 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ChevronRight, Plus, Receipt } from "lucide-react";
+import { Building2, ChevronDown, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
+import {
+  ColumnAutocompleteHeader,
+  ColumnSortHeader,
+  matchesColumnFilter,
+  uniqueSorted,
+  type ColumnSortDir,
+} from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
-import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
+import { compareValues } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { writeAuditLog } from "@/lib/audit";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { canCreateInvoices, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
+
+const STATUS_OPTIONS: InvoiceStatus[] = ["unpaid", "partially_paid", "paid", "overdue"];
 
 const EMPTY_INVOICE_FORM = {
   contract_id: "",
@@ -34,7 +43,14 @@ const EMPTY_PAYMENT_FORM = {
 };
 
 function isOverdue(invoice: Invoice): boolean {
-  return (invoice.status === "unpaid" || invoice.status === "partially_paid") && daysPastDue(invoice.due_date) > 0;
+  return (
+    (invoice.status === "unpaid" || invoice.status === "partially_paid") &&
+    daysPastDue(invoice.due_date) > 0
+  );
+}
+
+function displayStatus(invoice: Invoice): InvoiceStatus | "overdue" {
+  return isOverdue(invoice) ? "overdue" : invoice.status;
 }
 
 function nextInvoiceStatus(amountPaid: number, netAmountDue: number): InvoiceStatus {
@@ -50,10 +66,10 @@ function invoiceBalance(invoice: Invoice): number {
 type SortKey = "number" | "contract" | "date" | "due" | "amount" | "status" | "balance";
 
 export default function InvoicesPage() {
-  const router = useRouter();
   const { effectiveRole } = useAuth();
   const { contracts, invoices, loading, error, refresh } = useContractData();
   const canManage = canCreateInvoices(effectiveRole);
+  const canMutate = canManage;
 
   const [invoiceForm, setInvoiceForm] = useState(EMPTY_INVOICE_FORM);
   const [paymentForm, setPaymentForm] = useState(EMPTY_PAYMENT_FORM);
@@ -65,46 +81,57 @@ export default function InvoicesPage() {
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [numberFilter, setNumberFilter] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("date");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sortDir, setSortDir] = useState<ColumnSortDir>("desc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
     const next = invoices.filter((invoice) => {
-      const overdue = isOverdue(invoice);
-      if (statusFilter === "overdue") {
-        if (!overdue) return false;
-      } else if (statusFilter !== "all" && invoice.status !== statusFilter) {
-        return false;
-      }
-      if (!q) return true;
-      const haystack = [
-        invoice.invoice_number,
-        invoice.contracts?.contract_name,
-        invoice.contracts?.client_name,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
+      if (!matchesColumnFilter(invoice.invoice_number, numberFilter)) return false;
+      if (!matchesColumnFilter(invoice.contracts?.contract_name, projectFilter)) return false;
+      return true;
     });
 
     return [...next].sort((a, b) => {
       if (sortKey === "number") return compareValues(a.invoice_number, b.invoice_number, sortDir);
-      if (sortKey === "contract") return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
+      if (sortKey === "contract") {
+        return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
+      }
       if (sortKey === "date") return compareValues(a.invoice_date, b.invoice_date, sortDir);
       if (sortKey === "due") return compareValues(a.due_date, b.due_date, sortDir);
-      if (sortKey === "amount") return compareValues(Number(a.invoice_amount ?? 0), Number(b.invoice_amount ?? 0), sortDir);
+      if (sortKey === "amount") {
+        return compareValues(Number(a.invoice_amount ?? 0), Number(b.invoice_amount ?? 0), sortDir);
+      }
       if (sortKey === "status") {
-        const aStatus = isOverdue(a) ? "overdue" : a.status;
-        const bStatus = isOverdue(b) ? "overdue" : b.status;
-        return compareValues(aStatus, bStatus, sortDir);
+        return compareValues(displayStatus(a), displayStatus(b), sortDir);
       }
       return compareValues(invoiceBalance(a), invoiceBalance(b), sortDir);
     });
-  }, [invoices, search, statusFilter, sortKey, sortDir]);
+  }, [invoices, numberFilter, projectFilter, sortKey, sortDir]);
+
+  const numberOptions = useMemo(
+    () => uniqueSorted(invoices.map((invoice) => invoice.invoice_number)),
+    [invoices]
+  );
+
+  const projectOptions = useMemo(
+    () => uniqueSorted(invoices.map((invoice) => invoice.contracts?.contract_name)),
+    [invoices]
+  );
+
+  const selectedRows = useMemo(
+    () => filtered.filter((invoice) => selectedIds.has(invoice.id)),
+    [filtered, selectedIds]
+  );
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((invoice) => selectedIds.has(invoice.id));
 
   const invoiceAmountNum = Number(invoiceForm.invoice_amount || 0);
   const retainagePercentNum = Number(invoiceForm.retainage_percent || 0);
@@ -115,6 +142,39 @@ export default function InvoicesPage() {
     () => invoices.find((i) => i.id === paymentForm.invoice_id),
     [invoices, paymentForm.invoice_id]
   );
+
+  const onSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedIds((prev) => {
+      if (allFilteredSelected) {
+        const next = new Set(prev);
+        for (const invoice of filtered) next.delete(invoice.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const invoice of filtered) next.add(invoice.id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
 
   const updateInvoiceField = <K extends keyof typeof EMPTY_INVOICE_FORM>(
     key: K,
@@ -135,8 +195,120 @@ export default function InvoicesPage() {
     setInvoiceForm((prev) => ({
       ...prev,
       contract_id: contractId,
-      retainage_percent: contract?.retainage_percent != null ? String(contract.retainage_percent) : prev.retainage_percent,
+      retainage_percent:
+        contract?.retainage_percent != null ? String(contract.retainage_percent) : prev.retainage_percent,
     }));
+  };
+
+  const setInvoiceStatus = async (
+    invoice: Invoice,
+    status: InvoiceStatus,
+    { silent = false } = {}
+  ) => {
+    if (invoice.status === status) return;
+    setActionError(null);
+    setActionSuccess(null);
+    setBusyId(invoice.id);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("invoices")
+        .update({ status })
+        .eq("id", invoice.id);
+      if (updateError) throw updateError;
+      await writeAuditLog("invoice_status_changed", "invoice", invoice.id, {
+        invoice_number: invoice.invoice_number,
+        contract_name: invoice.contracts?.contract_name,
+        from_status: invoice.status,
+        to_status: status,
+      });
+      if (!silent) {
+        setActionSuccess(
+          `Updated ${invoice.invoice_number || "invoice"} to ${labelize(status)}.`
+        );
+        await refresh();
+      }
+    } catch (err) {
+      throw err instanceof Error ? err : new Error("Failed to update status.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteInvoice = async (invoice: Invoice, { silent = false } = {}) => {
+    if (
+      !silent &&
+      !window.confirm(
+        `Permanently delete invoice "${invoice.invoice_number || invoice.id}"? Related payments may also be affected. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+    setBusyId(invoice.id);
+    try {
+      const supabase = createClient();
+      const { error: deleteError } = await supabase.from("invoices").delete().eq("id", invoice.id);
+      if (deleteError) throw deleteError;
+      await writeAuditLog("invoice_deleted", "invoice", invoice.id, {
+        invoice_number: invoice.invoice_number,
+        contract_name: invoice.contracts?.contract_name,
+        from_status: invoice.status,
+      });
+      if (!silent) {
+        setActionSuccess(`Deleted ${invoice.invoice_number || "invoice"}.`);
+        await refresh();
+      }
+    } catch (err) {
+      throw err instanceof Error ? err : new Error("Failed to delete invoice.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const runBulk = async (action: "delete" | InvoiceStatus) => {
+    if (selectedRows.length === 0 || !canMutate) return;
+
+    if (action === "delete") {
+      if (
+        !window.confirm(
+          `Permanently delete ${selectedRows.length} invoice${selectedRows.length === 1 ? "" : "s"}? This cannot be undone.`
+        )
+      ) {
+        return;
+      }
+    } else if (
+      !window.confirm(
+        `Set status to "${labelize(action)}" for ${selectedRows.length} invoice${selectedRows.length === 1 ? "" : "s"}?`
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      for (const invoice of selectedRows) {
+        if (action === "delete") {
+          await deleteInvoice(invoice, { silent: true });
+        } else {
+          await setInvoiceStatus(invoice, action, { silent: true });
+        }
+      }
+      const label =
+        action === "delete" ? "Deleted" : `Updated status to ${labelize(action)} for`;
+      setActionSuccess(
+        `${label} ${selectedRows.length} invoice${selectedRows.length === 1 ? "" : "s"}.`
+      );
+      clearSelection();
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Bulk action failed.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onSubmitInvoice = async (e: FormEvent) => {
@@ -152,21 +324,31 @@ export default function InvoicesPage() {
     setSavingInvoice(true);
     try {
       const supabase = createClient();
-      const { error: insertError } = await supabase.from("invoices").insert({
-        contract_id: invoiceForm.contract_id,
-        invoice_number: invoiceForm.invoice_number.trim() || null,
-        invoice_date: invoiceForm.invoice_date || null,
-        due_date: invoiceForm.due_date || null,
-        description: invoiceForm.description.trim() || null,
-        invoice_amount: invoiceAmountNum,
-        retainage_percent: retainagePercentNum,
-        retainage_amount: computedRetainageAmount,
-        net_amount_due: computedNetAmountDue,
-        amount_paid: 0,
-        status: "unpaid",
-        notes: invoiceForm.notes.trim() || null,
-      });
+      const { data, error: insertError } = await supabase
+        .from("invoices")
+        .insert({
+          contract_id: invoiceForm.contract_id,
+          invoice_number: invoiceForm.invoice_number.trim() || null,
+          invoice_date: invoiceForm.invoice_date || null,
+          due_date: invoiceForm.due_date || null,
+          description: invoiceForm.description.trim() || null,
+          invoice_amount: invoiceAmountNum,
+          retainage_percent: retainagePercentNum,
+          retainage_amount: computedRetainageAmount,
+          net_amount_due: computedNetAmountDue,
+          amount_paid: 0,
+          status: "unpaid",
+          notes: invoiceForm.notes.trim() || null,
+        })
+        .select("id")
+        .single();
       if (insertError) throw insertError;
+
+      await writeAuditLog("invoice_created", "invoice", data?.id, {
+        invoice_number: invoiceForm.invoice_number.trim() || null,
+        contract_id: invoiceForm.contract_id,
+        status: "unpaid",
+      });
 
       setInvoiceSuccess("Invoice created successfully.");
       setInvoiceForm(EMPTY_INVOICE_FORM);
@@ -208,7 +390,9 @@ export default function InvoicesPage() {
       if (paymentInsertError) throw paymentInsertError;
 
       const newAmountPaid = Number(selectedInvoice.amount_paid ?? 0) + paymentAmount;
-      const netAmountDue = Number(selectedInvoice.net_amount_due ?? selectedInvoice.invoice_amount ?? 0);
+      const netAmountDue = Number(
+        selectedInvoice.net_amount_due ?? selectedInvoice.invoice_amount ?? 0
+      );
       const newStatus = nextInvoiceStatus(newAmountPaid, netAmountDue);
 
       const { error: updateError } = await supabase
@@ -239,65 +423,74 @@ export default function InvoicesPage() {
     return <AlertBanner type="error">{error}</AlertBanner>;
   }
 
+  const colCount = 9 + (canMutate ? 2 : 0);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Invoices"
         subtitle="Billing and payment status across all projects."
         actions={
-          canManage ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="btn btn-outline btn-sm"
-                onClick={() => setShowPaymentForm((v) => !v)}
-              >
-                <Receipt className="h-4 w-4" /> {showPaymentForm ? "Close" : "Record Payment"}
-              </button>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowInvoiceForm((v) => !v)}>
-                <Plus className="h-4 w-4" /> {showInvoiceForm ? "Close" : "Create Invoice"}
-              </button>
-            </div>
-          ) : undefined
+          <div className="flex flex-wrap gap-2 items-center">
+            {canMutate && selectedIds.size > 0 ? (
+              <div className="dropdown dropdown-end">
+                <div
+                  tabIndex={0}
+                  role="button"
+                  className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}
+                >
+                  Bulk actions ({selectedIds.size})
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+                <ul
+                  tabIndex={0}
+                  className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300"
+                >
+                  <li className="menu-title px-3 pt-1">
+                    <span>Change status</span>
+                  </li>
+                  {STATUS_OPTIONS.map((status) => (
+                    <li key={status}>
+                      <button type="button" disabled={busy} onClick={() => void runBulk(status)}>
+                        Set {labelize(status)}
+                      </button>
+                    </li>
+                  ))}
+                  <li>
+                    <button
+                      type="button"
+                      className="text-error"
+                      disabled={busy}
+                      onClick={() => void runBulk("delete")}
+                    >
+                      <Trash2 className="h-4 w-4" /> Delete selected
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            ) : null}
+            {canManage ? (
+              <>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setShowPaymentForm((v) => !v)}
+                >
+                  <Receipt className="h-4 w-4" /> {showPaymentForm ? "Close" : "Record Payment"}
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setShowInvoiceForm((v) => !v)}
+                >
+                  <Plus className="h-4 w-4" /> {showInvoiceForm ? "Close" : "Create Invoice"}
+                </button>
+              </>
+            ) : null}
+          </div>
         }
       />
 
-      <FilterSortBar
-        search={search}
-        onSearchChange={setSearch}
-        searchPlaceholder="Search invoice #, project, client…"
-        sortOptions={[
-          { value: "number", label: "Invoice #" },
-          { value: "contract", label: "Project" },
-          { value: "date", label: "Date" },
-          { value: "due", label: "Due date" },
-          { value: "amount", label: "Amount" },
-          { value: "status", label: "Status" },
-          { value: "balance", label: "Balance" },
-        ]}
-        sortKey={sortKey}
-        sortDir={sortDir}
-        onSortKeyChange={(v) => setSortKey(v as SortKey)}
-        onSortDirChange={setSortDir}
-        resultCount={filtered.length}
-        filters={
-          <label className="form-control w-full lg:w-44">
-            <span className="label py-1">
-              <span className="label-text text-xs opacity-70">Status</span>
-            </span>
-            <select
-              className="select select-bordered select-sm"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">All statuses</option>
-              <option value="unpaid">Unpaid</option>
-              <option value="partially_paid">Partially Paid</option>
-              <option value="paid">Paid</option>
-              <option value="overdue">Overdue</option>
-            </select>
-          </label>
-        }
-      />
+      {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
+      {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
 
       {canManage && showInvoiceForm ? (
         <SectionCard title="New Invoice">
@@ -373,11 +566,24 @@ export default function InvoicesPage() {
                 onChange={(e) => updateInvoiceField("retainage_percent", e.target.value)}
               />
             </FormField>
-            <FormField label="Retainage Amount" hint="Calculated automatically from invoice amount × retainage %.">
-              <input className="input input-bordered" value={money(computedRetainageAmount)} disabled readOnly />
+            <FormField
+              label="Retainage Amount"
+              hint="Calculated automatically from invoice amount × retainage %."
+            >
+              <input
+                className="input input-bordered"
+                value={money(computedRetainageAmount)}
+                disabled
+                readOnly
+              />
             </FormField>
             <FormField label="Net Amount Due" hint="Invoice amount less retainage withheld.">
-              <input className="input input-bordered font-medium" value={money(computedNetAmountDue)} disabled readOnly />
+              <input
+                className="input input-bordered font-medium"
+                value={money(computedNetAmountDue)}
+                disabled
+                readOnly
+              />
             </FormField>
             <FormField label="Notes">
               <textarea
@@ -485,73 +691,245 @@ export default function InvoicesPage() {
         </SectionCard>
       ) : null}
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          title="No invoices"
-          message={
-            invoices.length === 0
-              ? "No invoices have been issued yet."
-              : "Try adjusting your search or filters."
-          }
-        />
+      {invoices.length === 0 ? (
+        <EmptyState title="No invoices" message="No invoices have been issued yet." />
       ) : (
-        <SectionCard title={`All Invoices (${filtered.length})`}>
+        <div className="rounded-box border border-base-300 bg-base-100">
           <div className="overflow-x-auto">
-            <table className="table table-sm">
+            <table className="table table-xs table-fixed w-full text-[11px]">
+              <colgroup>
+                {canMutate ? <col className="w-[3%]" /> : null}
+                <col className="w-[11%]" />
+                <col className="w-[14%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[8%]" />
+                <col className="w-[9%]" />
+                {canMutate ? <col className="w-[11%]" /> : null}
+              </colgroup>
               <thead>
-                <tr>
-                  <th>Invoice #</th>
-                  <th>Project</th>
-                  <th>Date</th>
-                  <th>Due</th>
-                  <th className="text-right">Amount</th>
-                  <th className="text-right">Retainage</th>
-                  <th className="text-right">Net Due</th>
-                  <th className="text-right">Paid</th>
-                  <th>Status</th>
-                  <th className="w-8" />
+                <tr className="bg-base-200/80">
+                  {canMutate ? (
+                    <th className="w-10 align-middle text-center">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={allFilteredSelected}
+                        onChange={toggleSelectAllFiltered}
+                        aria-label="Select all filtered invoices"
+                      />
+                    </th>
+                  ) : null}
+                  <ColumnAutocompleteHeader
+                    label="Invoice #"
+                    listId="invoices-filter-number"
+                    value={numberFilter}
+                    onChange={setNumberFilter}
+                    options={numberOptions}
+                    sortActive={sortKey === "number"}
+                    sortDir={sortDir}
+                    onSort={() => onSort("number")}
+                  />
+                  <ColumnAutocompleteHeader
+                    label="Project"
+                    listId="invoices-filter-project"
+                    value={projectFilter}
+                    onChange={setProjectFilter}
+                    options={projectOptions}
+                    sortActive={sortKey === "contract"}
+                    sortDir={sortDir}
+                    onSort={() => onSort("contract")}
+                  />
+                  <ColumnSortHeader
+                    label="Date"
+                    sortActive={sortKey === "date"}
+                    sortDir={sortDir}
+                    onSort={() => onSort("date")}
+                  />
+                  <ColumnSortHeader
+                    label="Due"
+                    sortActive={sortKey === "due"}
+                    sortDir={sortDir}
+                    onSort={() => onSort("due")}
+                  />
+                  <ColumnSortHeader
+                    label="Amount"
+                    sortActive={sortKey === "amount"}
+                    sortDir={sortDir}
+                    onSort={() => onSort("amount")}
+                  />
+                  <ColumnSortHeader label="Retainage" />
+                  <ColumnSortHeader label="Net Due" />
+                  <ColumnSortHeader label="Paid" />
+                  <ColumnSortHeader
+                    label="Status"
+                    sortActive={sortKey === "status"}
+                    sortDir={sortDir}
+                    onSort={() => onSort("status")}
+                  />
+                  {canMutate ? <th className="text-center align-middle">Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((invoice) => {
-                  const overdue = isOverdue(invoice);
-                  return (
-                    <tr
-                      key={invoice.id}
-                      className="hover cursor-pointer"
-                      onClick={() => router.push(`/invoices/${invoice.id}`)}
-                    >
-                      <td>
-                        <Link
-                          href={`/invoices/${invoice.id}`}
-                          className="link link-primary font-medium"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {invoice.invoice_number ?? "View invoice"}
-                        </Link>
-                      </td>
-                      <td>{invoice.contracts?.contract_name ?? "—"}</td>
-                      <td className="whitespace-nowrap">{invoice.invoice_date ?? "—"}</td>
-                      <td className="whitespace-nowrap">{invoice.due_date ?? "—"}</td>
-                      <td className="text-right">{money(invoice.invoice_amount)}</td>
-                      <td className="text-right">{money(invoice.retainage_amount)}</td>
-                      <td className="text-right">{money(invoice.net_amount_due)}</td>
-                      <td className="text-right">{money(invoice.amount_paid)}</td>
-                      <td>
-                        <span className={`badge badge-sm ${statusBadgeClass(overdue ? "overdue" : invoice.status)}`}>
-                          {overdue ? "Overdue" : labelize(invoice.status)}
-                        </span>
-                      </td>
-                      <td className="text-right">
-                        <ChevronRight className="h-4 w-4 opacity-40 inline-block" />
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={colCount} className="py-10 text-center opacity-60">
+                      No invoices match the column filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((invoice) => {
+                    const overdue = isOverdue(invoice);
+                    const shownStatus = overdue ? "overdue" : invoice.status;
+                    return (
+                      <tr key={invoice.id} className="hover:bg-base-200/60">
+                        {canMutate ? (
+                          <td className="px-1 text-center">
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox-sm"
+                              checked={selectedIds.has(invoice.id)}
+                              onChange={() => toggleSelect(invoice.id)}
+                              aria-label={`Select ${invoice.invoice_number || "invoice"}`}
+                            />
+                          </td>
+                        ) : null}
+                        <td className="min-w-0 px-1 text-left">
+                          <Link
+                            href={`/invoices/${invoice.id}`}
+                            className="link link-primary block truncate font-medium"
+                            title={invoice.invoice_number ?? "View invoice"}
+                          >
+                            {invoice.invoice_number ?? "View invoice"}
+                          </Link>
+                        </td>
+                        <td className="min-w-0 px-1 text-left">
+                          <Link
+                            href={`/contracts/${invoice.contract_id}`}
+                            className="link link-primary block truncate font-medium"
+                            title={invoice.contracts?.contract_name ?? "Project details"}
+                          >
+                            <span className="inline-flex max-w-full items-center gap-1">
+                              <Building2 className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                              <span className="truncate">
+                                {invoice.contracts?.contract_name ?? "—"}
+                              </span>
+                            </span>
+                          </Link>
+                        </td>
+                        <td className="whitespace-nowrap px-1 text-center">
+                          {invoice.invoice_date ?? "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-1 text-center">{invoice.due_date ?? "—"}</td>
+                        <td className="truncate px-1 text-center">{money(invoice.invoice_amount)}</td>
+                        <td className="truncate px-1 text-center">{money(invoice.retainage_amount)}</td>
+                        <td className="truncate px-1 text-center">{money(invoice.net_amount_due)}</td>
+                        <td className="truncate px-1 text-center">{money(invoice.amount_paid)}</td>
+                        <td className="px-1 text-center">
+                          <span className={`badge badge-sm ${statusBadgeClass(shownStatus)}`}>
+                            {overdue ? "Overdue" : labelize(invoice.status)}
+                          </span>
+                        </td>
+                        {canMutate ? (
+                          <td className="px-1 text-center">
+                            <div className="inline-flex justify-center gap-0.5">
+                              <div className="dropdown dropdown-end">
+                                <div
+                                  tabIndex={0}
+                                  role="button"
+                                  className="btn btn-ghost h-6 min-h-6 gap-0 px-1 text-[10px]"
+                                  title="Change status"
+                                >
+                                  Status
+                                  <ChevronDown className="h-3 w-3" />
+                                </div>
+                                <ul
+                                  tabIndex={0}
+                                  className="dropdown-content menu bg-base-100 rounded-box z-40 w-48 p-2 shadow border border-base-300"
+                                >
+                                  {STATUS_OPTIONS.map((status) => (
+                                    <li key={status}>
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          busyId === invoice.id ||
+                                          busy ||
+                                          invoice.status === status
+                                        }
+                                        onClick={() =>
+                                          void setInvoiceStatus(invoice, status).catch((err) => {
+                                            setActionError(
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Failed to update status."
+                                            );
+                                          })
+                                        }
+                                      >
+                                        {labelize(status)}
+                                        {invoice.status === status ? " ✓" : ""}
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <div className="dropdown dropdown-end">
+                                <div
+                                  tabIndex={0}
+                                  role="button"
+                                  className="btn btn-ghost h-6 min-h-6 gap-0 px-1 text-[10px]"
+                                  title="Edit"
+                                >
+                                  Edit
+                                  <ChevronDown className="h-3 w-3" />
+                                </div>
+                                <ul
+                                  tabIndex={0}
+                                  className="dropdown-content menu bg-base-100 rounded-box z-40 w-48 p-2 shadow border border-base-300"
+                                >
+                                  <li>
+                                    <Link href={`/invoices/${invoice.id}?edit=1`}>
+                                      <Pencil className="h-4 w-4" /> Edit Invoice
+                                    </Link>
+                                  </li>
+                                  <li>
+                                    <button
+                                      type="button"
+                                      className="text-error"
+                                      disabled={busyId === invoice.id || busy}
+                                      onClick={() =>
+                                        void deleteInvoice(invoice).catch((err) => {
+                                          setActionError(
+                                            err instanceof Error
+                                              ? err.message
+                                              : "Failed to delete."
+                                          );
+                                        })
+                                      }
+                                    >
+                                      <Trash2 className="h-4 w-4" /> Delete Invoice
+                                    </button>
+                                  </li>
+                                </ul>
+                              </div>
+                            </div>
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
-        </SectionCard>
+          <div className="px-4 py-2 text-xs opacity-60 border-t border-base-300">
+            Showing {filtered.length} of {invoices.length} invoices
+            {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+          </div>
+        </div>
       )}
     </div>
   );
