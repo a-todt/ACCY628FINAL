@@ -101,7 +101,9 @@ export default function DashboardPage() {
         subtitle={`Welcome back${profile?.full_name ? `, ${profile.full_name}` : ""}`}
       />
 
-      {effectiveRole === "admin" || effectiveRole === "project_manager" ? (
+      {effectiveRole === "admin" ||
+      effectiveRole === "owner" ||
+      effectiveRole === "project_manager" ? (
         <AdminDashboard {...shared} />
       ) : effectiveRole === "field_supervisor" ? (
         <FieldSupervisorDashboard {...shared} userId={user?.id} />
