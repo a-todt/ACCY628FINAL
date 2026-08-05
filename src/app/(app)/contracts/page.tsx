@@ -84,7 +84,11 @@ export default function ContractsPage() {
     <div>
       <PageHeader
         title="Contracts"
-        subtitle="All projects you have access to, with live financial and completion metrics."
+        subtitle={
+          effectiveRole === "client"
+            ? "Only your linked projects — status, approved change orders, and billing."
+            : "All projects you have access to, with live financial and completion metrics."
+        }
         actions={
           canManage ? (
             <Link href="/contracts/new" className="btn btn-primary btn-sm">

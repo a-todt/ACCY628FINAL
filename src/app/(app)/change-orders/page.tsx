@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { labelize, money } from "@/lib/metrics";
 import { canCreateChangeOrders, statusBadgeClass } from "@/lib/roles";
@@ -22,6 +23,8 @@ const EMPTY_FORM = {
   notes: "",
 };
 
+type SortKey = "project" | "number" | "amount" | "status" | "submitted";
+
 export default function ChangeOrdersPage() {
   const { effectiveRole } = useAuth();
   const { contracts, changeOrders, loading, error, refresh } = useContractData();
@@ -32,9 +35,38 @@ export default function ChangeOrdersPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<SortKey>("submitted");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const isClient = effectiveRole === "client";
-  const visibleChangeOrders = isClient ? changeOrders.filter((co) => co.status === "approved") : changeOrders;
+
+  const baseList = useMemo(
+    () => (isClient ? changeOrders.filter((co) => co.status === "approved") : changeOrders),
+    [changeOrders, isClient]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const next = baseList.filter((co) => {
+      if (statusFilter !== "all" && co.status !== statusFilter) return false;
+      if (!q) return true;
+      const haystack = [co.description, co.change_order_number, co.contracts?.contract_name]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+
+    return [...next].sort((a, b) => {
+      if (sortKey === "project") return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
+      if (sortKey === "number") return compareValues(a.change_order_number, b.change_order_number, sortDir);
+      if (sortKey === "amount") return compareValues(Number(a.amount ?? 0), Number(b.amount ?? 0), sortDir);
+      if (sortKey === "status") return compareValues(a.status, b.status, sortDir);
+      return compareValues(a.date_submitted, b.date_submitted, sortDir);
+    });
+  }, [baseList, search, statusFilter, sortKey, sortDir]);
 
   const updateField = <K extends keyof typeof EMPTY_FORM>(key: K, value: (typeof EMPTY_FORM)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -109,6 +141,43 @@ export default function ChangeOrdersPage() {
       {isClient ? (
         <AlertBanner type="info">You are viewing approved change orders only.</AlertBanner>
       ) : null}
+
+      <FilterSortBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search description, CO #, project…"
+        sortOptions={[
+          { value: "project", label: "Project" },
+          { value: "number", label: "CO #" },
+          { value: "amount", label: "Amount" },
+          { value: "status", label: "Status" },
+          { value: "submitted", label: "Submitted" },
+        ]}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortKeyChange={(v) => setSortKey(v as SortKey)}
+        onSortDirChange={setSortDir}
+        resultCount={filtered.length}
+        filters={
+          !isClient ? (
+            <label className="form-control w-full lg:w-40">
+              <span className="label py-1">
+                <span className="label-text text-xs opacity-70">Status</span>
+              </span>
+              <select
+                className="select select-bordered select-sm"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </label>
+          ) : undefined
+        }
+      />
 
       {canCreate && showForm ? (
         <SectionCard title="New Change Order">
@@ -210,17 +279,19 @@ export default function ChangeOrdersPage() {
         </SectionCard>
       ) : null}
 
-      {visibleChangeOrders.length === 0 ? (
+      {filtered.length === 0 ? (
         <EmptyState
           title="No change orders"
           message={
-            isClient
-              ? "No approved change orders yet."
-              : "No change orders yet. Add one once scope changes on a project."
+            baseList.length === 0
+              ? isClient
+                ? "No approved change orders yet."
+                : "No change orders yet. Add one once scope changes on a project."
+              : "Try adjusting your search or filters."
           }
         />
       ) : (
-        <SectionCard title={`All Change Orders (${visibleChangeOrders.length})`}>
+        <SectionCard title={`All Change Orders (${filtered.length})`}>
           <div className="overflow-x-auto">
             <table className="table table-sm">
               <thead>
@@ -233,10 +304,11 @@ export default function ChangeOrdersPage() {
                   <th>Status</th>
                   <th>Submitted</th>
                   <th>Resolved</th>
+                  {!isClient ? <th>Notes</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {visibleChangeOrders.map((co) => (
+                {filtered.map((co) => (
                   <tr key={co.id}>
                     <td>{co.contracts?.contract_name ?? "—"}</td>
                     <td>{co.change_order_number ?? "—"}</td>
@@ -248,6 +320,7 @@ export default function ChangeOrdersPage() {
                     </td>
                     <td className="whitespace-nowrap">{co.date_submitted ?? "—"}</td>
                     <td className="whitespace-nowrap">{co.date_resolved ?? "—"}</td>
+                    {!isClient ? <td className="max-w-xs truncate">{co.notes ?? "—"}</td> : null}
                   </tr>
                 ))}
               </tbody>

@@ -4,6 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Plus, Receipt } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { canCreateInvoices, statusBadgeClass } from "@/lib/roles";
@@ -40,6 +41,12 @@ function nextInvoiceStatus(amountPaid: number, netAmountDue: number): InvoiceSta
   return "unpaid";
 }
 
+function invoiceBalance(invoice: Invoice): number {
+  return Number(invoice.invoice_amount ?? 0) - Number(invoice.amount_paid ?? 0);
+}
+
+type SortKey = "number" | "contract" | "date" | "due" | "amount" | "status" | "balance";
+
 export default function InvoicesPage() {
   const { effectiveRole } = useAuth();
   const { contracts, invoices, loading, error, refresh } = useContractData();
@@ -55,6 +62,46 @@ export default function InvoicesPage() {
   const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const next = invoices.filter((invoice) => {
+      const overdue = isOverdue(invoice);
+      if (statusFilter === "overdue") {
+        if (!overdue) return false;
+      } else if (statusFilter !== "all" && invoice.status !== statusFilter) {
+        return false;
+      }
+      if (!q) return true;
+      const haystack = [
+        invoice.invoice_number,
+        invoice.contracts?.contract_name,
+        invoice.contracts?.client_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+
+    return [...next].sort((a, b) => {
+      if (sortKey === "number") return compareValues(a.invoice_number, b.invoice_number, sortDir);
+      if (sortKey === "contract") return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
+      if (sortKey === "date") return compareValues(a.invoice_date, b.invoice_date, sortDir);
+      if (sortKey === "due") return compareValues(a.due_date, b.due_date, sortDir);
+      if (sortKey === "amount") return compareValues(Number(a.invoice_amount ?? 0), Number(b.invoice_amount ?? 0), sortDir);
+      if (sortKey === "status") {
+        const aStatus = isOverdue(a) ? "overdue" : a.status;
+        const bStatus = isOverdue(b) ? "overdue" : b.status;
+        return compareValues(aStatus, bStatus, sortDir);
+      }
+      return compareValues(invoiceBalance(a), invoiceBalance(b), sortDir);
+    });
+  }, [invoices, search, statusFilter, sortKey, sortDir]);
 
   const invoiceAmountNum = Number(invoiceForm.invoice_amount || 0);
   const retainagePercentNum = Number(invoiceForm.retainage_percent || 0);
@@ -208,6 +255,44 @@ export default function InvoicesPage() {
               </button>
             </div>
           ) : undefined
+        }
+      />
+
+      <FilterSortBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search invoice #, project, client…"
+        sortOptions={[
+          { value: "number", label: "Invoice #" },
+          { value: "contract", label: "Project" },
+          { value: "date", label: "Date" },
+          { value: "due", label: "Due date" },
+          { value: "amount", label: "Amount" },
+          { value: "status", label: "Status" },
+          { value: "balance", label: "Balance" },
+        ]}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortKeyChange={(v) => setSortKey(v as SortKey)}
+        onSortDirChange={setSortDir}
+        resultCount={filtered.length}
+        filters={
+          <label className="form-control w-full lg:w-44">
+            <span className="label py-1">
+              <span className="label-text text-xs opacity-70">Status</span>
+            </span>
+            <select
+              className="select select-bordered select-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="partially_paid">Partially Paid</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+            </select>
+          </label>
         }
       />
 
@@ -397,10 +482,17 @@ export default function InvoicesPage() {
         </SectionCard>
       ) : null}
 
-      {invoices.length === 0 ? (
-        <EmptyState title="No invoices" message="No invoices have been issued yet." />
+      {filtered.length === 0 ? (
+        <EmptyState
+          title="No invoices"
+          message={
+            invoices.length === 0
+              ? "No invoices have been issued yet."
+              : "Try adjusting your search or filters."
+          }
+        />
       ) : (
-        <SectionCard title={`All Invoices (${invoices.length})`}>
+        <SectionCard title={`All Invoices (${filtered.length})`}>
           <div className="overflow-x-auto">
             <table className="table table-sm">
               <thead>
@@ -417,7 +509,7 @@ export default function InvoicesPage() {
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((invoice) => {
+                {filtered.map((invoice) => {
                   const overdue = isOverdue(invoice);
                   return (
                     <tr key={invoice.id}>

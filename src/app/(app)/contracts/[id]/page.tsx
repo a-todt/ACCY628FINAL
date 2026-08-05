@@ -56,13 +56,16 @@ export default function ContractDetailPage() {
   }
 
   const showCosts = canViewCosts(effectiveRole);
+  const isClient = effectiveRole === "client";
   const metrics = computeContractMetrics(contract, changeOrders, invoices, costEntries, milestones, payments);
 
-  const contractChangeOrders = changeOrders.filter((co) => co.contract_id === contract.id);
-  const contractSubs = subcontractors.filter((s) => s.contract_id === contract.id);
+  const contractChangeOrders = changeOrders
+    .filter((co) => co.contract_id === contract.id)
+    .filter((co) => (isClient ? co.status === "approved" : true));
+  const contractSubs = isClient ? [] : subcontractors.filter((s) => s.contract_id === contract.id);
   const contractCosts = costEntries.filter((c) => c.contract_id === contract.id);
   const contractInvoices = invoices.filter((i) => i.contract_id === contract.id);
-  const contractFieldLogs = fieldLogs.filter((f) => f.contract_id === contract.id);
+  const contractFieldLogs = isClient ? [] : fieldLogs.filter((f) => f.contract_id === contract.id);
   const contractMilestones = milestones.filter((m) => m.contract_id === contract.id);
 
   return (
@@ -102,9 +105,9 @@ export default function ContractDetailPage() {
             <p className="text-sm whitespace-pre-wrap">{contract.scope_description}</p>
           </div>
         ) : null}
-        {contract.special_terms ? (
+        {!isClient && contract.special_terms ? (
           <div className="mt-4">
-            <p className="text-xs uppercase tracking-wide opacity-60 mb-1">Special Terms</p>
+            <p className="text-xs uppercase tracking-wide opacity-60 mb-1">Special Terms / Internal Notes</p>
             <p className="text-sm whitespace-pre-wrap">{contract.special_terms}</p>
           </div>
         ) : null}
@@ -167,44 +170,46 @@ export default function ContractDetailPage() {
         )}
       </SectionCard>
 
-      <SectionCard title={`Subcontractors (${contractSubs.length})`}>
-        {contractSubs.length === 0 ? (
-          <p className="text-sm opacity-60 py-4 text-center">No subcontractors assigned yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Company</th>
-                  <th>Trade</th>
-                  <th className="text-right">Value</th>
-                  <th className="text-right">Paid</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contractSubs.map((sub) => {
-                  const overpaid = Number(sub.amount_paid ?? 0) > Number(sub.subcontract_value ?? 0);
-                  return (
-                    <tr key={sub.id}>
-                      <td>{sub.company_name}</td>
-                      <td>{sub.trade ?? "—"}</td>
-                      <td className="text-right">{money(sub.subcontract_value)}</td>
-                      <td className="text-right">{money(sub.amount_paid)}</td>
-                      <td>
-                        <div className="flex items-center gap-1">
-                          <span className={`badge badge-sm ${statusBadgeClass(sub.status)}`}>{labelize(sub.status)}</span>
-                          {overpaid ? <span className="badge badge-sm badge-error">Overpaid</span> : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
+      {!isClient ? (
+        <SectionCard title={`Subcontractors (${contractSubs.length})`}>
+          {contractSubs.length === 0 ? (
+            <p className="text-sm opacity-60 py-4 text-center">No subcontractors assigned yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Company</th>
+                    <th>Trade</th>
+                    <th className="text-right">Value</th>
+                    <th className="text-right">Paid</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contractSubs.map((sub) => {
+                    const overpaid = Number(sub.amount_paid ?? 0) > Number(sub.subcontract_value ?? 0);
+                    return (
+                      <tr key={sub.id}>
+                        <td>{sub.company_name}</td>
+                        <td>{sub.trade ?? "—"}</td>
+                        <td className="text-right">{money(sub.subcontract_value)}</td>
+                        <td className="text-right">{money(sub.amount_paid)}</td>
+                        <td>
+                          <div className="flex items-center gap-1">
+                            <span className={`badge badge-sm ${statusBadgeClass(sub.status)}`}>{labelize(sub.status)}</span>
+                            {overpaid ? <span className="badge badge-sm badge-error">Overpaid</span> : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
+      ) : null}
 
       {showCosts ? (
         <SectionCard title={`Cost Entries (${contractCosts.length})`}>
@@ -280,40 +285,42 @@ export default function ContractDetailPage() {
         )}
       </SectionCard>
 
-      <SectionCard title={`Field Logs (${contractFieldLogs.length})`}>
-        {contractFieldLogs.length === 0 ? (
-          <p className="text-sm opacity-60 py-4 text-center">No field logs recorded yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Submitted By</th>
-                  <th>Work Performed</th>
-                  <th className="text-right">Hours</th>
-                  <th className="text-right">Workers</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contractFieldLogs.map((log) => (
-                  <tr key={log.id}>
-                    <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
-                    <td>
-                      {userProfiles.find((p) => p.id === log.user_id)?.full_name ??
-                        userProfiles.find((p) => p.id === log.user_id)?.email ??
-                        "—"}
-                    </td>
-                    <td className="max-w-xs truncate">{log.work_performed ?? "—"}</td>
-                    <td className="text-right">{log.hours_worked ?? "—"}</td>
-                    <td className="text-right">{log.workers_on_site ?? "—"}</td>
+      {!isClient ? (
+        <SectionCard title={`Field Logs (${contractFieldLogs.length})`}>
+          {contractFieldLogs.length === 0 ? (
+            <p className="text-sm opacity-60 py-4 text-center">No field logs recorded yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Submitted By</th>
+                    <th>Work Performed</th>
+                    <th className="text-right">Hours</th>
+                    <th className="text-right">Workers</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
+                </thead>
+                <tbody>
+                  {contractFieldLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
+                      <td>
+                        {userProfiles.find((p) => p.id === log.user_id)?.full_name ??
+                          userProfiles.find((p) => p.id === log.user_id)?.email ??
+                          "—"}
+                      </td>
+                      <td className="max-w-xs truncate">{log.work_performed ?? "—"}</td>
+                      <td className="text-right">{log.hours_worked ?? "—"}</td>
+                      <td className="text-right">{log.workers_on_site ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionCard>
+      ) : null}
 
       <SectionCard title={`Milestones (${contractMilestones.length})`}>
         {contractMilestones.length === 0 ? (

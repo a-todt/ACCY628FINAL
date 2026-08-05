@@ -4,6 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { labelize, money } from "@/lib/metrics";
 import { canEnterCosts, canViewCosts } from "@/lib/roles";
@@ -21,6 +22,8 @@ const EMPTY_FORM = {
   notes: "",
 };
 
+type SortKey = "date" | "category" | "contract" | "amount";
+
 export default function CostsPage() {
   const { effectiveRole, user } = useAuth();
   const { contracts, costEntries, userProfiles, loading, error, refresh } =
@@ -31,8 +34,32 @@ export default function CostsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const canEnter = canEnterCosts(effectiveRole);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const next = costEntries.filter((cost) => {
+      if (categoryFilter !== "all" && cost.category !== categoryFilter) return false;
+      if (!q) return true;
+      const haystack = [cost.description, cost.contracts?.contract_name, cost.category ? labelize(cost.category) : null]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+
+    return [...next].sort((a, b) => {
+      if (sortKey === "date") return compareValues(a.date_incurred, b.date_incurred, sortDir);
+      if (sortKey === "category") return compareValues(a.category, b.category, sortDir);
+      if (sortKey === "contract") return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
+      return compareValues(Number(a.amount ?? 0), Number(b.amount ?? 0), sortDir);
+    });
+  }, [costEntries, search, categoryFilter, sortKey, sortDir]);
 
   const byCategory = useMemo(() => {
     const totals = new Map<string, number>();
@@ -131,6 +158,42 @@ export default function CostsPage() {
               <Plus className="h-4 w-4" /> {showForm ? "Close Form" : "Log Cost"}
             </button>
           ) : undefined
+        }
+      />
+
+      <FilterSortBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search description, project, category…"
+        sortOptions={[
+          { value: "date", label: "Date" },
+          { value: "category", label: "Category" },
+          { value: "contract", label: "Project" },
+          { value: "amount", label: "Amount" },
+        ]}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortKeyChange={(v) => setSortKey(v as SortKey)}
+        onSortDirChange={setSortDir}
+        resultCount={filtered.length}
+        filters={
+          <label className="form-control w-full lg:w-44">
+            <span className="label py-1">
+              <span className="label-text text-xs opacity-70">Category</span>
+            </span>
+            <select
+              className="select select-bordered select-sm"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+            >
+              <option value="all">All categories</option>
+              {CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {labelize(category)}
+                </option>
+              ))}
+            </select>
+          </label>
         }
       />
 
@@ -276,8 +339,10 @@ export default function CostsPage() {
 
       {costEntries.length === 0 ? (
         <EmptyState title="No cost entries" message="Log your first cost entry to start tracking job costs." />
+      ) : filtered.length === 0 ? (
+        <EmptyState title="No cost entries found" message="Try adjusting your search or filters." />
       ) : (
-        <SectionCard title={`All Cost Entries (${costEntries.length})`}>
+        <SectionCard title={`All Cost Entries (${filtered.length})`}>
           <div className="overflow-x-auto">
             <table className="table table-sm">
               <thead>
@@ -291,7 +356,7 @@ export default function CostsPage() {
                 </tr>
               </thead>
               <tbody>
-                {costEntries.map((cost) => (
+                {filtered.map((cost) => (
                   <tr key={cost.id}>
                     <td className="whitespace-nowrap">{cost.date_incurred ?? "—"}</td>
                     <td>{cost.contracts?.contract_name ?? "—"}</td>

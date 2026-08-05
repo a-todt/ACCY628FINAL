@@ -253,8 +253,7 @@ $$;
 
 -- True if the caller may access the given contract, based on their role:
 --   admin / project_manager : always
---   client                  : contracts.client_user_id = auth.uid()
---                              OR contracts.client_email matches the caller's profile email
+--   client                  : contracts.client_user_id = auth.uid() only
 --   field_supervisor        : assigned via contract_assignments
 --   subcontractor           : has a subcontractors row on that contract
 --   anything else           : false
@@ -267,7 +266,6 @@ stable
 as $$
 declare
   v_role text;
-  v_email text;
 begin
   v_role := public.get_user_role();
 
@@ -276,16 +274,11 @@ begin
   end if;
 
   if v_role = 'client' then
-    select email into v_email from public.user_profiles where id = auth.uid();
-
     return exists (
       select 1
       from public.contracts c
       where c.id = cid
-        and (
-          c.client_user_id = auth.uid()
-          or (v_email is not null and lower(c.client_email) = lower(v_email))
-        )
+        and c.client_user_id = auth.uid()
     );
   end if;
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { canCreateFieldLogs } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +22,8 @@ const EMPTY_FORM = {
   notes: "",
 };
 
+type SortKey = "date" | "contract" | "hours" | "workers";
+
 export default function FieldLogsPage() {
   const { effectiveRole, user } = useAuth();
   const { contracts, fieldLogs, userProfiles, loading, error, refresh } =
@@ -32,6 +35,28 @@ export default function FieldLogsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const next = fieldLogs.filter((log) => {
+      if (!q) return true;
+      const haystack = [log.work_performed, log.contracts?.contract_name, log.weather_conditions]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+
+    return [...next].sort((a, b) => {
+      if (sortKey === "date") return compareValues(a.log_date, b.log_date, sortDir);
+      if (sortKey === "contract") return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
+      if (sortKey === "hours") return compareValues(Number(a.hours_worked ?? 0), Number(b.hours_worked ?? 0), sortDir);
+      return compareValues(Number(a.workers_on_site ?? 0), Number(b.workers_on_site ?? 0), sortDir);
+    });
+  }, [fieldLogs, search, sortKey, sortDir]);
 
   const updateField = <K extends keyof typeof EMPTY_FORM>(key: K, value: (typeof EMPTY_FORM)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -103,6 +128,23 @@ export default function FieldLogsPage() {
             </button>
           ) : undefined
         }
+      />
+
+      <FilterSortBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search work performed, project, weather…"
+        sortOptions={[
+          { value: "date", label: "Date" },
+          { value: "contract", label: "Project" },
+          { value: "hours", label: "Hours" },
+          { value: "workers", label: "Workers" },
+        ]}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortKeyChange={(v) => setSortKey(v as SortKey)}
+        onSortDirChange={setSortDir}
+        resultCount={filtered.length}
       />
 
       {canCreate && showForm ? (
@@ -207,10 +249,17 @@ export default function FieldLogsPage() {
         </SectionCard>
       ) : null}
 
-      {fieldLogs.length === 0 ? (
-        <EmptyState title="No field logs" message="No field logs have been submitted yet." />
+      {filtered.length === 0 ? (
+        <EmptyState
+          title="No field logs"
+          message={
+            fieldLogs.length === 0
+              ? "No field logs have been submitted yet."
+              : "Try adjusting your search or filters."
+          }
+        />
       ) : (
-        <SectionCard title={`All Field Logs (${fieldLogs.length})`}>
+        <SectionCard title={`All Field Logs (${filtered.length})`}>
           <div className="overflow-x-auto">
             <table className="table table-sm">
               <thead>
@@ -226,7 +275,7 @@ export default function FieldLogsPage() {
                 </tr>
               </thead>
               <tbody>
-                {fieldLogs.map((log) => (
+                {filtered.map((log) => (
                   <tr key={log.id}>
                     <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
                     <td>{log.contracts?.contract_name ?? "—"}</td>

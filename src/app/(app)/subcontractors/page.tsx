@@ -4,6 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Plus, TriangleAlert } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { labelize, money } from "@/lib/metrics";
 import { canManageSubcontractors, statusBadgeClass } from "@/lib/roles";
@@ -27,6 +28,8 @@ const EMPTY_FORM = {
   user_id: "",
 };
 
+type SortKey = "company" | "trade" | "contract" | "value" | "paid" | "status";
+
 export default function SubcontractorsPage() {
   const { effectiveRole, user } = useAuth();
   const { contracts, subcontractors, userProfiles, loading, error, refresh } = useContractData();
@@ -38,10 +41,39 @@ export default function SubcontractorsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<SortKey>("company");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const subLogins = useMemo(() => userProfiles.filter((p) => p.role === "subcontractor"), [userProfiles]);
 
-  const visibleSubs = isSubcontractor ? subcontractors.filter((s) => s.user_id === user?.id) : subcontractors;
+  const baseList = useMemo(
+    () => (isSubcontractor ? subcontractors.filter((s) => s.user_id === user?.id) : subcontractors),
+    [subcontractors, isSubcontractor, user?.id]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const next = baseList.filter((sub) => {
+      if (statusFilter !== "all" && sub.status !== statusFilter) return false;
+      if (!q) return true;
+      const haystack = [sub.company_name, sub.contact_name, sub.trade, sub.contracts?.contract_name]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+
+    return [...next].sort((a, b) => {
+      if (sortKey === "company") return compareValues(a.company_name, b.company_name, sortDir);
+      if (sortKey === "trade") return compareValues(a.trade, b.trade, sortDir);
+      if (sortKey === "contract") return compareValues(a.contracts?.contract_name, b.contracts?.contract_name, sortDir);
+      if (sortKey === "value") return compareValues(Number(a.subcontract_value ?? 0), Number(b.subcontract_value ?? 0), sortDir);
+      if (sortKey === "paid") return compareValues(Number(a.amount_paid ?? 0), Number(b.amount_paid ?? 0), sortDir);
+      return compareValues(a.status, b.status, sortDir);
+    });
+  }, [baseList, search, statusFilter, sortKey, sortDir]);
 
   const updateField = <K extends keyof typeof EMPTY_FORM>(key: K, value: (typeof EMPTY_FORM)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -111,6 +143,42 @@ export default function SubcontractorsPage() {
               <Plus className="h-4 w-4" /> {showForm ? "Close Form" : "Add Subcontractor"}
             </button>
           ) : undefined
+        }
+      />
+
+      <FilterSortBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search company, contact, trade, project…"
+        sortOptions={[
+          { value: "company", label: "Company" },
+          { value: "trade", label: "Trade" },
+          { value: "contract", label: "Project" },
+          { value: "value", label: "Value" },
+          { value: "paid", label: "Paid" },
+          { value: "status", label: "Status" },
+        ]}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortKeyChange={(v) => setSortKey(v as SortKey)}
+        onSortDirChange={setSortDir}
+        resultCount={filtered.length}
+        filters={
+          <label className="form-control w-full lg:w-40">
+            <span className="label py-1">
+              <span className="label-text text-xs opacity-70">Status</span>
+            </span>
+            <select
+              className="select select-bordered select-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="complete">Complete</option>
+              <option value="terminated">Terminated</option>
+            </select>
+          </label>
         }
       />
 
@@ -264,10 +332,17 @@ export default function SubcontractorsPage() {
         </SectionCard>
       ) : null}
 
-      {visibleSubs.length === 0 ? (
-        <EmptyState title="No subcontractors" message="No subcontractors have been added yet." />
+      {filtered.length === 0 ? (
+        <EmptyState
+          title="No subcontractors"
+          message={
+            baseList.length === 0
+              ? "No subcontractors have been added yet."
+              : "Try adjusting your search or filters."
+          }
+        />
       ) : (
-        <SectionCard title={`Subcontractors (${visibleSubs.length})`}>
+        <SectionCard title={`Subcontractors (${filtered.length})`}>
           <div className="overflow-x-auto">
             <table className="table table-sm">
               <thead>
@@ -282,7 +357,7 @@ export default function SubcontractorsPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleSubs.map((sub) => {
+                {filtered.map((sub) => {
                   const overpaid = Number(sub.amount_paid ?? 0) > Number(sub.subcontract_value ?? 0);
                   return (
                     <tr key={sub.id}>

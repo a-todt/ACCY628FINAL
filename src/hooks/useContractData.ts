@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { scopeDataForClientRole } from "@/lib/clientScope";
 import { createClient } from "@/lib/supabase/client";
 import type {
   ChangeOrder,
@@ -39,6 +41,7 @@ const EMPTY_STATE: ContractDataState = {
 };
 
 export function useContractData() {
+  const { user, profile, effectiveRole } = useAuth();
   const [data, setData] = useState<ContractDataState>(EMPTY_STATE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -121,13 +124,17 @@ export function useContractData() {
   }, []);
 
   useEffect(() => {
-    // Deferred to a microtask so the data fetch's state updates happen
-    // outside of the effect's synchronous execution.
     void Promise.resolve().then(() => load());
   }, [load]);
 
+  const scoped = useMemo(
+    () =>
+      scopeDataForClientRole(data, effectiveRole, profile?.role, user?.id),
+    [data, effectiveRole, profile?.role, user?.id]
+  );
+
   return {
-    ...data,
+    ...scoped,
     loading,
     error,
     refresh: load,

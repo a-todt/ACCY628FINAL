@@ -105,11 +105,16 @@ export function secondaryNavForCategory(
         { href: "/contracts/overview", label: "Overview", show: true },
         { href: "/contracts", label: "All Contracts", show: true },
         { href: "/contracts/new", label: "Add Contract", show: canManageContracts(role) },
-        { href: "/change-orders", label: "Change Orders", show: role !== "client" },
+        { href: "/change-orders", label: "Change Orders", show: true },
         {
           href: "/subcontractors",
           label: "Subcontractors",
           show: role === "admin" || role === "project_manager" || role === "subcontractor",
+        },
+        {
+          href: "/field-logs",
+          label: "Field Logs",
+          show: role !== "client",
         },
       ] as Array<NavItem & { show: boolean }>
     )
