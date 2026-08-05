@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
+import { WIP_DB, colNum, type DbRow } from "@/lib/wipSchema";
 
 /** Minimal project shape needed for WIP calculations. */
 export interface WIPProject {
@@ -50,6 +51,16 @@ function num(value: number | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Map a live `projects` row into the numeric inputs WIP needs. */
+export function projectToWIPInputs(row: DbRow): WIPProject {
+  const P = WIP_DB.projects;
+  return {
+    id: String(row[P.pk] ?? ""),
+    estimated_total_cost: colNum(row, P.estimatedCost),
+    revised_contract_value: colNum(row, P.contractValue),
+  };
+}
+
 export function computeWIP(
   project: WIPProject,
   actualCostsToDate: number,
@@ -63,7 +74,6 @@ export function computeWIP(
     estimatedTotalCost > 0 ? Math.min(actualCostsToDate / estimatedTotalCost, 1) : 0;
   const completionPercentage = completionRatio * 100;
 
-  // Earned revenue uses the cost-to-cost ratio (not the *100 display percent).
   const revenueEarned = completionRatio * revisedContractValue;
 
   const overbilling = billedToDate > revenueEarned ? billedToDate - revenueEarned : 0;
@@ -122,30 +132,32 @@ export function useWIPCalculations(project: WIPProject | null | undefined) {
     try {
       const [costsRes, billingsRes] = await Promise.all([
         supabase
-          .from("project_costs")
-          .select("amount")
-          .eq("project_id", projectId)
-          .eq("user_id", userId),
+          .from(WIP_DB.projectCosts.table)
+          .select(WIP_DB.projectCosts.amount)
+          .eq(WIP_DB.projectCosts.fk, projectId)
+          .eq(WIP_DB.projectCosts.userId, userId),
         supabase
-          .from("billings")
-          .select("amount_billed, retainage_held")
-          .eq("project_id", projectId)
-          .eq("user_id", userId),
+          .from(WIP_DB.billings.table)
+          .select(
+            `${WIP_DB.billings.amountBilled}, ${WIP_DB.billings.retainageHeld}`
+          )
+          .eq(WIP_DB.billings.fk, projectId)
+          .eq(WIP_DB.billings.userId, userId),
       ]);
 
       if (costsRes.error) throw costsRes.error;
       if (billingsRes.error) throw billingsRes.error;
 
       const costs = (costsRes.data ?? []).reduce(
-        (sum, row) => sum + num(row.amount as number | null),
+        (sum, row) => sum + colNum(row as DbRow, WIP_DB.projectCosts.amount),
         0
       );
       const billed = (billingsRes.data ?? []).reduce(
-        (sum, row) => sum + num(row.amount_billed as number | null),
+        (sum, row) => sum + colNum(row as DbRow, WIP_DB.billings.amountBilled),
         0
       );
       const retainage = (billingsRes.data ?? []).reduce(
-        (sum, row) => sum + num(row.retainage_held as number | null),
+        (sum, row) => sum + colNum(row as DbRow, WIP_DB.billings.retainageHeld),
         0
       );
 

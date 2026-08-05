@@ -16,9 +16,24 @@ import {
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { AlertBanner, EmptyState, SectionCard } from "@/components/ui";
-import { computeWIP, type WIPCalculations } from "@/hooks/useWIPCalculations";
+import {
+  computeWIP,
+  projectToWIPInputs,
+  type WIPCalculations,
+} from "@/hooks/useWIPCalculations";
 import { moneyExact, percent } from "@/lib/metrics";
 import { createClient } from "@/lib/supabase/client";
+import {
+  WIP_DB,
+  colNum,
+  colStr,
+  selectList,
+  type DbRow,
+} from "@/lib/wipSchema";
+
+const P = WIP_DB.projects;
+const C = WIP_DB.projectCosts;
+const B = WIP_DB.billings;
 
 const CHART_COLORS = {
   earned: "#0d9488",
@@ -30,25 +45,12 @@ const CHART_COLORS = {
   atRisk: "#ef4444",
 };
 
-interface ProjectRow {
-  id: string;
-  project_name: string;
-  client_name: string | null;
-  revised_contract_value: number | null;
-  estimated_total_cost: number | null;
-  status: string | null;
-}
-
 interface ProjectMetrics {
-  project: ProjectRow;
+  project: DbRow;
+  projectId: string;
   calcs: WIPCalculations;
   health: "healthy" | "watch" | "at_risk";
   statusBucket: "active" | "complete" | "at_risk";
-}
-
-function num(value: number | null | undefined): number {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
 }
 
 function shortName(name: string, len = 14): string {
@@ -81,9 +83,9 @@ function healthBadge(health: ProjectMetrics["health"]) {
   return <span className="badge badge-error badge-sm">At Risk</span>;
 }
 
-export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }) {
+export function RevenueRecognitionDashboard() {
   const { user } = useAuth();
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [projects, setProjects] = useState<DbRow[]>([]);
   const [costsByProject, setCostsByProject] = useState<Record<string, number>>({});
   const [billedByProject, setBilledByProject] = useState<Record<string, number>>({});
   const [retainageByProject, setRetainageByProject] = useState<Record<string, number>>({});
@@ -102,16 +104,23 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
 
     try {
       const { data: projectRows, error: projectsError } = await supabase
-        .from("projects")
+        .from(P.table)
         .select(
-          "id, project_name, client_name, revised_contract_value, estimated_total_cost, status"
+          selectList(
+            P.pk,
+            P.name,
+            P.clientName,
+            P.contractValue,
+            P.estimatedCost,
+            P.status
+          )
         )
-        .eq("user_id", user.id)
-        .order("project_name", { ascending: true });
+        .eq(P.userId, user.id)
+        .order(P.name, { ascending: true });
 
       if (projectsError) throw projectsError;
 
-      const list = (projectRows ?? []) as ProjectRow[];
+      const list = (projectRows ?? []) as unknown as DbRow[];
       setProjects(list);
 
       if (list.length === 0) {
@@ -121,37 +130,35 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
         return;
       }
 
-      const ids = list.map((p) => p.id);
+      const ids = list.map((row) => colStr(row, P.pk));
       const [costsRes, billingsRes] = await Promise.all([
         supabase
-          .from("project_costs")
-          .select("project_id, amount")
-          .eq("user_id", user.id)
-          .lte("cost_date", periodEnd)
-          .in("project_id", ids),
+          .from(C.table)
+          .select(selectList(C.fk, C.amount))
+          .eq(C.userId, user.id)
+          .in(C.fk, ids),
         supabase
-          .from("billings")
-          .select("project_id, amount_billed, retainage_held")
-          .eq("user_id", user.id)
-          .lte("billing_date", periodEnd)
-          .in("project_id", ids),
+          .from(B.table)
+          .select(selectList(B.fk, B.amountBilled, B.retainageHeld))
+          .eq(B.userId, user.id)
+          .in(B.fk, ids),
       ]);
 
       if (costsRes.error) throw costsRes.error;
       if (billingsRes.error) throw billingsRes.error;
 
       const costs: Record<string, number> = {};
-      for (const row of costsRes.data ?? []) {
-        const id = String(row.project_id);
-        costs[id] = (costs[id] ?? 0) + num(row.amount as number | null);
+      for (const row of (costsRes.data ?? []) as unknown as DbRow[]) {
+        const id = colStr(row, C.fk);
+        costs[id] = (costs[id] ?? 0) + colNum(row, C.amount);
       }
 
       const billed: Record<string, number> = {};
       const retainage: Record<string, number> = {};
-      for (const row of billingsRes.data ?? []) {
-        const id = String(row.project_id);
-        billed[id] = (billed[id] ?? 0) + num(row.amount_billed as number | null);
-        retainage[id] = (retainage[id] ?? 0) + num(row.retainage_held as number | null);
+      for (const row of (billingsRes.data ?? []) as unknown as DbRow[]) {
+        const id = colStr(row, B.fk);
+        billed[id] = (billed[id] ?? 0) + colNum(row, B.amountBilled);
+        retainage[id] = (retainage[id] ?? 0) + colNum(row, B.retainageHeld);
       }
 
       setCostsByProject(costs);
@@ -163,27 +170,29 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
     } finally {
       setLoading(false);
     }
-  }, [user, periodEnd]);
+  }, [user]);
 
   useEffect(() => {
-    void Promise.resolve().then(() => load());
+    void load();
   }, [load]);
 
   const metrics: ProjectMetrics[] = useMemo(
     () =>
       projects.map((project) => {
+        const projectId = colStr(project, P.pk);
         const calcs = computeWIP(
-          project,
-          costsByProject[project.id] ?? 0,
-          billedByProject[project.id] ?? 0,
-          retainageByProject[project.id] ?? 0
+          projectToWIPInputs(project),
+          costsByProject[projectId] ?? 0,
+          billedByProject[projectId] ?? 0,
+          retainageByProject[projectId] ?? 0
         );
         const health = healthFromMargin(calcs.projectedMargin);
         return {
           project,
+          projectId,
           calcs,
           health,
-          statusBucket: statusBucket(project.status, health),
+          statusBucket: statusBucket(colStr(project, P.status, "active"), health),
         };
       }),
     [projects, costsByProject, billedByProject, retainageByProject]
@@ -192,7 +201,7 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
   const totals = useMemo(() => {
     const summed = metrics.reduce(
       (acc, { project, calcs }) => {
-        acc.contractValue += num(project.revised_contract_value);
+        acc.contractValue += colNum(project, P.contractValue);
         acc.revenueEarned += calcs.revenueEarned;
         acc.billedToDate += calcs.billedToDate;
         acc.retainageHeld += calcs.retainageHeld;
@@ -209,15 +218,13 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
       ...summed,
       overbilling: Math.max(0, summed.billedToDate - summed.revenueEarned),
       underbilling: Math.max(0, summed.revenueEarned - summed.billedToDate),
-      contractLiability: Math.max(0, summed.billedToDate - summed.revenueEarned),
-      contractAsset: Math.max(0, summed.revenueEarned - summed.billedToDate),
     };
   }, [metrics]);
 
   const earnedVsBilledData = useMemo(
     () =>
       metrics.map(({ project, calcs }) => ({
-        name: shortName(project.project_name),
+        name: shortName(colStr(project, P.name, "Untitled")),
         Earned: Math.round(calcs.revenueEarned),
         Billed: Math.round(calcs.billedToDate),
       })),
@@ -227,8 +234,8 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
   const costData = useMemo(
     () =>
       metrics.map(({ project, calcs }) => ({
-        name: shortName(project.project_name),
-        Estimated: Math.round(num(project.estimated_total_cost)),
+        name: shortName(colStr(project, P.name, "Untitled")),
+        Estimated: Math.round(colNum(project, P.estimatedCost)),
         Actual: Math.round(calcs.actualCostsToDate),
       })),
     [metrics]
@@ -262,7 +269,7 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
     return (
       <EmptyState
         title="No revenue recognition data"
-        message="Add projects (and related costs/billings) to populate this dashboard."
+        message={`Add rows to ${P.table} (and related ${C.table} / ${B.table}) to populate this dashboard.`}
       />
     );
   }
@@ -271,7 +278,7 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
     <div className="space-y-6">
       <div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-100 border border-base-300">
         <div className="stat">
-          <div className="stat-title">Revised Contract Value</div>
+          <div className="stat-title">Total Contract Value</div>
           <div className="stat-value text-xl sm:text-2xl text-primary">
             {moneyExact(totals.contractValue)}
           </div>
@@ -283,28 +290,28 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
           <div className="stat-desc">Cost-to-cost recognition</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Billings to Date</div>
+          <div className="stat-title">Billed to Date</div>
           <div className="stat-value text-xl sm:text-2xl">{moneyExact(totals.billedToDate)}</div>
-          <div className="stat-desc">Contract-to-cash billings</div>
+          <div className="stat-desc">From {B.table}</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Contract Liability</div>
+          <div className="stat-title">Overbilling (Liability)</div>
           <div className="stat-value text-xl sm:text-2xl text-error">
-            {moneyExact(totals.contractLiability)}
+            {moneyExact(totals.overbilling)}
           </div>
-          <div className="stat-desc">Overbilling: billings exceed earned revenue</div>
+          <div className="stat-desc">Billings in excess of revenue</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Contract Asset</div>
+          <div className="stat-title">Underbilling (Asset)</div>
           <div className="stat-value text-xl sm:text-2xl text-success">
-            {moneyExact(totals.contractAsset)}
+            {moneyExact(totals.underbilling)}
           </div>
-          <div className="stat-desc">Underbilling: earned revenue exceeds billings</div>
+          <div className="stat-desc">Revenue in excess of billings</div>
         </div>
         <div className="stat">
           <div className="stat-title">Retainage Held</div>
           <div className="stat-value text-xl sm:text-2xl">{moneyExact(totals.retainageHeld)}</div>
-          <div className="stat-desc">From project billings</div>
+          <div className="stat-desc">Column {B.retainageHeld}</div>
         </div>
       </div>
 
@@ -398,9 +405,9 @@ export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }
               </tr>
             </thead>
             <tbody>
-              {metrics.map(({ project, calcs, health }) => (
-                <tr key={project.id}>
-                  <td className="font-medium">{project.project_name}</td>
+              {metrics.map(({ project, projectId, calcs, health }) => (
+                <tr key={projectId}>
+                  <td className="font-medium">{colStr(project, P.name)}</td>
                   <td>
                     <div className="flex items-center gap-2">
                       <progress
