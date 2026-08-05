@@ -2,10 +2,10 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Users, ClipboardList, Building2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminData } from "@/hooks/useAdminData";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { AuditLogPanel } from "@/components/AuditLogPanel";
 import {
   ColumnAutocompleteHeader,
@@ -34,7 +34,7 @@ import type {
   UserRole,
 } from "@/lib/types";
 
-type TabId = "settings" | "team" | "parties" | "compliance" | "audit";
+type TabId = "overview" | "settings" | "team" | "parties" | "compliance" | "audit";
 type TeamSortKey =
   | "full_name"
   | "email"
@@ -48,11 +48,23 @@ type TeamSortKey =
 type ClientSortKey = "project" | "client" | "contact" | "billing" | "client_id" | "status";
 type SubSortKey = "company" | "contract" | "trade" | "license" | "status";
 
-const TABS: TabId[] = ["settings", "team", "parties", "compliance", "audit"];
+const TABS: TabId[] = ["overview", "settings", "team", "parties", "compliance", "audit"];
 const STAFF_EDIT_ROLES: UserRole[] = ["owner", "project_manager", "field_supervisor"];
+const HIGH_SIGNAL_AUDIT_ACTIONS = new Set([
+  "staff_created",
+  "staff_updated",
+  "password_reset_sent",
+  "client_access_email_sent",
+  "assignment_created",
+  "assignment_removed",
+  "customer_created",
+  "customer_updated",
+  "subcontractor_updated",
+]);
 
 function tabFromParam(value: string | null): TabId {
-  return TABS.includes(value as TabId) ? (value as TabId) : "settings";
+  if (!value) return "overview";
+  return TABS.includes(value as TabId) ? (value as TabId) : "overview";
 }
 
 function SettingsValue({ value }: { value: string | number | null | undefined }) {
@@ -317,6 +329,53 @@ export default function ManagementPage() {
       setSubSortDir("asc");
     }
   };
+
+  const overview = useMemo(() => {
+    const activeStaff = staffProfiles.filter((p) => p.is_active !== false);
+    const inactiveStaff = staffProfiles.filter((p) => p.is_active === false);
+    const unassignedStaff = staffProfiles.filter(
+      (p) =>
+        (p.role === "project_manager" || p.role === "field_supervisor") &&
+        (assignmentCountByUser.get(p.id) ?? 0) === 0
+    );
+
+    const contractsMissingPm: string[] = [];
+    const contractsMissingField: string[] = [];
+    for (const contract of admin.contracts) {
+      const rows = admin.assignments.filter((a) => a.contract_id === contract.id);
+      if (!rows.some((a) => a.assignment_role === "project_manager")) {
+        contractsMissingPm.push(contract.contract_name);
+      }
+      if (!rows.some((a) => a.assignment_role === "field_supervisor")) {
+        contractsMissingField.push(contract.contract_name);
+      }
+    }
+
+    const pendingClients = admin.customers.filter((c) => !c.claimed_at && !c.user_id);
+    const linkedClients = admin.customers.filter((c) => Boolean(c.claimed_at || c.user_id));
+    const openInvites = admin.invites.filter((inv) => !inv.accepted_at);
+    const staffMissingEmail = staffProfiles.filter((p) => !p.email?.trim());
+    const clientsMissingEmail = admin.customers.filter((c) => !c.contact_email?.trim());
+    const recentPasswordResets = admin.auditLog.filter((row) => row.action === "password_reset_sent");
+    const recentHighSignal = admin.auditLog
+      .filter((row) => HIGH_SIGNAL_AUDIT_ACTIONS.has(row.action))
+      .slice(0, 8);
+
+    return {
+      activeStaffCount: activeStaff.length,
+      inactiveStaffCount: inactiveStaff.length,
+      unassignedStaff,
+      contractsMissingPm,
+      contractsMissingField,
+      pendingClients,
+      linkedClientsCount: linkedClients.length,
+      openInvites,
+      staffMissingEmail,
+      clientsMissingEmail,
+      recentPasswordResetsCount: recentPasswordResets.length,
+      recentHighSignal,
+    };
+  }, [staffProfiles, assignmentCountByUser, admin.contracts, admin.assignments, admin.customers, admin.invites, admin.auditLog]);
 
   if (!canManageCompany(effectiveRole)) {
     return (
@@ -873,6 +932,250 @@ export default function ManagementPage() {
 
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
       {message ? <AlertBanner type="success">{message}</AlertBanner> : null}
+
+      {activeTab === "overview" ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            <StatCard
+              title="Active Staff"
+              value={String(overview.activeStaffCount)}
+              hint={`${overview.inactiveStaffCount} inactive · ${overview.unassignedStaff.length} unassigned PM/field`}
+              icon={Users}
+              tone={overview.unassignedStaff.length > 0 ? "warning" : "default"}
+            />
+            <StatCard
+              title="Assignment Gaps"
+              value={String(overview.contractsMissingPm.length + overview.contractsMissingField.length)}
+              hint={`${overview.contractsMissingPm.length} missing PM · ${overview.contractsMissingField.length} missing field`}
+              icon={ClipboardList}
+              tone={
+                overview.contractsMissingPm.length + overview.contractsMissingField.length > 0
+                  ? "warning"
+                  : "default"
+              }
+            />
+            <StatCard
+              title="External Parties"
+              value={String(overview.pendingClients.length)}
+              hint={`${overview.linkedClientsCount} linked clients · ${overview.openInvites.length} open sub invites`}
+              icon={Building2}
+              tone={overview.pendingClients.length > 0 || overview.openInvites.length > 0 ? "warning" : "default"}
+            />
+            <StatCard
+              title="Access Risk"
+              value={String(
+                overview.staffMissingEmail.length +
+                  overview.clientsMissingEmail.length +
+                  overview.recentPasswordResetsCount
+              )}
+              hint={`${overview.staffMissingEmail.length} staff w/o email · ${overview.clientsMissingEmail.length} clients w/o email · ${overview.recentPasswordResetsCount} recent resets`}
+              icon={ShieldAlert}
+              tone={
+                overview.staffMissingEmail.length + overview.clientsMissingEmail.length > 0
+                  ? "warning"
+                  : "default"
+              }
+            />
+          </div>
+
+          {admin.company ? (
+            <SectionCard title="Company Snapshot">
+              <div className="grid gap-4 md:grid-cols-2 text-sm">
+                <FormField label="Company Name">
+                  <SettingsValue value={admin.company.company_name} />
+                </FormField>
+                <FormField label="Default Payment Terms">
+                  <SettingsValue value={admin.company.default_payment_terms} />
+                </FormField>
+                <FormField label="Default Retainage %">
+                  <SettingsValue value={admin.company.default_retainage_percent} />
+                </FormField>
+                <FormField label="Address">
+                  <SettingsValue
+                    value={
+                      [
+                        admin.company.address_line1,
+                        admin.company.address_line2,
+                        [admin.company.city, admin.company.state].filter(Boolean).join(", "),
+                        admin.company.postal_code,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || null
+                    }
+                  />
+                </FormField>
+              </div>
+            </SectionCard>
+          ) : null}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SectionCard title="Clients Pending Setup">
+              {overview.pendingClients.length === 0 ? (
+                <p className="text-sm opacity-60">All client invites are linked.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Project</th>
+                        <th>Client ID</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overview.pendingClients.slice(0, 8).map((customer) => (
+                        <tr key={customer.id}>
+                          <td>
+                            <div className="font-medium">{customer.company_name}</div>
+                            <div className="text-xs opacity-60">{customer.contact_name || "—"}</div>
+                          </td>
+                          <td>{customer.contracts?.contract_name || "—"}</td>
+                          <td className="font-mono text-xs">{customer.client_id || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Open Subcontractor Invites">
+              {overview.openInvites.length === 0 ? (
+                <p className="text-sm opacity-60">No open invite codes.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Subcontractor</th>
+                        <th>Expires</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overview.openInvites.slice(0, 8).map((invite) => (
+                        <tr key={invite.id}>
+                          <td className="font-mono text-xs">{invite.invite_code}</td>
+                          <td>{invite.subcontractors?.company_name ?? invite.subcontractor_id}</td>
+                          <td>
+                            {invite.expires_at
+                              ? new Date(invite.expires_at).toLocaleDateString()
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Contracts Missing Staff Assignments">
+              {overview.contractsMissingPm.length === 0 &&
+              overview.contractsMissingField.length === 0 ? (
+                <p className="text-sm opacity-60">Every contract has PM and field coverage.</p>
+              ) : (
+                <div className="space-y-3 text-sm">
+                  {overview.contractsMissingPm.length > 0 ? (
+                    <div>
+                      <p className="font-medium mb-1">Missing project manager</p>
+                      <ul className="list-disc pl-5 space-y-0.5 opacity-80">
+                        {overview.contractsMissingPm.slice(0, 8).map((name) => (
+                          <li key={`pm-${name}`}>{name}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {overview.contractsMissingField.length > 0 ? (
+                    <div>
+                      <p className="font-medium mb-1">Missing field supervisor</p>
+                      <ul className="list-disc pl-5 space-y-0.5 opacity-80">
+                        {overview.contractsMissingField.slice(0, 8).map((name) => (
+                          <li key={`fs-${name}`}>{name}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Recent High-Signal Activity">
+              {overview.recentHighSignal.length === 0 ? (
+                <p className="text-sm opacity-60">No recent staff, access, or assignment events.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>When</th>
+                        <th>Actor</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overview.recentHighSignal.map((row) => (
+                        <tr key={row.id}>
+                          <td className="whitespace-nowrap text-xs">
+                            {new Date(row.created_at).toLocaleString()}
+                          </td>
+                          <td className="text-xs">{row.actor_email || row.actor_user_id?.slice(0, 8) || "—"}</td>
+                          <td className="capitalize text-xs">{row.action.replace(/_/g, " ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+          </div>
+
+          {(overview.unassignedStaff.length > 0 ||
+            overview.staffMissingEmail.length > 0 ||
+            overview.clientsMissingEmail.length > 0) && (
+            <SectionCard title="Access & Assignment Attention">
+              <div className="grid gap-4 md:grid-cols-3 text-sm">
+                <div>
+                  <p className="font-medium mb-1">Unassigned PM / Field</p>
+                  {overview.unassignedStaff.length === 0 ? (
+                    <p className="opacity-60">None</p>
+                  ) : (
+                    <ul className="list-disc pl-5 space-y-0.5 opacity-80">
+                      {overview.unassignedStaff.slice(0, 6).map((p) => (
+                        <li key={p.id}>{p.full_name || p.email || p.id.slice(0, 8)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <p className="font-medium mb-1">Staff Missing Email</p>
+                  {overview.staffMissingEmail.length === 0 ? (
+                    <p className="opacity-60">None</p>
+                  ) : (
+                    <ul className="list-disc pl-5 space-y-0.5 opacity-80">
+                      {overview.staffMissingEmail.slice(0, 6).map((p) => (
+                        <li key={p.id}>{p.full_name || p.employee_id || p.id.slice(0, 8)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <p className="font-medium mb-1">Clients Missing Email</p>
+                  {overview.clientsMissingEmail.length === 0 ? (
+                    <p className="opacity-60">None</p>
+                  ) : (
+                    <ul className="list-disc pl-5 space-y-0.5 opacity-80">
+                      {overview.clientsMissingEmail.slice(0, 6).map((c) => (
+                        <li key={c.id}>{c.company_name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </SectionCard>
+          )}
+        </div>
+      ) : null}
 
       {activeTab === "settings" && admin.company ? (
         <SectionCard
