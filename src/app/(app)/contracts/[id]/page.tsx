@@ -6,8 +6,10 @@ import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { WeatherBadge } from "@/components/WeatherBadge";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
 import { canViewCosts, statusBadgeClass } from "@/lib/roles";
+import { isBadWeather } from "@/lib/weather";
 
 export default function ContractDetailPage() {
   const params = useParams<{ id: string }>();
@@ -297,13 +299,17 @@ export default function ContractDetailPage() {
                     <th>Date</th>
                     <th>Submitted By</th>
                     <th>Work Performed</th>
+                    <th>Weather</th>
                     <th className="text-right">Hours</th>
                     <th className="text-right">Workers</th>
                   </tr>
                 </thead>
                 <tbody>
                   {contractFieldLogs.map((log) => (
-                    <tr key={log.id}>
+                    <tr
+                      key={log.id}
+                      className={isBadWeather(log.weather_conditions) ? "bg-error/10" : undefined}
+                    >
                       <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
                       <td>
                         {userProfiles.find((p) => p.id === log.user_id)?.full_name ??
@@ -311,6 +317,9 @@ export default function ContractDetailPage() {
                           "—"}
                       </td>
                       <td className="max-w-xs truncate">{log.work_performed ?? "—"}</td>
+                      <td>
+                        <WeatherBadge weather={log.weather_conditions} />
+                      </td>
                       <td className="text-right">{log.hours_worked ?? "—"}</td>
                       <td className="text-right">{log.workers_on_site ?? "—"}</td>
                     </tr>
