@@ -2,8 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { NailItLogo } from "@/components/NailItLogo";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { AlertBanner, FormField } from "@/components/ui";
 import { COMPANY_ROLES, ROLE_LABELS } from "@/lib/roles";
@@ -15,9 +15,9 @@ type Mode = "login" | "signup" | "forgot";
 const SIGNUP_ROLES: UserRole[] = COMPANY_ROLES.filter((r) => r !== "owner");
 
 const FEATURES = [
-  "Live WIP Schedule",
-  "Billing Applications",
-  "Change Order Tracking",
+  "Built specifically for general contractors",
+  "Manage all your projects in one place",
+  "Generate a WIP schedule instantly",
 ] as const;
 
 export default function LoginPage() {
@@ -159,28 +159,22 @@ export default function LoginPage() {
       />
 
       <div className="relative z-10 min-h-screen grid lg:grid-cols-2">
-        <div className="flex flex-col justify-between gap-8 p-6 sm:p-10 lg:p-12 text-base-content">
-          <div className="max-w-lg space-y-6">
-            <h1 className="text-5xl sm:text-6xl font-black tracking-tight leading-none">
-              <span aria-hidden="true" className="mr-2">
-                🔨
-              </span>
-              Nail It
-            </h1>
+        <div className="flex flex-col min-h-[42vh] lg:min-h-screen p-6 sm:p-10 lg:p-12 text-base-content">
+          <div className="w-fit rounded-2xl shadow-xl ring-4 ring-base-100/40">
+            <NailItLogo size="xl" />
+          </div>
+
+          <div className="flex-1 flex flex-col justify-center max-w-lg space-y-6 pb-6 lg:pb-8">
             <p className="text-xl sm:text-2xl font-medium leading-snug opacity-90">
               Know exactly where every project stands
             </p>
-            <ul className="space-y-3 pt-1">
+            <ul className="list-disc list-inside space-y-3 text-base sm:text-lg font-medium marker:text-primary">
               {FEATURES.map((feature) => (
-                <li key={feature} className="flex items-center gap-3 text-base sm:text-lg">
-                  <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
-                    <Check className="size-4" strokeWidth={3} aria-hidden />
-                  </span>
-                  <span className="font-medium">{feature}</span>
-                </li>
+                <li key={feature}>{feature}</li>
               ))}
             </ul>
           </div>
+
           <p className="text-sm opacity-60 max-w-md">
             Your data is private. Only you can see your projects.
           </p>
