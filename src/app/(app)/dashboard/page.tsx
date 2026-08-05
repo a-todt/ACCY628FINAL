@@ -27,7 +27,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { buildInsuranceWarnings } from "@/lib/insurance";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
 import { statusBadgeClass } from "@/lib/roles";
 import type {
@@ -40,6 +42,7 @@ import type {
   Payment,
   Subcontractor,
 } from "@/lib/types";
+import type { ContractInsuranceRequirement, InsurancePolicy } from "@/lib/types";
 
 const CHART_COLORS = ["#4f46e5", "#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#ec4899"];
 
@@ -57,13 +60,16 @@ interface DashboardData {
   payments: Payment[];
   fieldLogs: FieldLog[];
   milestones: Milestone[];
+  insurancePolicies?: InsurancePolicy[];
+  insuranceRequirements?: ContractInsuranceRequirement[];
 }
 
 export default function DashboardPage() {
   const { effectiveRole, profile, user } = useAuth();
   const data = useContractData();
+  const insurance = useInsuranceData();
 
-  if (data.loading) {
+  if (data.loading || insurance.loading) {
     return (
       <div className="grid place-items-center py-24">
         <span className="loading loading-spinner loading-lg text-primary" />
@@ -84,6 +90,8 @@ export default function DashboardPage() {
     payments: data.payments,
     fieldLogs: data.fieldLogs,
     milestones: data.milestones,
+    insurancePolicies: insurance.policies,
+    insuranceRequirements: insurance.requirements,
   };
 
   return (
@@ -114,6 +122,8 @@ function AdminDashboard({
   invoices,
   payments,
   milestones,
+  insurancePolicies = [],
+  insuranceRequirements = [],
 }: DashboardData) {
   if (contracts.length === 0) {
     return (
@@ -206,6 +216,13 @@ function AdminDashboard({
     warnings.push(
       `${unprofitableContracts.length} contract${unprofitableContracts.length > 1 ? "s" : ""} running at a loss.`
     );
+  }
+  for (const warning of buildInsuranceWarnings(
+    insurancePolicies,
+    insuranceRequirements,
+    subcontractors
+  )) {
+    warnings.push(warning);
   }
 
   return (
@@ -319,7 +336,14 @@ function AdminDashboard({
       </div>
 
       {warnings.length > 0 ? (
-        <SectionCard title="Warnings">
+        <SectionCard
+          title="Warnings"
+          actions={
+            <Link href="/insurance" className="btn btn-ghost btn-xs">
+              Review insurance
+            </Link>
+          }
+        >
           <ul className="space-y-2">
             {warnings.map((warning) => (
               <li key={warning} className="flex items-start gap-2 text-sm">
