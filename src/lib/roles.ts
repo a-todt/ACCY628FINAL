@@ -82,7 +82,12 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
     [
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
-      { id: "contracts" as const, href: "/contracts/overview", label: "Contracts", show: true },
+      {
+        id: "contracts" as const,
+        href: role === "field_supervisor" ? "/contracts" : "/contracts/overview",
+        label: "Contracts",
+        show: true,
+      },
       {
         id: "finance" as const,
         href: "/finance",
@@ -102,7 +107,12 @@ export function secondaryNavForCategory(
   if (category === "contracts") {
     return (
       [
-        { href: "/contracts/overview", label: "Overview", show: true },
+        {
+          href: "/contracts/overview",
+          label: "Overview",
+          // Field supervisors use All Contracts (summary + supervised details).
+          show: role !== "field_supervisor",
+        },
         { href: "/contracts", label: "All Contracts", show: true },
         { href: "/contracts/new", label: "Add Contract", show: canManageContracts(role) },
         { href: "/change-orders", label: "Change Orders", show: true },

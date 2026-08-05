@@ -42,10 +42,15 @@ export default function ContractDetailPage() {
   const contract = contracts.find((c) => c.id === contractId);
 
   if (!contract) {
+    const isFieldSupervisor = effectiveRole === "field_supervisor";
     return (
       <EmptyState
-        title="Contract not found"
-        message="This contract doesn't exist or you don't have access to it."
+        title={isFieldSupervisor ? "Detail access restricted" : "Contract not found"}
+        message={
+          isFieldSupervisor
+            ? "You can view full details only for contracts you supervise. Use All Contracts for summaries of every project."
+            : "This contract doesn't exist or you don't have access to it."
+        }
         action={
           <Link href="/contracts" className="btn btn-primary btn-sm mt-2">
             Back to Contracts

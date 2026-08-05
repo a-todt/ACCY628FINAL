@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   ClipboardList,
@@ -19,6 +20,7 @@ type Section = "contracts" | "change_orders" | "subcontractors";
 type SortKey = "name" | "status" | "amount" | "date" | "project";
 
 export default function ContractsOverviewPage() {
+  const router = useRouter();
   const { effectiveRole } = useAuth();
   const {
     contracts,
@@ -31,6 +33,12 @@ export default function ContractsOverviewPage() {
     loading,
     error,
   } = useContractData();
+
+  useEffect(() => {
+    if (effectiveRole === "field_supervisor") {
+      router.replace("/contracts");
+    }
+  }, [effectiveRole, router]);
 
   const [search, setSearch] = useState("");
   const [section, setSection] = useState<Section | "all">("all");
@@ -148,6 +156,14 @@ export default function ContractsOverviewPage() {
   const activeContracts = contracts.filter((c) => c.status === "active").length;
   const totalContractValue = contractRows.reduce((sum, r) => sum + r.amount, 0);
   const totalSubValue = subRows.reduce((sum, r) => sum + r.amount, 0);
+
+  if (effectiveRole === "field_supervisor") {
+    return (
+      <div className="grid place-items-center py-24">
+        <span className="loading loading-spinner loading-lg text-primary" />
+      </div>
+    );
+  }
 
   if (loading) {
     return (

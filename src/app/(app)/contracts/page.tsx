@@ -2,20 +2,25 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, MapPin, Plus } from "lucide-react";
+import { Building2, Eye, LockKeyhole, MapPin, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useContractSummaries } from "@/hooks/useContractSummaries";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, PageHeader } from "@/components/ui";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
 import { canManageContracts, canViewCosts, statusBadgeClass } from "@/lib/roles";
+import type { ContractSummary } from "@/lib/types";
 
 type SortKey = "name" | "client" | "status" | "value" | "completion" | "collected";
+type SummarySortKey = "name" | "client" | "status" | "end_date";
 
 export default function ContractsPage() {
   const { effectiveRole } = useAuth();
   const { contracts, changeOrders, invoices, costEntries, milestones, payments, loading, error } =
     useContractData();
+  const isFieldSupervisor = effectiveRole === "field_supervisor";
+  const summaryData = useContractSummaries(isFieldSupervisor);
   const canManage = canManageContracts(effectiveRole);
   const showCosts = canViewCosts(effectiveRole);
 
@@ -67,6 +72,16 @@ export default function ContractsPage() {
       return compareValues(a.metrics.completionPercent, b.metrics.completionPercent, sortDir);
     });
   }, [rows, search, statusFilter, typeFilter, sortKey, sortDir]);
+
+  if (isFieldSupervisor) {
+    return (
+      <FieldSupervisorContracts
+        summaries={summaryData.summaries}
+        loading={summaryData.loading}
+        error={summaryData.error}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -271,4 +286,237 @@ export default function ContractsPage() {
       )}
     </div>
   );
+}
+
+function FieldSupervisorContracts({
+  summaries,
+  loading,
+  error,
+}: {
+  summaries: ContractSummary[];
+  loading: boolean;
+  error: string | null;
+}) {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [accessFilter, setAccessFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<SummarySortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const next = summaries.filter((contract) => {
+      if (statusFilter !== "all" && contract.status !== statusFilter) return false;
+      if (accessFilter === "supervising" && !contract.supervised_by_me) return false;
+      if (accessFilter === "summary" && contract.supervised_by_me) return false;
+      if (!q) return true;
+
+      return [
+        contract.contract_name,
+        contract.client_name,
+        contract.city,
+        contract.state,
+        contract.contract_type,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+    });
+
+    return [...next].sort((a, b) => {
+      if (sortKey === "name") return compareValues(a.contract_name, b.contract_name, sortDir);
+      if (sortKey === "client") return compareValues(a.client_name, b.client_name, sortDir);
+      if (sortKey === "status") return compareValues(a.status, b.status, sortDir);
+      return compareValues(a.end_date, b.end_date, sortDir);
+    });
+  }, [summaries, search, statusFilter, accessFilter, sortKey, sortDir]);
+
+  if (loading) {
+    return (
+      <div className="grid place-items-center py-24">
+        <span className="loading loading-spinner loading-lg text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return <AlertBanner type="error">{error}</AlertBanner>;
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="Contracts"
+        subtitle="Review every contract summary. Full details are available for contracts you supervise."
+      />
+
+      <FilterSortBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search contracts, clients, locations…"
+        sortOptions={[
+          { value: "name", label: "Contract name" },
+          { value: "client", label: "Client" },
+          { value: "status", label: "Status" },
+          { value: "end_date", label: "End date" },
+        ]}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortKeyChange={(value) => setSortKey(value as SummarySortKey)}
+        onSortDirChange={setSortDir}
+        resultCount={filtered.length}
+        filters={
+          <>
+            <label className="form-control w-full lg:w-40">
+              <span className="label py-1">
+                <span className="label-text text-xs opacity-70">Status</span>
+              </span>
+              <select
+                className="select select-bordered select-sm"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="on_hold">On Hold</option>
+                <option value="completed">Completed</option>
+                <option value="canceled">Canceled</option>
+              </select>
+            </label>
+            <label className="form-control w-full lg:w-44">
+              <span className="label py-1">
+                <span className="label-text text-xs opacity-70">Detail access</span>
+              </span>
+              <select
+                className="select select-bordered select-sm"
+                value={accessFilter}
+                onChange={(event) => setAccessFilter(event.target.value)}
+              >
+                <option value="all">All contracts</option>
+                <option value="supervising">I supervise</option>
+                <option value="summary">Summary only</option>
+              </select>
+            </label>
+          </>
+        }
+      />
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          title="No contracts found"
+          message={summaries.length === 0 ? "No contracts are available." : "Try adjusting your search or filters."}
+        />
+      ) : (
+        <>
+          <div className="grid sm:grid-cols-2 gap-4 md:hidden">
+            {filtered.map((contract) => (
+              <article
+                key={contract.id}
+                className="card bg-base-100 border border-base-300 shadow-sm"
+              >
+                <div className="card-body p-4 gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium leading-tight">{contract.contract_name}</p>
+                    <span className={`badge badge-sm shrink-0 ${statusBadgeClass(contract.status)}`}>
+                      {labelize(contract.status)}
+                    </span>
+                  </div>
+                  <p className="text-sm opacity-70">{contract.client_name ?? "No client listed"}</p>
+                  <p className="text-xs opacity-60 flex items-center gap-1">
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    {[contract.city, contract.state].filter(Boolean).join(", ") || "No location listed"}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-xs opacity-60">Type</p>
+                      <p>{contract.contract_type ? labelize(contract.contract_type) : "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs opacity-60">Schedule</p>
+                      <p>{formatContractDates(contract)}</p>
+                    </div>
+                  </div>
+                  <ContractAccessAction contract={contract} />
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto rounded-box border border-base-300 bg-base-100">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Contract</th>
+                  <th>Client</th>
+                  <th>Location</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Schedule</th>
+                  <th>Access</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((contract) => (
+                  <tr key={contract.id} className="hover:bg-base-200/60">
+                    <td>
+                      <span className="inline-flex items-center gap-2 font-medium">
+                        <Building2 className="h-4 w-4 opacity-50" />
+                        {contract.contract_name}
+                      </span>
+                    </td>
+                    <td>{contract.client_name ?? "—"}</td>
+                    <td>{[contract.city, contract.state].filter(Boolean).join(", ") || "—"}</td>
+                    <td>{contract.contract_type ? labelize(contract.contract_type) : "—"}</td>
+                    <td>
+                      <span className={`badge badge-sm ${statusBadgeClass(contract.status)}`}>
+                        {labelize(contract.status)}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap">{formatContractDates(contract)}</td>
+                    <td>
+                      <ContractAccessAction contract={contract} compact />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ContractAccessAction({
+  contract,
+  compact = false,
+}: {
+  contract: ContractSummary;
+  compact?: boolean;
+}) {
+  if (!contract.supervised_by_me) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs opacity-60">
+        <LockKeyhole className="h-3.5 w-3.5" />
+        Summary only
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={`/contracts/${contract.id}`}
+      className={compact ? "link link-primary text-sm inline-flex items-center gap-1.5" : "btn btn-primary btn-sm"}
+    >
+      <Eye className="h-4 w-4" />
+      View details
+    </Link>
+  );
+}
+
+function formatContractDates(contract: ContractSummary): string {
+  const start = contract.start_date ? new Date(`${contract.start_date}T00:00:00`).toLocaleDateString() : "—";
+  const end = contract.end_date ? new Date(`${contract.end_date}T00:00:00`).toLocaleDateString() : "—";
+  return `${start} – ${end}`;
 }

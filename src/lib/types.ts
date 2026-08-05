@@ -49,6 +49,19 @@ export interface Contract {
   created_at: string;
 }
 
+export interface ContractSummary {
+  id: string;
+  contract_name: string;
+  client_name: string | null;
+  city: string | null;
+  state: string | null;
+  contract_type: ContractType | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: ContractStatus;
+  supervised_by_me: boolean;
+}
+
 export interface ChangeOrder {
   id: string;
   contract_id: string;
