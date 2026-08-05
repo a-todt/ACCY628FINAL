@@ -1,8 +1,13 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown } from "lucide-react";
 
 export type ColumnSortDir = "asc" | "desc";
+
+export type CheckboxFilterOption = {
+  value: string;
+  label: string;
+};
 
 function SortLabel({
   label,
@@ -105,6 +110,92 @@ export function ColumnAutocompleteHeader({
   );
 }
 
+/** Multi-select checkbox filter in the column header. Empty selection = show all. */
+export function ColumnCheckboxFilterHeader({
+  label,
+  options,
+  selected,
+  onChange,
+  sortActive = false,
+  sortDir = "asc",
+  onSort,
+}: {
+  label: string;
+  options: CheckboxFilterOption[];
+  selected: string[];
+  onChange: (selected: string[]) => void;
+  sortActive?: boolean;
+  sortDir?: ColumnSortDir;
+  onSort?: () => void;
+}) {
+  const selectedSet = new Set(selected);
+  const activeCount = selected.length;
+  const allSelected = options.length > 0 && options.every((opt) => selectedSet.has(opt.value));
+
+  const toggle = (value: string) => {
+    const next = new Set(selectedSet);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    onChange(Array.from(next));
+  };
+
+  const selectAll = () => onChange(options.map((opt) => opt.value));
+  const clearAll = () => onChange([]);
+
+  return (
+    <th className="align-top px-1 text-center">
+      <div className="flex min-w-0 flex-col items-center gap-1">
+        <SortLabel label={label} sortActive={sortActive} sortDir={sortDir} onSort={onSort} />
+        <div className="dropdown dropdown-bottom">
+          <div
+            tabIndex={0}
+            role="button"
+            className={`btn btn-ghost h-6 min-h-6 gap-0.5 px-1.5 text-[10px] font-normal ${
+              activeCount > 0 ? "text-primary" : "opacity-80"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {activeCount > 0 ? `${activeCount} selected` : "All"}
+            <ChevronDown className="h-3 w-3" />
+          </div>
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu bg-base-100 rounded-box z-50 w-48 p-2 shadow border border-base-300 text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <li>
+              <button type="button" className="text-[11px]" onClick={selectAll} disabled={allSelected}>
+                Select all
+              </button>
+            </li>
+            <li>
+              <button type="button" className="text-[11px]" onClick={clearAll} disabled={activeCount === 0}>
+                Clear
+              </button>
+            </li>
+            <li className="menu-title pt-2">
+              <span className="text-[10px] opacity-60">Filter</span>
+            </li>
+            {options.map((option) => (
+              <li key={option.value}>
+                <label className="flex cursor-pointer items-center gap-2 text-[11px]">
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-xs"
+                    checked={selectedSet.has(option.value)}
+                    onChange={() => toggle(option.value)}
+                  />
+                  <span className="truncate">{option.label}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </th>
+  );
+}
+
 export function uniqueSorted(values: Array<string | null | undefined>): string[] {
   const set = new Set<string>();
   for (const value of values) {
@@ -118,4 +209,10 @@ export function matchesColumnFilter(cell: string | null | undefined, filter: str
   const q = (filter ?? "").trim().toLowerCase();
   if (!q) return true;
   return (cell ?? "").toLowerCase().includes(q);
+}
+
+/** Empty selection means no filter (show all). */
+export function matchesCheckboxFilter(value: string, selected: string[]): boolean {
+  if (selected.length === 0) return true;
+  return selected.includes(value);
 }

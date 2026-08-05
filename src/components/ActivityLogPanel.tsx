@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { AccessAuditEntry } from "@/lib/types";
 import { EmptyState, SectionCard } from "@/components/ui";
 
-export function useActivityLog(entityTypes: string[], enabled = true) {
+export function useActivityLog(entityTypes: string[], enabled = true, limit = 50) {
   const [entries, setEntries] = useState<AccessAuditEntry[]>([]);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export function useActivityLog(entityTypes: string[], enabled = true) {
       .select("*")
       .in("entity_type", types)
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(limit);
 
     if (queryError) {
       setError(queryError.message);
@@ -35,7 +35,7 @@ export function useActivityLog(entityTypes: string[], enabled = true) {
       setEntries((data as AccessAuditEntry[]) ?? []);
     }
     setLoading(false);
-  }, [enabled, typesKey]);
+  }, [enabled, typesKey, limit]);
 
   useEffect(() => {
     void load();
@@ -68,13 +68,19 @@ export function ActivityLogPanel({
   entityTypes,
   enabled = true,
   refreshKey = 0,
+  limit = 50,
+  emptyTitle = "No changes logged yet",
+  emptyMessage = "Cancel and delete actions will appear here.",
 }: {
   title?: string;
   entityTypes: string[];
   enabled?: boolean;
   refreshKey?: number;
+  limit?: number;
+  emptyTitle?: string;
+  emptyMessage?: string;
 }) {
-  const { entries, loading, error, refresh } = useActivityLog(entityTypes, enabled);
+  const { entries, loading, error, refresh } = useActivityLog(entityTypes, enabled, limit);
 
   useEffect(() => {
     if (refreshKey > 0) void refresh();
@@ -91,10 +97,7 @@ export function ActivityLogPanel({
       ) : error ? (
         <p className="text-sm text-error">{error}</p>
       ) : entries.length === 0 ? (
-        <EmptyState
-          title="No changes logged yet"
-          message="Cancel and delete actions will appear here."
-        />
+        <EmptyState title={emptyTitle} message={emptyMessage} />
       ) : (
         <div className="overflow-x-auto">
           <table className="table table-sm">
