@@ -51,6 +51,8 @@ function ContractDetailContent() {
   const searchParams = useSearchParams();
   const contractId = params.id;
   const { effectiveRole } = useAuth();
+  const canSeeInsurancePolicies =
+    effectiveRole !== "client" && effectiveRole !== "subcontractor";
   const {
     contracts,
     changeOrders,
@@ -69,7 +71,7 @@ function ContractDetailContent() {
     policies: insurancePolicies,
     requirements: insuranceRequirements,
     loading: insuranceLoading,
-  } = useInsuranceData();
+  } = useInsuranceData(canSeeInsurancePolicies);
   const canMutate = canCancelOrDeleteContracts(effectiveRole);
   const canEdit = canManageContracts(effectiveRole);
   const wantsEdit = searchParams.get("edit") === "1";
@@ -361,7 +363,7 @@ function ContractDetailContent() {
           </>
         )}
 
-        {!isClient ? (
+        {canSeeInsurancePolicies ? (
           <div className="mt-6 border-t border-base-300 pt-4">
             <p className="text-xs uppercase tracking-wide opacity-60 mb-3">Insurance Policies</p>
             <ContractInsuranceOverview

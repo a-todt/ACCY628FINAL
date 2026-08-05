@@ -81,7 +81,7 @@ function healthBadge(health: ProjectMetrics["health"]) {
   return <span className="badge badge-error badge-sm">At Risk</span>;
 }
 
-export function RevenueRecognitionDashboard() {
+export function RevenueRecognitionDashboard({ periodEnd }: { periodEnd: string }) {
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [costsByProject, setCostsByProject] = useState<Record<string, number>>({});
@@ -127,11 +127,13 @@ export function RevenueRecognitionDashboard() {
           .from("project_costs")
           .select("project_id, amount")
           .eq("user_id", user.id)
+          .lte("cost_date", periodEnd)
           .in("project_id", ids),
         supabase
           .from("billings")
           .select("project_id, amount_billed, retainage_held")
           .eq("user_id", user.id)
+          .lte("billing_date", periodEnd)
           .in("project_id", ids),
       ]);
 
@@ -161,10 +163,10 @@ export function RevenueRecognitionDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, periodEnd]);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(() => load());
   }, [load]);
 
   const metrics: ProjectMetrics[] = useMemo(
@@ -207,6 +209,8 @@ export function RevenueRecognitionDashboard() {
       ...summed,
       overbilling: Math.max(0, summed.billedToDate - summed.revenueEarned),
       underbilling: Math.max(0, summed.revenueEarned - summed.billedToDate),
+      contractLiability: Math.max(0, summed.billedToDate - summed.revenueEarned),
+      contractAsset: Math.max(0, summed.revenueEarned - summed.billedToDate),
     };
   }, [metrics]);
 
@@ -267,7 +271,7 @@ export function RevenueRecognitionDashboard() {
     <div className="space-y-6">
       <div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-100 border border-base-300">
         <div className="stat">
-          <div className="stat-title">Total Contract Value</div>
+          <div className="stat-title">Revised Contract Value</div>
           <div className="stat-value text-xl sm:text-2xl text-primary">
             {moneyExact(totals.contractValue)}
           </div>
@@ -279,23 +283,23 @@ export function RevenueRecognitionDashboard() {
           <div className="stat-desc">Cost-to-cost recognition</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Billed to Date</div>
+          <div className="stat-title">Billings to Date</div>
           <div className="stat-value text-xl sm:text-2xl">{moneyExact(totals.billedToDate)}</div>
           <div className="stat-desc">Contract-to-cash billings</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Overbilling (Liability)</div>
+          <div className="stat-title">Contract Liability</div>
           <div className="stat-value text-xl sm:text-2xl text-error">
-            {moneyExact(totals.overbilling)}
+            {moneyExact(totals.contractLiability)}
           </div>
-          <div className="stat-desc">Billings in excess of revenue</div>
+          <div className="stat-desc">Overbilling: billings exceed earned revenue</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Underbilling (Asset)</div>
+          <div className="stat-title">Contract Asset</div>
           <div className="stat-value text-xl sm:text-2xl text-success">
-            {moneyExact(totals.underbilling)}
+            {moneyExact(totals.contractAsset)}
           </div>
-          <div className="stat-desc">Revenue in excess of billings</div>
+          <div className="stat-desc">Underbilling: earned revenue exceeds billings</div>
         </div>
         <div className="stat">
           <div className="stat-title">Retainage Held</div>
