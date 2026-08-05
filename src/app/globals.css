@@ -95,6 +95,48 @@ body {
   width: 100%;
 }
 
+/* Stronger field outlines — daisyUI 5 defaults to faint/invalid borders when --border is unset */
+.input,
+.select,
+.textarea,
+.file-input {
+  --input-color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+  border: 2px solid var(--input-color);
+}
+
+.input:hover,
+.select:hover,
+.textarea:hover,
+.file-input:hover {
+  --input-color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+}
+
+.input:focus,
+.input:focus-within,
+.select:focus,
+.select:focus-within,
+.textarea:focus,
+.file-input:focus {
+  --input-color: var(--color-primary);
+  border-color: var(--input-color);
+  outline: 2px solid color-mix(in oklab, var(--color-primary) 40%, transparent);
+  outline-offset: 2px;
+}
+
+.checkbox,
+.radio,
+.toggle {
+  border: 2px solid color-mix(in oklab, var(--color-base-content) 45%, transparent);
+}
+
+.input:disabled,
+.select:disabled,
+.textarea:disabled,
+.input:has(> input[disabled]) {
+  --input-color: color-mix(in oklab, var(--color-base-content) 20%, transparent);
+  border-color: var(--input-color);
+}
+
 /* Subtle industrial texture on app backgrounds */
 [data-theme="jobsite"] body,
 [data-theme="jobsite-dark"] body {
