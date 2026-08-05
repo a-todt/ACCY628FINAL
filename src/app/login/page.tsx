@@ -2,8 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { HardHat } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { NailItLogo } from "@/components/NailItLogo";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { AlertBanner, FormField } from "@/components/ui";
 
@@ -65,19 +65,14 @@ export default function LoginPage() {
 
       <div className="relative z-10 min-h-screen grid lg:grid-cols-2">
         <div className="hidden lg:flex flex-col justify-between p-12 text-base-content">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary text-primary-content rounded-xl p-3">
-              <HardHat className="h-7 w-7" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">GC Contract Manager</h1>
-              <p className="opacity-80">Contract-to-Cash for General Contractors</p>
-            </div>
-          </div>
-          <div className="max-w-lg space-y-4">
-            <h2 className="text-4xl font-semibold leading-tight">
+          <NailItLogo size="lg" />
+          <div className="max-w-lg space-y-5">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
+              GC Contract Manager
+            </p>
+            <h1 className="text-4xl font-semibold leading-tight tracking-tight">
               From signed contract to collected cash — in one place.
-            </h2>
+            </h1>
             <p className="text-lg opacity-80">
               Track contracts, change orders, field activity, costs, invoices, and
               payments with role-based visibility for your project team.
@@ -89,12 +84,11 @@ export default function LoginPage() {
         <div className="flex items-center justify-center p-4 sm:p-8">
           <div className="card w-full max-w-md bg-base-100 shadow-2xl border border-base-300">
             <div className="card-body gap-5">
-              <div className="lg:hidden flex items-center gap-2 mb-2">
-                <HardHat className="h-6 w-6 text-primary" />
-                <div>
-                  <p className="font-semibold">GC Contract Manager</p>
-                  <p className="text-xs opacity-60">Contract-to-Cash</p>
-                </div>
+              <div className="flex flex-col items-center gap-3 text-center sm:items-start sm:text-left">
+                <NailItLogo size="md" className="mx-auto sm:mx-0" />
+                <p className="text-xs font-medium uppercase tracking-[0.16em] opacity-60">
+                  GC Contract Manager
+                </p>
               </div>
 
               <div className="flex items-center justify-between gap-3">

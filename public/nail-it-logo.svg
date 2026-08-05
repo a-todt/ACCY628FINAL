@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 72" fill="none" role="img" aria-label="Nail It">
+  <rect width="280" height="72" rx="14" fill="#E8751A"/>
+  <g transform="translate(18, 14)" fill="#FFF8F0">
+    <!-- hard hat dome -->
+    <path d="M8 30c0-11.5 7.2-20 18-20s18 8.5 18 20H8Z"/>
+    <!-- brim -->
+    <path d="M2 30h48c1.1 0 2 .9 2 2v3c0 1.1-.9 2-2 2H2c-1.1 0-2-.9-2-2v-3c0-1.1.9-2 2-2Z"/>
+    <!-- top ridge -->
+    <path d="M24 10c-1.5 0-2.5 1.2-2.5 2.8V16h5v-3.2c0-1.6-1-2.8-2.5-2.8Z"/>
+  </g>
+  <text
+    x="80"
+    y="47"
+    fill="#FFF8F0"
+    font-family="Arial Black, Arial, Helvetica, sans-serif"
+    font-size="34"
+    font-weight="900"
+    letter-spacing="1.5"
+  >NAIL IT</text>
+</svg>
