@@ -2,8 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { NailItLogo } from "@/components/NailItLogo";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { AlertBanner, FormField } from "@/components/ui";
 import { COMPANY_ROLES, ROLE_LABELS } from "@/lib/roles";
@@ -13,6 +13,12 @@ import type { UserRole } from "@/lib/types";
 type Mode = "login" | "signup" | "forgot";
 
 const SIGNUP_ROLES: UserRole[] = COMPANY_ROLES.filter((r) => r !== "owner");
+
+const FEATURES = [
+  "Live WIP Schedule",
+  "Billing Applications",
+  "Change Order Tracking",
+] as const;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -153,33 +159,36 @@ export default function LoginPage() {
       />
 
       <div className="relative z-10 min-h-screen grid lg:grid-cols-2">
-        <div className="hidden lg:flex flex-col justify-between p-12 text-base-content">
-          <NailItLogo size="lg" />
-          <div className="max-w-lg space-y-5">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-              GC Contract Manager
-            </p>
-            <h1 className="text-4xl font-semibold leading-tight tracking-tight">
-              From signed contract to collected cash — in one place.
+        <div className="flex flex-col justify-between gap-8 p-6 sm:p-10 lg:p-12 text-base-content">
+          <div className="max-w-lg space-y-6">
+            <h1 className="text-5xl sm:text-6xl font-black tracking-tight leading-none">
+              <span aria-hidden="true" className="mr-2">
+                🔨
+              </span>
+              Nail It
             </h1>
-            <p className="text-lg opacity-80">
-              Clients and subcontractors are invited by the GC. Staff get access after the Owner
-              assigns them to projects.
+            <p className="text-xl sm:text-2xl font-medium leading-snug opacity-90">
+              Know exactly where every project stands
             </p>
+            <ul className="space-y-3 pt-1">
+              {FEATURES.map((feature) => (
+                <li key={feature} className="flex items-center gap-3 text-base sm:text-lg">
+                  <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
+                    <Check className="size-4" strokeWidth={3} aria-hidden />
+                  </span>
+                  <span className="font-medium">{feature}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-          <p className="text-sm opacity-60">Built for construction operations teams.</p>
+          <p className="text-sm opacity-60 max-w-md">
+            Your data is private. Only you can see your projects.
+          </p>
         </div>
 
-        <div className="flex items-center justify-center p-4 sm:p-8">
+        <div className="flex items-center justify-center p-4 sm:p-8 lg:py-12">
           <div className="card w-full max-w-md bg-base-100 shadow-2xl border border-base-300">
             <div className="card-body gap-5">
-              <div className="flex flex-col items-center gap-3 text-center sm:items-start sm:text-left">
-                <NailItLogo size="md" className="mx-auto sm:mx-0" />
-                <p className="text-xs font-medium uppercase tracking-[0.16em] opacity-60">
-                  GC Contract Manager
-                </p>
-              </div>
-
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-2xl font-semibold">
