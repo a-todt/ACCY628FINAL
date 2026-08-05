@@ -257,12 +257,98 @@ export default function ManagementPage() {
         .select("id")
         .single();
       if (insertError) throw insertError;
+
+      const { data: provisioned, error: provisionError } = await supabase.rpc(
+        "provision_customer_access",
+        { p_customer_id: data.id, p_days_valid: 30 }
+      );
+      if (provisionError) throw provisionError;
+      const row = Array.isArray(provisioned) ? provisioned[0] : provisioned;
+
       await logAction("customer_created", "customers", data.id);
-      setMessage("Customer added.");
+      setMessage(
+        row
+          ? `Customer added. Client ID: ${row.client_id} · Setup code: ${row.setup_code}`
+          : "Customer added."
+      );
       e.currentTarget.reset();
       await admin.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add customer.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onProvisionCustomer = async (customerId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { data, error: provisionError } = await supabase.rpc("provision_customer_access", {
+        p_customer_id: customerId,
+        p_days_valid: 30,
+      });
+      if (provisionError) throw provisionError;
+      const row = Array.isArray(data) ? data[0] : data;
+      setMessage(
+        row
+          ? `New access codes — Client ID: ${row.client_id} · Setup code: ${row.setup_code}`
+          : "Access codes refreshed."
+      );
+      await admin.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to provision client access.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSaveCustomerEmail = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    const form = new FormData(e.currentTarget);
+    const customerId = String(form.get("customer_id") || "");
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("customers")
+        .update({
+          contact_email: String(form.get("contact_email") || "").trim() || null,
+          contact_name: String(form.get("contact_name") || "").trim() || null,
+          contact_phone: String(form.get("contact_phone") || "").trim() || null,
+        })
+        .eq("id", customerId);
+      if (updateError) throw updateError;
+      await logAction("customer_updated", "customers", customerId);
+      setMessage("Customer contact updated.");
+      await admin.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update customer.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSendPasswordReset = async (email: string | null | undefined) => {
+    if (!email) {
+      setError("No email on file for this user.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (resetError) throw resetError;
+      await logAction("password_reset_sent", "user_profiles", email);
+      setMessage(`Password reset email sent to ${email}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send reset email.");
     } finally {
       setBusy(false);
     }
@@ -470,8 +556,25 @@ export default function ManagementPage() {
               <FormField label="Cert Number"><input name="cert_number" className="input input-bordered" /></FormField>
               <FormField label="Issuing Body"><input name="cert_body" className="input input-bordered" /></FormField>
               <FormField label="Expiration"><input type="date" name="cert_expiration" className="input input-bordered" /></FormField>
-              <div className="md:col-span-2 flex justify-end">
-                <button type="submit" className="btn btn-primary" disabled={busy}>Save Employee</button>
+              <div className="md:col-span-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={busy}
+                  onClick={() => {
+                    const select = document.querySelector<HTMLSelectElement>(
+                      'form [name="profile_id"]'
+                    );
+                    const id = select?.value;
+                    const person = staffProfiles.find((p) => p.id === id);
+                    void onSendPasswordReset(person?.email);
+                  }}
+                >
+                  Send password reset
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={busy}>
+                  Save Employee
+                </button>
               </div>
             </form>
           </SectionCard>
@@ -561,26 +664,94 @@ export default function ManagementPage() {
 
           <SectionCard title="Customers">
             {admin.customers.length === 0 ? (
-              <EmptyState title="No customers" message="Add owners / clients here." />
+              <EmptyState title="No customers" message="Add clients here before they create accounts." />
             ) : (
               <div className="overflow-x-auto">
                 <table className="table table-sm">
                   <thead>
-                    <tr><th>Company</th><th>Contact</th><th>Email</th><th>Location</th></tr>
+                    <tr>
+                      <th>Company</th>
+                      <th>Client ID</th>
+                      <th>Setup code</th>
+                      <th>Email</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
                   </thead>
                   <tbody>
                     {admin.customers.map((c) => (
                       <tr key={c.id}>
-                        <td>{c.company_name}</td>
-                        <td>{c.contact_name || "—"}</td>
+                        <td>
+                          <div className="font-medium">{c.company_name}</div>
+                          <div className="text-xs opacity-60">{c.contact_name || "—"}</div>
+                        </td>
+                        <td className="font-mono text-xs">{c.client_id || "—"}</td>
+                        <td className="font-mono text-xs">
+                          {c.claimed_at ? "—" : c.setup_code || "—"}
+                        </td>
                         <td>{c.contact_email || "—"}</td>
-                        <td>{[c.city, c.state].filter(Boolean).join(", ") || "—"}</td>
+                        <td>
+                          <span className={`badge badge-sm ${c.claimed_at || c.user_id ? "badge-success" : "badge-warning"}`}>
+                            {c.claimed_at || c.user_id ? "Linked" : "Pending setup"}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            disabled={busy}
+                            onClick={() => onProvisionCustomer(c.id)}
+                          >
+                            New codes
+                          </button>
+                          {c.contact_email ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              disabled={busy}
+                              onClick={() => onSendPasswordReset(c.contact_email)}
+                            >
+                              Reset pw
+                            </button>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
+          </SectionCard>
+
+          <SectionCard title="Edit customer contact">
+            <form onSubmit={onSaveCustomerEmail} className="grid gap-4 md:grid-cols-2">
+              <FormField label="Customer">
+                <select name="customer_id" className="select select-bordered" required defaultValue="">
+                  <option value="" disabled>
+                    Select customer
+                  </option>
+                  {admin.customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.company_name} ({c.client_id || "no ID"})
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="Contact name">
+                <input name="contact_name" className="input input-bordered" />
+              </FormField>
+              <FormField label="Email" hint="Editable anytime — used for password resets after they claim access.">
+                <input name="contact_email" type="email" className="input input-bordered" />
+              </FormField>
+              <FormField label="Phone">
+                <input name="contact_phone" className="input input-bordered" />
+              </FormField>
+              <div className="md:col-span-2 flex justify-end">
+                <button type="submit" className="btn btn-primary" disabled={busy}>
+                  Save contact
+                </button>
+              </div>
+            </form>
           </SectionCard>
 
           <SectionCard title="Add Subcontractor + Invite Code">

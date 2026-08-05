@@ -6,14 +6,21 @@ import { HardHat } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { AlertBanner, FormField } from "@/components/ui";
+import { COMPANY_ROLES, ROLE_LABELS } from "@/lib/roles";
+import type { UserRole } from "@/lib/types";
+
+type Mode = "login" | "signup" | "forgot";
+
+const SIGNUP_ROLES: UserRole[] = COMPANY_ROLES.filter((r) => r !== "owner");
 
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [accountType, setAccountType] = useState<UserRole>("field_supervisor");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -25,6 +32,15 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      if (mode === "forgot") {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (resetError) throw resetError;
+        setMessage("If that email exists, a reset link was sent. Check your inbox.");
+        return;
+      }
+
       if (mode === "login") {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -33,18 +49,42 @@ export default function LoginPage() {
         if (signInError) throw signInError;
         router.replace("/dashboard");
         router.refresh();
-      } else {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName } },
-        });
-        if (signUpError) throw signUpError;
-        setMessage(
-          "Account created. If email confirmation is enabled, check your inbox. Otherwise you can log in now."
-        );
-        setMode("login");
+        return;
       }
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName, intended_role: accountType } },
+      });
+      if (signUpError) throw signUpError;
+
+      const userId = data.user?.id;
+      if (userId) {
+        const { error: profileError } = await supabase
+          .from("user_profiles")
+          .update({
+            full_name: fullName.trim() || null,
+            role: accountType,
+            onboarding_complete: false,
+            email,
+          })
+          .eq("id", userId);
+        if (profileError) {
+          // Trigger may race; retry insert-style update after short wait is unnecessary —
+          // role can also be fixed on first access gate claim.
+          console.warn(profileError.message);
+        }
+      }
+
+      setMessage(
+        accountType === "client"
+          ? "Account created. Sign in, then enter your Client ID and setup code from your GC."
+          : accountType === "subcontractor"
+            ? "Account created. Sign in, then enter your invite code from your GC."
+            : "Account created. Sign in — your Owner must assign you to a project before you can work."
+      );
+      setMode("login");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
@@ -79,8 +119,8 @@ export default function LoginPage() {
               From signed contract to collected cash — in one place.
             </h2>
             <p className="text-lg opacity-80">
-              Track contracts, change orders, field activity, costs, invoices, and
-              payments with role-based visibility for your project team.
+              Clients and subcontractors are invited by the GC. Staff get access after the Owner
+              assigns them to projects.
             </p>
           </div>
           <p className="text-sm opacity-60">Built for construction operations teams.</p>
@@ -100,10 +140,16 @@ export default function LoginPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-2xl font-semibold">
-                    {mode === "login" ? "Sign in" : "Create account"}
+                    {mode === "login"
+                      ? "Sign in"
+                      : mode === "signup"
+                        ? "Create account"
+                        : "Reset password"}
                   </h2>
                   <p className="text-sm opacity-70">
-                    Secure access for project stakeholders
+                    {mode === "forgot"
+                      ? "We will email you a reset link"
+                      : "Secure access for project stakeholders"}
                   </p>
                 </div>
                 <ThemeSelector compact />
@@ -114,16 +160,35 @@ export default function LoginPage() {
 
               <form className="space-y-4" onSubmit={onSubmit}>
                 {mode === "signup" ? (
-                  <FormField label="Full name">
-                    <input
-                      className="input input-bordered"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      required
-                      autoComplete="name"
-                    />
-                  </FormField>
+                  <>
+                    <FormField label="Full name">
+                      <input
+                        className="input input-bordered"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        required
+                        autoComplete="name"
+                      />
+                    </FormField>
+                    <FormField
+                      label="Account type"
+                      hint="Clients need a Client ID from your GC. Subcontractors need an invite code after sign-in."
+                    >
+                      <select
+                        className="select select-bordered"
+                        value={accountType}
+                        onChange={(e) => setAccountType(e.target.value as UserRole)}
+                      >
+                        {SIGNUP_ROLES.map((role) => (
+                          <option key={role} value={role}>
+                            {ROLE_LABELS[role]}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                  </>
                 ) : null}
+
                 <FormField label="Email">
                   <input
                     type="email"
@@ -134,48 +199,81 @@ export default function LoginPage() {
                     autoComplete="email"
                   />
                 </FormField>
-                <FormField label="Password">
-                  <input
-                    type="password"
-                    className="input input-bordered"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  />
-                </FormField>
+
+                {mode !== "forgot" ? (
+                  <FormField label="Password">
+                    <input
+                      type="password"
+                      className="input input-bordered"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      autoComplete={mode === "login" ? "current-password" : "new-password"}
+                    />
+                  </FormField>
+                ) : null}
+
                 <button className="btn btn-primary w-full" disabled={loading}>
-                  {loading ? (
-                    <span className="loading loading-spinner loading-sm" />
-                  ) : mode === "login" ? (
-                    "Sign in"
-                  ) : (
-                    "Sign up"
-                  )}
+                  {loading ? <span className="loading loading-spinner loading-sm" /> : null}
+                  {mode === "login" ? "Sign in" : mode === "signup" ? "Sign up" : "Send reset link"}
                 </button>
               </form>
 
+              {mode === "login" ? (
+                <p className="text-sm text-center">
+                  <button
+                    type="button"
+                    className="link link-primary"
+                    onClick={() => {
+                      setMode("forgot");
+                      setError(null);
+                      setMessage(null);
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </p>
+              ) : null}
+
               <p className="text-sm text-center opacity-80">
-                {mode === "login" ? "Need an account?" : "Already registered?"}{" "}
-                <button
-                  className="link link-primary"
-                  type="button"
-                  onClick={() => {
-                    setMode(mode === "login" ? "signup" : "login");
-                    setError(null);
-                    setMessage(null);
-                  }}
-                >
-                  {mode === "login" ? "Sign up" : "Sign in"}
-                </button>
+                {mode === "login" ? (
+                  <>
+                    Need an account?{" "}
+                    <button
+                      className="link link-primary"
+                      type="button"
+                      onClick={() => {
+                        setMode("signup");
+                        setError(null);
+                        setMessage(null);
+                      }}
+                    >
+                      Sign up
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Already registered?{" "}
+                    <button
+                      className="link link-primary"
+                      type="button"
+                      onClick={() => {
+                        setMode("login");
+                        setError(null);
+                        setMessage(null);
+                      }}
+                    >
+                      Sign in
+                    </button>
+                  </>
+                )}
               </p>
 
               <div className="bg-base-200 rounded-lg p-3 text-xs space-y-1">
                 <p className="font-medium">Demo logins (after seed)</p>
-                <p>admin@gcmanager.demo / Demo123!</p>
-                <p>pm@gcmanager.demo / Demo123!</p>
-                <p>client@gcmanager.demo / Demo123!</p>
+                <p>admin@gcmanager.demo / Demo123! (internal)</p>
+                <p>pm@gcmanager.demo · client@gcmanager.demo · field@ · sub@</p>
               </div>
             </div>
           </div>
