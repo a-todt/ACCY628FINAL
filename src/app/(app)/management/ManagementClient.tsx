@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminData } from "@/hooks/useAdminData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
@@ -72,6 +72,7 @@ export default function ManagementPage() {
   const [viewingAssignmentsFor, setViewingAssignmentsFor] = useState<UserProfile | null>(null);
   const [editingAssignments, setEditingAssignments] = useState(false);
   const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
+  const [addingStaff, setAddingStaff] = useState(false);
   const [nameFilter, setNameFilter] = useState("");
   const [emailFilter, setEmailFilter] = useState("");
   const [employeeIdFilter, setEmployeeIdFilter] = useState("");
@@ -339,6 +340,46 @@ export default function ManagementPage() {
   const closeAssignments = () => {
     setViewingAssignmentsFor(null);
     setEditingAssignments(false);
+  };
+
+  const onAddStaff = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    const form = new FormData(e.currentTarget);
+    try {
+      const response = await fetch("/api/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: String(form.get("full_name") || "").trim(),
+          email: String(form.get("email") || "").trim(),
+          password: String(form.get("password") || ""),
+          employeeId: String(form.get("employee_id") || "").trim(),
+          title: String(form.get("title") || "").trim(),
+          phone: String(form.get("phone") || "").trim(),
+          role: String(form.get("role") || "field_supervisor"),
+        }),
+      });
+      const result = (await response.json()) as {
+        error?: string;
+        requiresEmailConfirmation?: boolean;
+      };
+      if (!response.ok) throw new Error(result.error || "Failed to add staff.");
+
+      setAddingStaff(false);
+      setMessage(
+        result.requiresEmailConfirmation
+          ? "Staff account created. They must confirm their email before signing in."
+          : "Staff account created."
+      );
+      await admin.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add staff.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const closeStaffEdit = () => setEditingStaff(null);
@@ -834,12 +875,36 @@ export default function ManagementPage() {
 
       {activeTab === "team" ? (
         <>
-          <SectionCard title="Internal Employees">
+          <SectionCard
+            title="Internal Employees"
+            actions={
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setAddingStaff(true)}
+              >
+                <Plus className="h-4 w-4" />
+                Add Staff
+              </button>
+            }
+          >
             {staffProfiles.length === 0 ? (
               <EmptyState title="No staff yet" message="Create users via auth, then they will appear here." />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="table table-sm">
+              <div className="w-full min-w-0 overflow-hidden">
+                <table className="table table-xs table-fixed w-full text-[11px]">
+                  <colgroup>
+                    <col className="w-[11%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[6%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[9%]" />
+                  </colgroup>
                   <thead>
                     <tr className="bg-base-200/80">
                       <ColumnAutocompleteHeader
@@ -933,38 +998,38 @@ export default function ManagementPage() {
                         const listId = `assign-contract-${p.id}`;
                         return (
                           <tr key={p.id} className="hover:bg-base-200/60">
-                            <td className="font-medium">{p.full_name || "—"}</td>
-                            <td>{p.email || "—"}</td>
-                            <td>{p.employee_id || "—"}</td>
-                            <td>{p.title || "—"}</td>
-                            <td>{p.phone || "—"}</td>
-                            <td>
-                              <span className={`badge badge-sm ${roleBadgeClass(p.role)}`}>
+                            <td className="px-1 font-medium break-words">{p.full_name || "—"}</td>
+                            <td className="px-1 break-all">{p.email || "—"}</td>
+                            <td className="px-1 break-words">{p.employee_id || "—"}</td>
+                            <td className="px-1 break-words">{p.title || "—"}</td>
+                            <td className="px-1 break-words">{p.phone || "—"}</td>
+                            <td className="px-1">
+                              <span className={`badge badge-xs h-auto whitespace-normal text-center ${roleBadgeClass(p.role)}`}>
                                 {ROLE_LABELS[p.role]}
                               </span>
                             </td>
-                            <td>
+                            <td className="px-1">
                               <span
-                                className={`badge badge-sm ${
+                                className={`badge badge-xs ${
                                   p.is_active === false ? "badge-error" : "badge-success"
                                 }`}
                               >
                                 {p.is_active === false ? "Inactive" : "Active"}
                               </span>
                             </td>
-                            <td>
+                            <td className="px-1 text-center">
                               <button
                                 type="button"
-                                className="btn btn-outline btn-xs"
+                                className="btn btn-outline btn-xs h-auto min-h-7 whitespace-normal px-1"
                                 onClick={() => openAssignments(p)}
                               >
                                 See Contracts
                                 {assignments.length > 0 ? ` (${assignments.length})` : ""}
                               </button>
                             </td>
-                            <td className="min-w-[200px]">
+                            <td className="px-1">
                               <input
-                                className="input input-bordered input-xs w-full"
+                                className="input input-bordered h-7 min-h-7 w-full min-w-0 px-1 text-[10px]"
                                 list={listId}
                                 placeholder={
                                   availableContracts.length === 0
@@ -989,14 +1054,14 @@ export default function ManagementPage() {
                                 ))}
                               </datalist>
                             </td>
-                            <td className="text-center">
+                            <td className="px-1 text-center">
                               <button
                                 type="button"
-                                className="btn btn-ghost btn-xs"
+                                className="btn btn-ghost btn-xs h-auto min-h-7 whitespace-normal px-1"
                                 onClick={() => setEditingStaff(p)}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
-                                Edit Staff
+                                Edit
                               </button>
                             </td>
                           </tr>
@@ -1008,6 +1073,90 @@ export default function ManagementPage() {
               </div>
             )}
           </SectionCard>
+
+          {addingStaff ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-2xl">
+                <h3 className="mb-1 text-lg font-semibold">Add Staff</h3>
+                <p className="mb-4 text-sm opacity-60">
+                  Create a staff login and add their information to the team table.
+                </p>
+                <form onSubmit={onAddStaff} className="grid gap-3 sm:grid-cols-2">
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Full Name</span>
+                    <input name="full_name" className="input input-bordered w-full" required />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Email</span>
+                    <input
+                      name="email"
+                      type="email"
+                      className="input input-bordered w-full"
+                      required
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">
+                      Temporary Password
+                    </span>
+                    <input
+                      name="password"
+                      type="password"
+                      minLength={6}
+                      className="input input-bordered w-full"
+                      required
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Employee ID</span>
+                    <input name="employee_id" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Title</span>
+                    <input name="title" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Phone</span>
+                    <input name="phone" type="tel" className="input input-bordered w-full" />
+                  </label>
+                  <label className="form-control sm:col-span-2">
+                    <span className="label-text mb-1 text-sm font-medium">Role</span>
+                    <select
+                      name="role"
+                      className="select select-bordered w-full"
+                      defaultValue="field_supervisor"
+                    >
+                      {STAFF_EDIT_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {ROLE_LABELS[role]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="modal-action mb-0 mt-2 sm:col-span-2">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={busy}
+                      onClick={() => setAddingStaff(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+                      {busy ? <span className="loading loading-spinner loading-xs" /> : null}
+                      Add Staff
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <button
+                type="button"
+                className="modal-backdrop"
+                aria-label="Close"
+                onClick={() => setAddingStaff(false)}
+              />
+            </div>
+          ) : null}
 
           {editingStaff ? (
             <div className="modal modal-open">
