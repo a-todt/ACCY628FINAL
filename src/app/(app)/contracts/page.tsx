@@ -2,33 +2,121 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Building2, Eye, LockKeyhole, MapPin, Plus } from "lucide-react";
+import { Ban, Building2, Eye, LockKeyhole, MapPin, Plus, Trash2 } from "lucide-react";
+import { ActivityLogPanel } from "@/components/ActivityLogPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useContractSummaries } from "@/hooks/useContractSummaries";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, PageHeader } from "@/components/ui";
+import { writeAuditLog } from "@/lib/audit";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
-import { canManageContracts, canViewCosts, statusBadgeClass } from "@/lib/roles";
-import type { ContractSummary } from "@/lib/types";
+import {
+  canCancelOrDeleteContracts,
+  canManageContracts,
+  canViewCosts,
+  statusBadgeClass,
+} from "@/lib/roles";
+import { createClient } from "@/lib/supabase/client";
+import type { Contract, ContractSummary } from "@/lib/types";
 
 type SortKey = "name" | "client" | "status" | "value" | "completion" | "collected";
 type SummarySortKey = "name" | "client" | "status" | "end_date";
 
 export default function ContractsPage() {
   const { effectiveRole } = useAuth();
-  const { contracts, changeOrders, invoices, costEntries, milestones, payments, loading, error } =
-    useContractData();
+  const {
+    contracts,
+    changeOrders,
+    invoices,
+    costEntries,
+    milestones,
+    payments,
+    loading,
+    error,
+    refresh,
+  } = useContractData();
   const isFieldSupervisor = effectiveRole === "field_supervisor";
   const summaryData = useContractSummaries(isFieldSupervisor);
   const canManage = canManageContracts(effectiveRole);
+  const canMutate = canCancelOrDeleteContracts(effectiveRole);
   const showCosts = canViewCosts(effectiveRole);
+  const showActivityLog = canMutate || effectiveRole === "admin" || effectiveRole === "owner";
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
+
+  const cancelContract = async (contract: Contract) => {
+    if (contract.status === "canceled") return;
+    if (
+      !window.confirm(
+        `Cancel contract "${contract.contract_name}"? It will remain in the list as canceled.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+    setBusyId(contract.id);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("contracts")
+        .update({ status: "canceled" })
+        .eq("id", contract.id);
+      if (updateError) throw updateError;
+      await writeAuditLog("contract_canceled", "contract", contract.id, {
+        contract_name: contract.contract_name,
+        from_status: contract.status,
+        to_status: "canceled",
+      });
+      setActionSuccess(`Canceled "${contract.contract_name}".`);
+      setLogRefreshKey((k) => k + 1);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to cancel contract.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteContract = async (contract: Contract) => {
+    if (
+      !window.confirm(
+        `Permanently delete contract "${contract.contract_name}"? Related records will also be removed. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+    setBusyId(contract.id);
+    try {
+      const supabase = createClient();
+      const { error: deleteError } = await supabase.from("contracts").delete().eq("id", contract.id);
+      if (deleteError) throw deleteError;
+      await writeAuditLog("contract_deleted", "contract", contract.id, {
+        contract_name: contract.contract_name,
+        from_status: contract.status,
+        client_name: contract.client_name,
+        client_email: contract.client_email,
+      });
+      setActionSuccess(`Deleted "${contract.contract_name}".`);
+      setLogRefreshKey((k) => k + 1);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete contract.");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const rows = useMemo(() => {
     return contracts.map((contract) => {
@@ -167,6 +255,17 @@ export default function ContractsPage() {
         }
       />
 
+      {actionError ? (
+        <div className="mt-4">
+          <AlertBanner type="error">{actionError}</AlertBanner>
+        </div>
+      ) : null}
+      {actionSuccess ? (
+        <div className="mt-4">
+          <AlertBanner type="success">{actionSuccess}</AlertBanner>
+        </div>
+      ) : null}
+
       {filtered.length === 0 ? (
         <EmptyState
           title="No contracts found"
@@ -187,18 +286,19 @@ export default function ContractsPage() {
         <>
           <div className="grid sm:grid-cols-2 gap-4 md:hidden">
             {filtered.map(({ contract, metrics }) => (
-              <Link
+              <div
                 key={contract.id}
-                href={`/contracts/${contract.id}`}
-                className="card bg-base-100 border border-base-300 hover:border-primary shadow-sm transition-colors"
+                className="card bg-base-100 border border-base-300 shadow-sm"
               >
                 <div className="card-body p-4 gap-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium leading-tight">{contract.contract_name}</p>
-                    <span className={`badge badge-sm shrink-0 ${statusBadgeClass(contract.status)}`}>
-                      {labelize(contract.status)}
-                    </span>
-                  </div>
+                  <Link href={`/contracts/${contract.id}`} className="hover:text-primary">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium leading-tight">{contract.contract_name}</p>
+                      <span className={`badge badge-sm shrink-0 ${statusBadgeClass(contract.status)}`}>
+                        {labelize(contract.status)}
+                      </span>
+                    </div>
+                  </Link>
                   <p className="text-xs opacity-60 flex items-center gap-1">
                     <MapPin className="h-3 w-3 shrink-0" />
                     {[contract.project_address, contract.city, contract.state].filter(Boolean).join(", ") ||
@@ -228,8 +328,28 @@ export default function ContractsPage() {
                       </div>
                     ) : null}
                   </div>
+                  {canMutate ? (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        disabled={busyId === contract.id || contract.status === "canceled"}
+                        onClick={() => void cancelContract(contract)}
+                      >
+                        <Ban className="h-3.5 w-3.5" /> Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs text-error"
+                        disabled={busyId === contract.id}
+                        onClick={() => void deleteContract(contract)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
 
@@ -246,6 +366,7 @@ export default function ContractsPage() {
                   <th className="text-right">Collected</th>
                   {showCosts ? <th className="text-right">Gross Profit</th> : null}
                   <th className="text-right">Completion</th>
+                  {canMutate ? <th className="text-right">Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -277,6 +398,30 @@ export default function ContractsPage() {
                       </td>
                     ) : null}
                     <td className="text-right">{percent(metrics.completionPercent)}</td>
+                    {canMutate ? (
+                      <td className="text-right">
+                        <div className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            title="Cancel contract"
+                            disabled={busyId === contract.id || contract.status === "canceled"}
+                            onClick={() => void cancelContract(contract)}
+                          >
+                            <Ban className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs text-error"
+                            title="Delete contract"
+                            disabled={busyId === contract.id}
+                            onClick={() => void deleteContract(contract)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -284,6 +429,15 @@ export default function ContractsPage() {
           </div>
         </>
       )}
+
+      <div className="mt-6">
+        <ActivityLogPanel
+          title="Contract Change Log"
+          entityTypes={["contract"]}
+          enabled={showActivityLog}
+          refreshKey={logRefreshKey}
+        />
+      </div>
     </div>
   );
 }

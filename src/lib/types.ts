@@ -232,6 +232,8 @@ export interface Payment {
   invoices?: { invoice_number: string | null; contract_id: string } | null;
 }
 
+export type FieldLogStatus = "active" | "canceled";
+
 export interface FieldLog {
   id: string;
   contract_id: string;
@@ -245,6 +247,7 @@ export interface FieldLog {
   materials_used: string | null;
   issues_or_delays: string | null;
   notes: string | null;
+  status?: FieldLogStatus;
   created_at: string;
   contracts?: { contract_name: string } | null;
   user_profiles?: { full_name: string | null; email: string | null } | null;

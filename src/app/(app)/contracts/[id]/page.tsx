@@ -1,24 +1,34 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, Ban, Trash2 } from "lucide-react";
+import { ActivityLogPanel } from "@/components/ActivityLogPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { WeatherBadge } from "@/components/WeatherBadge";
+import { writeAuditLog } from "@/lib/audit";
 import {
   labelPolicy,
   policyHealth,
   policyHealthBadge,
 } from "@/lib/insurance";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
-import { canViewContractFinancials, canViewCosts, statusBadgeClass } from "@/lib/roles";
+import {
+  canCancelOrDeleteContracts,
+  canViewContractFinancials,
+  canViewCosts,
+  statusBadgeClass,
+} from "@/lib/roles";
+import { createClient } from "@/lib/supabase/client";
 import type { ContractInsuranceRequirement, InsurancePolicy } from "@/lib/types";
 
 export default function ContractDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const contractId = params.id;
   const { effectiveRole } = useAuth();
   const {
@@ -33,12 +43,18 @@ export default function ContractDetailPage() {
     userProfiles,
     loading,
     error,
+    refresh,
   } = useContractData();
   const {
     policies: insurancePolicies,
     requirements: insuranceRequirements,
     loading: insuranceLoading,
   } = useInsuranceData();
+  const canMutate = canCancelOrDeleteContracts(effectiveRole);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
 
   if (loading || insuranceLoading) {
     return (
@@ -98,17 +114,104 @@ export default function ContractDetailPage() {
     );
   });
 
+  const cancelContract = async () => {
+    if (contract.status === "canceled") return;
+    if (
+      !window.confirm(
+        `Cancel contract "${contract.contract_name}"? It will remain available as canceled.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+    setBusy(true);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from("contracts")
+        .update({ status: "canceled" })
+        .eq("id", contract.id);
+      if (updateError) throw updateError;
+      await writeAuditLog("contract_canceled", "contract", contract.id, {
+        contract_name: contract.contract_name,
+        from_status: contract.status,
+        to_status: "canceled",
+      });
+      setActionSuccess("Contract canceled.");
+      setLogRefreshKey((k) => k + 1);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to cancel contract.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteContract = async () => {
+    if (
+      !window.confirm(
+        `Permanently delete "${contract.contract_name}"? Related records will also be removed.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    setActionSuccess(null);
+    setBusy(true);
+    try {
+      const supabase = createClient();
+      const { error: deleteError } = await supabase.from("contracts").delete().eq("id", contract.id);
+      if (deleteError) throw deleteError;
+      await writeAuditLog("contract_deleted", "contract", contract.id, {
+        contract_name: contract.contract_name,
+        from_status: contract.status,
+        client_name: contract.client_name,
+        client_email: contract.client_email,
+      });
+      router.replace("/contracts");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete contract.");
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={contract.contract_name}
         subtitle={contract.client_name ?? undefined}
         actions={
-          <Link href="/contracts" className="btn btn-ghost btn-sm">
-            <ArrowLeft className="h-4 w-4" /> Back to Contracts
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {canMutate ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={busy || contract.status === "canceled"}
+                  onClick={() => void cancelContract()}
+                >
+                  <Ban className="h-4 w-4" /> Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm text-error"
+                  disabled={busy}
+                  onClick={() => void deleteContract()}
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </button>
+              </>
+            ) : null}
+            <Link href="/contracts" className="btn btn-ghost btn-sm">
+              <ArrowLeft className="h-4 w-4" /> Back to Contracts
+            </Link>
+          </div>
         }
       />
+
+      {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
+      {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
 
       <SectionCard
         title="Overview"
@@ -414,6 +517,15 @@ export default function ContractDetailPage() {
           </div>
         )}
       </SectionCard>
+
+      {canMutate ? (
+        <ActivityLogPanel
+          title="Contract Change Log"
+          entityTypes={["contract"]}
+          enabled
+          refreshKey={logRefreshKey}
+        />
+      ) : null}
     </div>
   );
 }
