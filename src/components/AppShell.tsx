@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { HardHat, LogOut, Menu, UserCog } from "lucide-react";
+import { LogOut, Menu, UserCog } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { NailItLogo } from "@/components/NailItLogo";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { AlertsBell } from "@/components/AlertsBell";
 import { AccessGate } from "@/components/AccessGate";
 import { useAccessStatus } from "@/hooks/useAccessStatus";
 import {
@@ -91,17 +93,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               ) : null}
             </ul>
           </div>
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="bg-primary/15 text-primary rounded-lg p-2">
-              <HardHat className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-semibold leading-tight truncate">GC Contract Manager</p>
-              <p className="text-xs opacity-60 truncate hidden sm:block">
-                Contract-to-Cash for General Contractors
-              </p>
-            </div>
-          </div>
+          <Link href="/dashboard" className="flex items-center gap-2 min-w-0 shrink-0">
+            <NailItLogo size="sm" />
+            <span className="text-xs opacity-60 truncate hidden lg:block max-w-[140px]">
+              GC Contract Manager
+            </span>
+          </Link>
         </div>
         <div className="flex-none flex items-center gap-2 sm:gap-3">
           <div className="hidden md:block text-right">
@@ -120,6 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="hidden sm:inline">Roles</span>
             </Link>
           ) : null}
+          {!locked ? <AlertsBell /> : null}
           <RoleSwitcher />
           <ThemeSelector compact />
           <button className="btn btn-ghost btn-sm" onClick={onLogout} title="Log out">

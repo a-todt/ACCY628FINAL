@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, Suspense, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Ban, Trash2 } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, ChevronDown, Paperclip, Pencil, Trash2 } from "lucide-react";
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
+import { AttachmentPanel } from "@/components/AttachmentPanel";
+import { ContractEditForm } from "@/components/ContractEditForm";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
@@ -19,16 +21,34 @@ import {
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
 import {
   canCancelOrDeleteContracts,
+  canManageContracts,
   canViewContractFinancials,
   canViewCosts,
   statusBadgeClass,
 } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
-import type { ContractInsuranceRequirement, InsurancePolicy } from "@/lib/types";
+import type { ContractInsuranceRequirement, ContractStatus, InsurancePolicy } from "@/lib/types";
+
+const STATUS_OPTIONS: ContractStatus[] = ["active", "on_hold", "completed", "canceled"];
 
 export default function ContractDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid place-items-center py-24">
+          <span className="loading loading-spinner loading-lg text-primary" />
+        </div>
+      }
+    >
+      <ContractDetailContent />
+    </Suspense>
+  );
+}
+
+function ContractDetailContent() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const contractId = params.id;
   const { effectiveRole } = useAuth();
   const {
@@ -51,10 +71,22 @@ export default function ContractDetailPage() {
     loading: insuranceLoading,
   } = useInsuranceData();
   const canMutate = canCancelOrDeleteContracts(effectiveRole);
+  const canEdit = canManageContracts(effectiveRole);
+  const wantsEdit = searchParams.get("edit") === "1";
+  const isEditing = canEdit && wantsEdit;
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [logRefreshKey, setLogRefreshKey] = useState(0);
+
+  const enterEditMode = () => {
+    if (!canEdit) return;
+    router.replace(`/contracts/${contractId}?edit=1`);
+  };
+
+  const exitEditMode = () => {
+    router.replace(`/contracts/${contractId}`);
+  };
 
   if (loading || insuranceLoading) {
     return (
@@ -123,6 +155,11 @@ export default function ContractDetailPage() {
     ) {
       return;
     }
+    await setContractStatus("canceled");
+  };
+
+  const setContractStatus = async (status: ContractStatus) => {
+    if (contract.status === status) return;
     setActionError(null);
     setActionSuccess(null);
     setBusy(true);
@@ -130,19 +167,26 @@ export default function ContractDetailPage() {
       const supabase = createClient();
       const { error: updateError } = await supabase
         .from("contracts")
-        .update({ status: "canceled" })
+        .update({ status })
         .eq("id", contract.id);
       if (updateError) throw updateError;
-      await writeAuditLog("contract_canceled", "contract", contract.id, {
-        contract_name: contract.contract_name,
-        from_status: contract.status,
-        to_status: "canceled",
-      });
-      setActionSuccess("Contract canceled.");
+      await writeAuditLog(
+        status === "canceled" ? "contract_canceled" : "contract_status_changed",
+        "contract",
+        contract.id,
+        {
+          contract_name: contract.contract_name,
+          from_status: contract.status,
+          to_status: status,
+        }
+      );
+      setActionSuccess(
+        status === "canceled" ? "Contract canceled." : `Status updated to ${labelize(status)}.`
+      );
       setLogRefreshKey((k) => k + 1);
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to cancel contract.");
+      setActionError(err instanceof Error ? err.message : "Failed to update status.");
     } finally {
       setBusy(false);
     }
@@ -185,22 +229,66 @@ export default function ContractDetailPage() {
           <div className="flex flex-wrap gap-2">
             {canMutate ? (
               <>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  disabled={busy || contract.status === "canceled"}
-                  onClick={() => void cancelContract()}
-                >
-                  <Ban className="h-4 w-4" /> Cancel
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm text-error"
-                  disabled={busy}
-                  onClick={() => void deleteContract()}
-                >
-                  <Trash2 className="h-4 w-4" /> Delete
-                </button>
+                <div className="dropdown dropdown-end">
+                  <div tabIndex={0} role="button" className="btn btn-ghost btn-sm">
+                    Change Status
+                    <ChevronDown className="h-4 w-4" />
+                  </div>
+                  <ul
+                    tabIndex={0}
+                    className="dropdown-content menu bg-base-100 rounded-box z-40 w-48 p-2 shadow border border-base-300"
+                  >
+                    {STATUS_OPTIONS.map((status) => (
+                      <li key={status}>
+                        <button
+                          type="button"
+                          disabled={busy || contract.status === status}
+                          onClick={() => {
+                            if (status === "canceled") void cancelContract();
+                            else void setContractStatus(status);
+                          }}
+                        >
+                          {labelize(status)}
+                          {contract.status === status ? " ✓" : ""}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="dropdown dropdown-end">
+                  <div tabIndex={0} role="button" className="btn btn-ghost btn-sm">
+                    Edit
+                    <ChevronDown className="h-4 w-4" />
+                  </div>
+                  <ul
+                    tabIndex={0}
+                    className="dropdown-content menu bg-base-100 rounded-box z-40 w-52 p-2 shadow border border-base-300"
+                  >
+                    {canEdit ? (
+                      <li>
+                        {isEditing ? (
+                          <button type="button" onClick={exitEditMode}>
+                            <Pencil className="h-4 w-4" /> Exit Edit Mode
+                          </button>
+                        ) : (
+                          <button type="button" onClick={enterEditMode}>
+                            <Pencil className="h-4 w-4" /> Edit Contract
+                          </button>
+                        )}
+                      </li>
+                    ) : null}
+                    <li>
+                      <button
+                        type="button"
+                        className="text-error"
+                        disabled={busy}
+                        onClick={() => void deleteContract()}
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete Contract
+                      </button>
+                    </li>
+                  </ul>
+                </div>
               </>
             ) : null}
             <Link href="/contracts" className="btn btn-ghost btn-sm">
@@ -217,40 +305,61 @@ export default function ContractDetailPage() {
         title="Overview"
         actions={<span className={`badge ${statusBadgeClass(contract.status)}`}>{labelize(contract.status)}</span>}
       >
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-          <InfoField label="Client" value={contract.client_name} />
-          <InfoField label="Client Email" value={contract.client_email} />
-          <InfoField label="Client Phone" value={contract.client_phone} />
-          <InfoField
-            label="Project Location"
-            value={[contract.project_address, contract.city, contract.state].filter(Boolean).join(", ")}
+        {isEditing ? (
+          <ContractEditForm
+            contract={contract}
+            showFinancials={showFinancials}
+            onSaved={async () => {
+              setLogRefreshKey((k) => k + 1);
+              await refresh();
+            }}
+            onError={(message) => {
+              setActionError(message);
+              setActionSuccess(null);
+            }}
+            onSuccess={(message) => {
+              setActionSuccess(message);
+              setActionError(null);
+            }}
           />
-          <InfoField label="Contract Type" value={labelize(contract.contract_type)} />
-          {showFinancials ? (
-            <InfoField label="Original Value" value={money(contract.original_value)} />
-          ) : null}
-          {showFinancials ? (
-            <InfoField
-              label="Retainage %"
-              value={contract.retainage_percent != null ? `${contract.retainage_percent}%` : null}
-            />
-          ) : null}
-          <InfoField label="Start Date" value={contract.start_date} />
-          <InfoField label="End Date" value={contract.end_date} />
-          <InfoField label="Created" value={new Date(contract.created_at).toLocaleDateString()} />
-        </div>
-        {contract.scope_description ? (
-          <div className="mt-4">
-            <p className="text-xs uppercase tracking-wide opacity-60 mb-1">Scope Description</p>
-            <p className="text-sm whitespace-pre-wrap">{contract.scope_description}</p>
-          </div>
-        ) : null}
-        {!isClient && contract.special_terms ? (
-          <div className="mt-4">
-            <p className="text-xs uppercase tracking-wide opacity-60 mb-1">Special Terms / Internal Notes</p>
-            <p className="text-sm whitespace-pre-wrap">{contract.special_terms}</p>
-          </div>
-        ) : null}
+        ) : (
+          <>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+              <InfoField label="Client" value={contract.client_name} />
+              <InfoField label="Client Email" value={contract.client_email} />
+              <InfoField label="Client Phone" value={contract.client_phone} />
+              <InfoField
+                label="Project Location"
+                value={[contract.project_address, contract.city, contract.state].filter(Boolean).join(", ")}
+              />
+              <InfoField label="Contract Type" value={labelize(contract.contract_type)} />
+              {showFinancials ? (
+                <InfoField label="Original Value" value={money(contract.original_value)} />
+              ) : null}
+              {showFinancials ? (
+                <InfoField
+                  label="Retainage %"
+                  value={contract.retainage_percent != null ? `${contract.retainage_percent}%` : null}
+                />
+              ) : null}
+              <InfoField label="Start Date" value={contract.start_date} />
+              <InfoField label="End Date" value={contract.end_date} />
+              <InfoField label="Created" value={new Date(contract.created_at).toLocaleDateString()} />
+            </div>
+            {contract.scope_description ? (
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-wide opacity-60 mb-1">Scope Description</p>
+                <p className="text-sm whitespace-pre-wrap">{contract.scope_description}</p>
+              </div>
+            ) : null}
+            {!isClient && contract.special_terms ? (
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-wide opacity-60 mb-1">Special Terms / Internal Notes</p>
+                <p className="text-sm whitespace-pre-wrap">{contract.special_terms}</p>
+              </div>
+            ) : null}
+          </>
+        )}
 
         {!isClient ? (
           <div className="mt-6 border-t border-base-300 pt-4">
@@ -539,6 +648,8 @@ function ContractInsuranceOverview({
   requirements: ContractInsuranceRequirement[];
   showRequiredRate: boolean;
 }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   if (policies.length === 0 && requirements.length === 0) {
     return <p className="text-sm opacity-60">No insurance policies on file for this contract.</p>;
   }
@@ -546,6 +657,7 @@ function ContractInsuranceOverview({
   const requiredRateByType = new Map<string, number | null>(
     requirements.map((req) => [`${req.policy_type}:${req.applies_to}`, req.minimum_limit])
   );
+  const colSpan = showRequiredRate ? 8 : 7;
 
   return (
     <div className="overflow-x-auto">
@@ -559,6 +671,7 @@ function ContractInsuranceOverview({
             {showRequiredRate ? <th className="text-right">Required</th> : null}
             <th>Expires</th>
             <th>Status</th>
+            <th className="text-right">Files</th>
           </tr>
         </thead>
         <tbody>
@@ -574,22 +687,46 @@ function ContractInsuranceOverview({
                 : [`${policy.policy_type}:subcontractor`, `${policy.policy_type}:both`];
             const required =
               appliesKey.map((key) => requiredRateByType.get(key)).find((value) => value != null) ?? null;
+            const expanded = expandedId === policy.id;
 
             return (
-              <tr key={policy.id}>
-                <td>
-                  <div className="font-medium">{labelPolicy(policy.policy_type)}</div>
-                  <div className="text-xs opacity-60">{policy.policy_number || "No policy #"}</div>
-                </td>
-                <td>{holderLabel}</td>
-                <td>{policy.carrier_name ?? "—"}</td>
-                <td className="text-right">{money(policy.coverage_limit)}</td>
-                {showRequiredRate ? <td className="text-right">{required != null ? money(required) : "—"}</td> : null}
-                <td className="whitespace-nowrap">{policy.expiration_date ?? "—"}</td>
-                <td>
-                  <span className={`badge badge-sm ${policyHealthBadge(health)}`}>{labelize(health)}</span>
-                </td>
-              </tr>
+              <Fragment key={policy.id}>
+                <tr>
+                  <td>
+                    <div className="font-medium">{labelPolicy(policy.policy_type)}</div>
+                    <div className="text-xs opacity-60">{policy.policy_number || "No policy #"}</div>
+                  </td>
+                  <td>{holderLabel}</td>
+                  <td>{policy.carrier_name ?? "—"}</td>
+                  <td className="text-right">{money(policy.coverage_limit)}</td>
+                  {showRequiredRate ? (
+                    <td className="text-right">{required != null ? money(required) : "—"}</td>
+                  ) : null}
+                  <td className="whitespace-nowrap">{policy.expiration_date ?? "—"}</td>
+                  <td>
+                    <span className={`badge badge-sm ${policyHealthBadge(health)}`}>{labelize(health)}</span>
+                  </td>
+                  <td className="text-right">
+                    <button
+                      type="button"
+                      className={`btn btn-ghost btn-xs ${expanded ? "btn-active" : ""}`}
+                      title="Attachments"
+                      onClick={() => setExpandedId(expanded ? null : policy.id)}
+                    >
+                      <Paperclip className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                </tr>
+                {expanded ? (
+                  <tr>
+                    <td colSpan={colSpan} className="bg-base-200/40">
+                      <div className="p-3 max-w-2xl">
+                        <AttachmentPanel entityType="insurance_policy" entityId={policy.id} />
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             );
           })}
           {requirements
@@ -618,6 +755,7 @@ function ContractInsuranceOverview({
                 <td>
                   <span className="badge badge-sm badge-warning">Missing</span>
                 </td>
+                <td />
               </tr>
             ))}
         </tbody>
