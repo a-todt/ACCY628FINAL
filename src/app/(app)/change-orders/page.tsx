@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Building2, ChevronDown, ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useOpenCreateFromQuery } from "@/hooks/useOpenCreateFromQuery";
 import { compareValues } from "@/components/FilterSortBar";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { StatusFilterChips } from "@/components/StatusFilterChips";
@@ -98,6 +99,9 @@ export default function ChangeOrdersPage() {
   const { toast } = useToast();
 
   const isClient = effectiveRole === "client";
+
+  const openCreateForm = useCallback(() => setShowForm(true), []);
+  useOpenCreateFromQuery(canCreate, openCreateForm);
 
   useEffect(() => {
     const q = searchParams.get("q");

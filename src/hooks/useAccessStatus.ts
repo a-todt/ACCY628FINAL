@@ -74,7 +74,7 @@ export function useAccessStatus() {
   }, [authLoading, user, profile, previewRole, effectiveRole]);
 
   useEffect(() => {
-    void Promise.resolve().then(() => refresh());
+    void refresh();
   }, [refresh]);
 
   return { ...info, loading: authLoading || loading, refresh };

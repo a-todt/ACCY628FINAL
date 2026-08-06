@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -31,6 +32,14 @@ import {
   type NavCategoryId,
 } from "@/lib/roles";
 
+function AppShellLoading() {
+  return (
+    <div className="min-h-screen grid place-items-center app-shell">
+      <span className="loading loading-spinner loading-lg text-primary" />
+    </div>
+  );
+}
+
 const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
   favorites: Star,
   dashboard: LayoutDashboard,
@@ -53,11 +62,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const secondary = secondaryNavForCategory(activeCategory, effectiveRole);
 
   if (loading || access.loading) {
-    return (
-      <div className="min-h-screen grid place-items-center app-shell">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+    return <AppShellLoading />;
   }
 
   const locked =
@@ -191,7 +196,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
       <ProjectFavoritesProvider>
-        <AppShellInner>{children}</AppShellInner>
+        <Suspense fallback={<AppShellLoading />}>
+          <AppShellInner>{children}</AppShellInner>
+        </Suspense>
       </ProjectFavoritesProvider>
     </ToastProvider>
   );
