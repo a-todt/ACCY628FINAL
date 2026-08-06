@@ -3,18 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
   Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
+import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { AlertBanner, EmptyState, SectionCard } from "@/components/ui";
 import {
   computeWIP,
@@ -54,10 +51,6 @@ interface ProjectMetrics {
   calcs: WIPCalculations;
   health: "healthy" | "watch" | "at_risk";
   statusBucket: ProjectStatusBucket;
-}
-
-function shortName(name: string, len = 14): string {
-  return name.length > len ? `${name.slice(0, len - 1)}…` : name;
 }
 
 function healthFromMargin(marginPct: number): ProjectMetrics["health"] {
@@ -227,21 +220,29 @@ export function RevenueRecognitionDashboard() {
 
   const earnedVsBilledData = useMemo(
     () =>
-      metrics.map(({ project, calcs }) => ({
-        name: shortName(colStr(project, P.name, "Untitled")),
-        Earned: Math.round(calcs.revenueEarned),
-        Billed: Math.round(calcs.billedToDate),
-      })),
+      toNamedBarRows(
+        metrics.map(({ project, calcs }) => ({
+          fullName: colStr(project, P.name, "Untitled"),
+          values: {
+            Earned: Math.round(calcs.revenueEarned),
+            Billed: Math.round(calcs.billedToDate),
+          },
+        }))
+      ),
     [metrics]
   );
 
   const costData = useMemo(
     () =>
-      metrics.map(({ project, calcs }) => ({
-        name: shortName(colStr(project, P.name, "Untitled")),
-        Estimated: Math.round(colNum(project, P.estimatedCost)),
-        Actual: Math.round(calcs.actualCostsToDate),
-      })),
+      toNamedBarRows(
+        metrics.map(({ project, calcs }) => ({
+          fullName: colStr(project, P.name, "Untitled"),
+          values: {
+            Estimated: Math.round(colNum(project, P.estimatedCost)),
+            Actual: Math.round(calcs.actualCostsToDate),
+          },
+        }))
+      ),
     [metrics]
   );
 
@@ -327,49 +328,19 @@ export function RevenueRecognitionDashboard() {
 
       <div className="grid lg:grid-cols-2 gap-6">
         <SectionCard title="Revenue Earned vs Billed to Date">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={earnedVsBilledData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 11 }}
-                  interval={0}
-                  angle={-20}
-                  textAnchor="end"
-                  height={60}
-                />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => moneyExact(Number(v))} width={90} />
-                <Tooltip formatter={(value) => moneyExact(Number(value))} />
-                <Legend />
-                <Bar dataKey="Earned" fill={CHART_COLORS.earned} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Billed" fill={CHART_COLORS.billed} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ScrollableBarChart data={earnedVsBilledData} valueFormatter={(v) => moneyExact(v)}>
+            <Legend verticalAlign="top" height={32} />
+            <Bar dataKey="Earned" fill={CHART_COLORS.earned} radius={[0, 5, 5, 0]} />
+            <Bar dataKey="Billed" fill={CHART_COLORS.billed} radius={[0, 5, 5, 0]} />
+          </ScrollableBarChart>
         </SectionCard>
 
         <SectionCard title="Estimated Cost vs Actual Cost">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={costData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 11 }}
-                  interval={0}
-                  angle={-20}
-                  textAnchor="end"
-                  height={60}
-                />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => moneyExact(Number(v))} width={90} />
-                <Tooltip formatter={(value) => moneyExact(Number(value))} />
-                <Legend />
-                <Bar dataKey="Estimated" fill={CHART_COLORS.estimated} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Actual" fill={CHART_COLORS.actual} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ScrollableBarChart data={costData} valueFormatter={(v) => moneyExact(v)}>
+            <Legend verticalAlign="top" height={32} />
+            <Bar dataKey="Estimated" fill={CHART_COLORS.estimated} radius={[0, 5, 5, 0]} />
+            <Bar dataKey="Actual" fill={CHART_COLORS.actual} radius={[0, 5, 5, 0]} />
+          </ScrollableBarChart>
         </SectionCard>
 
         <div className="lg:col-span-2">

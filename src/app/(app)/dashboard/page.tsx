@@ -4,16 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
   Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from "recharts";
 import {
   Banknote,
@@ -31,6 +27,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
+import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { buildInsuranceWarnings } from "@/lib/insurance";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
@@ -51,11 +48,6 @@ import type {
 import type { ContractInsuranceRequirement, InsurancePolicy } from "@/lib/types";
 
 const CHART_COLORS = ["#4f46e5", "#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#ec4899"];
-
-function shortName(name: string | null | undefined, len = 16): string {
-  const value = name ?? "Untitled";
-  return value.length > len ? `${value.slice(0, len - 1)}…` : value;
-}
 
 interface DashboardData {
   contracts: Contract[];
@@ -186,16 +178,22 @@ function AdminDashboard({
   );
   const unprofitableContracts = perContract.filter(({ metrics }) => metrics.grossProfit < 0);
 
-  const contractValueData = perContract.map(({ contract, metrics }) => ({
-    name: shortName(contract.contract_name),
-    Value: Math.round(metrics.revisedValue),
-  }));
+  const contractValueData = toNamedBarRows(
+    perContract.map(({ contract, metrics }) => ({
+      fullName: contract.contract_name,
+      values: { Value: Math.round(metrics.revisedValue) },
+    }))
+  );
 
-  const billedVsCollectedData = perContract.map(({ contract, metrics }) => ({
-    name: shortName(contract.contract_name),
-    Billed: Math.round(metrics.totalBilled),
-    Collected: Math.round(metrics.totalCollected),
-  }));
+  const billedVsCollectedData = toNamedBarRows(
+    perContract.map(({ contract, metrics }) => ({
+      fullName: contract.contract_name,
+      values: {
+        Billed: Math.round(metrics.totalBilled),
+        Collected: Math.round(metrics.totalCollected),
+      },
+    }))
+  );
 
   const costsByCategory = costEntries.reduce<Record<string, number>>((acc, cost) => {
     const key = cost.category ?? "other";
@@ -207,15 +205,19 @@ function AdminDashboard({
     value: Math.round(value),
   }));
 
-  const changeOrderValueData = perContract.map(({ contract, metrics }) => ({
-    name: shortName(contract.contract_name),
-    Approved: Math.round(metrics.approvedChangeOrders),
-  }));
+  const changeOrderValueData = toNamedBarRows(
+    perContract.map(({ contract, metrics }) => ({
+      fullName: contract.contract_name,
+      values: { Approved: Math.round(metrics.approvedChangeOrders) },
+    }))
+  );
 
-  const grossProfitData = perContract.map(({ contract, metrics }) => ({
-    name: shortName(contract.contract_name),
-    "Gross Profit": Math.round(metrics.grossProfit),
-  }));
+  const grossProfitData = toNamedBarRows(
+    perContract.map(({ contract, metrics }) => ({
+      fullName: contract.contract_name,
+      values: { "Gross Profit": Math.round(metrics.grossProfit) },
+    }))
+  );
 
   const warnings: string[] = [];
   if (overdueInvoices.length > 0) {
@@ -265,33 +267,17 @@ function AdminDashboard({
 
       <div className="grid lg:grid-cols-2 gap-6">
         <SectionCard title="Contract Value by Project">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={contractValueData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={80} />
-                <Tooltip formatter={(value) => money(Number(value))} />
-                <Bar dataKey="Value" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ScrollableBarChart data={contractValueData}>
+            <Bar dataKey="Value" fill={CHART_COLORS[0]} radius={[0, 5, 5, 0]} />
+          </ScrollableBarChart>
         </SectionCard>
 
         <SectionCard title="Billed vs. Collected">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={billedVsCollectedData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={80} />
-                <Tooltip formatter={(value) => money(Number(value))} />
-                <Legend />
-                <Bar dataKey="Billed" fill={CHART_COLORS[1]} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Collected" fill={CHART_COLORS[3]} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ScrollableBarChart data={billedVsCollectedData}>
+            <Legend verticalAlign="top" height={32} />
+            <Bar dataKey="Billed" fill={CHART_COLORS[1]} radius={[0, 5, 5, 0]} />
+            <Bar dataKey="Collected" fill={CHART_COLORS[3]} radius={[0, 5, 5, 0]} />
+          </ScrollableBarChart>
         </SectionCard>
 
         <SectionCard title="Costs by Category">
@@ -322,35 +308,22 @@ function AdminDashboard({
         </SectionCard>
 
         <SectionCard title="Approved Change Order Value by Project">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={changeOrderValueData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={80} />
-                <Tooltip formatter={(value) => money(Number(value))} />
-                <Bar dataKey="Approved" fill={CHART_COLORS[2]} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ScrollableBarChart data={changeOrderValueData}>
+            <Bar dataKey="Approved" fill={CHART_COLORS[2]} radius={[0, 5, 5, 0]} />
+          </ScrollableBarChart>
         </SectionCard>
 
         <SectionCard title="Gross Profit by Project">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={grossProfitData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={80} />
-                <Tooltip formatter={(value) => money(Number(value))} />
-                <Bar dataKey="Gross Profit" radius={[4, 4, 0, 0]}>
-                  {grossProfitData.map((entry) => (
-                    <Cell key={entry.name} fill={entry["Gross Profit"] >= 0 ? CHART_COLORS[3] : CHART_COLORS[4]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ScrollableBarChart data={grossProfitData}>
+            <Bar dataKey="Gross Profit" radius={[0, 5, 5, 0]}>
+              {grossProfitData.map((entry) => (
+                <Cell
+                  key={entry.fullName}
+                  fill={entry["Gross Profit"] >= 0 ? CHART_COLORS[3] : CHART_COLORS[4]}
+                />
+              ))}
+            </Bar>
+          </ScrollableBarChart>
         </SectionCard>
       </div>
 

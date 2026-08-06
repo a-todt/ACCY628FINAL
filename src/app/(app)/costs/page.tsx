@@ -4,20 +4,17 @@ import { Fragment, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
   Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from "recharts";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
+import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { labelize, money } from "@/lib/metrics";
 import { canEnterCosts, canViewCosts } from "@/lib/roles";
@@ -38,10 +35,6 @@ const EMPTY_FORM = {
 
 type ViewMode = "by_job" | "by_category" | "matrix" | "entries";
 type SortKey = "date" | "category" | "contract" | "amount";
-
-function shortName(name: string, len = 18): string {
-  return name.length > len ? `${name.slice(0, len - 1)}…` : name;
-}
 
 function costMatchesFilters(
   cost: CostEntry,
@@ -189,10 +182,12 @@ export default function CostsPage() {
     total: row.total,
   }));
 
-  const jobChartData = byJob.map((row) => ({
-    name: shortName(row.name),
-    total: row.total,
-  }));
+  const jobChartData = toNamedBarRows(
+    byJob.map((row) => ({
+      fullName: row.name,
+      values: { total: row.total },
+    }))
+  );
 
   const toggleJob = (id: string) => {
     setExpandedJobs((prev) => {
@@ -539,17 +534,9 @@ export default function CostsPage() {
           </SectionCard>
 
           <SectionCard title="Job Cost Chart">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={jobChartData} margin={{ top: 8, right: 8, left: 8, bottom: 48 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" height={60} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={72} />
-                  <Tooltip formatter={(value) => money(Number(value))} />
-                  <Bar dataKey="total" fill="#ea580c" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <ScrollableBarChart data={jobChartData}>
+              <Bar dataKey="total" fill="#ea580c" radius={[0, 5, 5, 0]} name="Total" />
+            </ScrollableBarChart>
           </SectionCard>
         </div>
       ) : null}
