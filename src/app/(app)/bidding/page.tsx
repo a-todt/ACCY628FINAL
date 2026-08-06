@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { Gavel, Plus, Star } from "lucide-react";
+import { ChevronDown, ChevronUp, Gavel, Plus, Star } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
@@ -76,6 +76,10 @@ const EMPTY_BID = {
   license_state: "",
   license_expiration: "",
 };
+
+const PACKAGES_PREVIEW = 8;
+const PENDING_PREVIEW = 5;
+const WINNING_PREVIEW = 3;
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "—";
@@ -173,6 +177,31 @@ function BiddingPage() {
   const [reviewingBid, setReviewingBid] = useState<Bid | null>(null);
   const [reviewForm, setReviewForm] = useState({ rating: "", review: "" });
   const [busy, setBusy] = useState(false);
+  const [focusBidId, setFocusBidId] = useState<string | null>(null);
+  const [showProjectDetail, setShowProjectDetail] = useState(isSub);
+  const [showAllPackages, setShowAllPackages] = useState(false);
+  const [showAllPending, setShowAllPending] = useState(false);
+  const [showAllWinning, setShowAllWinning] = useState(false);
+  const receivedBidsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setShowProjectDetail(isSub);
+  }, [isSub]);
+
+  const scrollToReceivedBids = useCallback(() => {
+    window.setTimeout(() => {
+      receivedBidsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  }, []);
+
+  const openPackageForDecision = useCallback(
+    (packageId: string, bidId?: string | null) => {
+      setSelectedId(packageId);
+      setFocusBidId(bidId ?? null);
+      scrollToReceivedBids();
+    },
+    [scrollToReceivedBids]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -258,6 +287,21 @@ function BiddingPage() {
         return new Date(bDate).getTime() - new Date(aDate).getTime();
       });
   }, [bids, packages]);
+
+  const visiblePackages = useMemo(
+    () => (showAllPackages ? activePackages : activePackages.slice(0, PACKAGES_PREVIEW)),
+    [activePackages, showAllPackages]
+  );
+
+  const visiblePendingBids = useMemo(
+    () => (showAllPending ? pendingReviewBids : pendingReviewBids.slice(0, PENDING_PREVIEW)),
+    [pendingReviewBids, showAllPending]
+  );
+
+  const visibleWinningBids = useMemo(
+    () => (showAllWinning ? winningBids : winningBids.slice(0, WINNING_PREVIEW)),
+    [winningBids, showAllWinning]
+  );
 
   const myBid = useMemo(
     () =>
@@ -657,6 +701,7 @@ function BiddingPage() {
       }
       await writeAuditLog("bid_status", "bids", bidId, { status });
       setMessage(`Bid ${labelize(status)}.`);
+      setFocusBidId(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update bid.");
@@ -855,12 +900,15 @@ function BiddingPage() {
         <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
           <SectionCard title="Packages">
             <ul className="menu bg-base-100 rounded-box p-0 gap-1">
-              {activePackages.map((pkg) => (
+              {visiblePackages.map((pkg) => (
                 <li key={pkg.id}>
                   <button
                     type="button"
                     className={selected?.id === pkg.id ? "active" : ""}
-                    onClick={() => setSelectedId(pkg.id)}
+                    onClick={() => {
+                      setFocusBidId(null);
+                      setSelectedId(pkg.id);
+                    }}
                   >
                     <div className="min-w-0 text-left">
                       <div className="font-medium truncate">{pkg.title}</div>
@@ -875,6 +923,25 @@ function BiddingPage() {
                 </li>
               ))}
             </ul>
+            {activePackages.length > PACKAGES_PREVIEW ? (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs w-full mt-2"
+                onClick={() => setShowAllPackages((v) => !v)}
+              >
+                {showAllPackages ? (
+                  <>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                    Show less
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    Show more ({activePackages.length - PACKAGES_PREVIEW} more)
+                  </>
+                )}
+              </button>
+            ) : null}
           </SectionCard>
 
           {selected ? (
@@ -972,7 +1039,30 @@ function BiddingPage() {
                 </div>
               </SectionCard>
 
-              <SectionCard title="Project detail for bidders">
+              <SectionCard
+                title="Project detail for bidders"
+                actions={
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs gap-1"
+                    onClick={() => setShowProjectDetail((v) => !v)}
+                    aria-expanded={showProjectDetail}
+                  >
+                    {showProjectDetail ? (
+                      <>
+                        <ChevronUp className="h-3.5 w-3.5" />
+                        Hide
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-3.5 w-3.5" />
+                        Show
+                      </>
+                    )}
+                  </button>
+                }
+              >
+                {showProjectDetail ? (
                 <div className="space-y-5">
                   <div className="rounded-lg border border-base-300 bg-base-200/30 p-4 space-y-4">
                     <h3 className="font-semibold">Scope of work</h3>
@@ -1023,6 +1113,12 @@ function BiddingPage() {
                     );
                   })}
                 </div>
+                ) : (
+                  <p className="text-sm opacity-60">
+                    Scope, inclusions, and bidder instructions are hidden. Show detail when you need
+                    the full package write-up.
+                  </p>
+                )}
               </SectionCard>
 
               {isSub && selected.status === "open" ? (
@@ -1193,6 +1289,11 @@ function BiddingPage() {
               ) : null}
 
               {canReview ? (
+                <div
+                  id="received-bids"
+                  ref={receivedBidsRef}
+                  className="scroll-mt-24"
+                >
                 <SectionCard
                   title={`Received bids (${packageBids.length})`}
                   actions={
@@ -1336,8 +1437,12 @@ function BiddingPage() {
                         <tbody>
                           {packageBids.map((bid) => {
                             const vendor = ratingForBid(bid);
+                            const focused = focusBidId === bid.id;
                             return (
-                              <tr key={bid.id}>
+                              <tr
+                                key={bid.id}
+                                className={focused ? "bg-primary/10" : undefined}
+                              >
                                 <td>
                                   <div className="font-medium">{bid.company_name}</div>
                                   {vendor.notes ? (
@@ -1442,6 +1547,7 @@ function BiddingPage() {
                     </div>
                   )}
                 </SectionCard>
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -1451,7 +1557,7 @@ function BiddingPage() {
       {canReview && pendingReviewBids.length > 0 ? (
         <SectionCard title={`Bids awaiting decision (${pendingReviewBids.length})`}>
           <p className="text-sm opacity-70 mb-3">
-            All submitted proposals across packages. Open a row to review, accept, or reject.
+            Click Review to open that package&apos;s received bids above.
           </p>
           <div className="overflow-x-auto">
             <table className="table table-sm">
@@ -1465,7 +1571,7 @@ function BiddingPage() {
                 </tr>
               </thead>
               <tbody>
-                {pendingReviewBids.map(({ bid, pkg }) => (
+                {visiblePendingBids.map(({ bid, pkg }) => (
                   <tr key={bid.id}>
                     <td>
                       <div className="font-medium">{bid.company_name}</div>
@@ -1491,7 +1597,7 @@ function BiddingPage() {
                         type="button"
                         className="btn btn-primary btn-xs"
                         onClick={() => {
-                          if (pkg) setSelectedId(pkg.id);
+                          if (pkg) openPackageForDecision(pkg.id, bid.id);
                         }}
                       >
                         Review
@@ -1502,6 +1608,25 @@ function BiddingPage() {
               </tbody>
             </table>
           </div>
+          {pendingReviewBids.length > PENDING_PREVIEW ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm mt-3"
+              onClick={() => setShowAllPending((v) => !v)}
+            >
+              {showAllPending ? (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  Show less
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  Show more ({pendingReviewBids.length - PENDING_PREVIEW} more)
+                </>
+              )}
+            </button>
+          ) : null}
         </SectionCard>
       ) : null}
 
@@ -1526,13 +1651,20 @@ function BiddingPage() {
                 </tr>
               </thead>
               <tbody>
-                {winningBids.map(({ bid, pkg }) => {
+                {visibleWinningBids.map(({ bid, pkg }) => {
                   const vendor = ratingForBid(bid);
                   return (
                   <tr
                     key={bid.id}
                     className="cursor-pointer hover:bg-base-200/60"
-                    onClick={() => pkg && setSelectedId(pkg.id)}
+                    onClick={() => {
+                      if (!pkg) return;
+                      if (canReview) openPackageForDecision(pkg.id, bid.id);
+                      else {
+                        setFocusBidId(null);
+                        setSelectedId(pkg.id);
+                      }
+                    }}
                   >
                     <td>{formatDate(pkg?.updated_at ?? bid.updated_at)}</td>
                     <td className="font-medium">{pkg?.title ?? "—"}</td>
@@ -1582,6 +1714,25 @@ function BiddingPage() {
               </tbody>
             </table>
           </div>
+          {winningBids.length > WINNING_PREVIEW ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm mt-3"
+              onClick={() => setShowAllWinning((v) => !v)}
+            >
+              {showAllWinning ? (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                  Show less
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                  Show more ({winningBids.length - WINNING_PREVIEW} more)
+                </>
+              )}
+            </button>
+          ) : null}
         </SectionCard>
       ) : null}
 
