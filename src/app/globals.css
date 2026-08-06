@@ -274,6 +274,12 @@ body {
   background-color: color-mix(in oklab, var(--color-base-200) 85%, transparent);
 }
 
+/* Subtle zebra — dense tables only (table-sm / table-xs) */
+.table.table-sm tbody tr:nth-child(even),
+.table.table-xs tbody tr:nth-child(even) {
+  background-color: color-mix(in oklab, var(--color-base-200) 48%, transparent);
+}
+
 .table :where(tbody tr:hover) {
   --tw-bg-opacity: 1;
   background-color: color-mix(in oklab, var(--color-base-200) 55%, transparent);
@@ -295,6 +301,16 @@ body {
   z-index: 1;
   background-color: var(--color-base-100);
   box-shadow: 1px 0 0 color-mix(in oklab, var(--color-base-300) 80%, transparent);
+}
+
+.table-freeze-first .table.table-sm tbody tr:nth-child(even) td:first-child,
+.table-freeze-first .table.table-xs tbody tr:nth-child(even) td:first-child {
+  background-color: color-mix(in oklab, var(--color-base-200) 48%, var(--color-base-100));
+}
+
+.table-freeze-first .table.table-sm tbody tr:hover td:first-child,
+.table-freeze-first .table.table-xs tbody tr:hover td:first-child {
+  background-color: color-mix(in oklab, var(--color-base-200) 55%, var(--color-base-100));
 }
 
 .table-freeze-first .table thead th:first-child {
