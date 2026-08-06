@@ -15,11 +15,11 @@ export type DashboardLayoutPrefs = {
 const ADMIN_PANES: DashboardPaneDef[] = [
   { id: "money_pulse", label: "Money pulse" },
   { id: "operations", label: "Operations" },
-  { id: "chart_contract_value", label: "Contract value by project" },
-  { id: "chart_billed_vs_collected", label: "Billed vs. collected" },
+  { id: "chart_contract_value", label: "Top contracts by value" },
+  { id: "chart_billed_vs_collected", label: "Lowest collection rates" },
   { id: "chart_costs_by_category", label: "Costs by category" },
-  { id: "chart_change_order_value", label: "Approved Change Order Value" },
-  { id: "chart_gross_profit", label: "Gross profit by project" },
+  { id: "chart_change_order_value", label: "Jobs with approved COs" },
+  { id: "chart_gross_profit", label: "Lowest gross profit" },
   { id: "alerts", label: "Needs attention" },
 ];
 
