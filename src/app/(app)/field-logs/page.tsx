@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode, Fragment } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode, Fragment } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Building2, ClipboardList, ExternalLink, Paperclip, Pencil, Plus, Trash2 } from "lucide-react";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useOpenCreateFromQuery } from "@/hooks/useOpenCreateFromQuery";
 import { compareValues } from "@/components/FilterSortBar";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { StickyToolbar } from "@/components/StickyToolbar";
@@ -100,6 +101,14 @@ export default function FieldLogsPage() {
   const [logRefreshKey, setLogRefreshKey] = useState(0);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [viewingStaff, setViewingStaff] = useState<UserProfile | null>(null);
+
+  const openCreateForm = useCallback(() => {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFormError(null);
+    setShowForm(true);
+  }, []);
+  useOpenCreateFromQuery(canCreate, openCreateForm);
 
   useEffect(() => {
     const q = searchParams.get("q");
