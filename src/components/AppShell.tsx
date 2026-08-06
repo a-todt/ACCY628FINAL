@@ -53,7 +53,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   if (loading || access.loading) {
     return (
-      <div className="min-h-screen grid place-items-center bg-base-200">
+      <div className="min-h-screen grid place-items-center app-shell">
         <span className="loading loading-spinner loading-lg text-primary" />
       </div>
     );
@@ -66,8 +66,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     access.status === "needs_email";
 
   return (
-    <div className="min-h-screen bg-base-200">
-      <header className="sticky top-0 z-30 border-b border-base-300 bg-base-100/95 backdrop-blur-sm">
+    <div className="min-h-screen app-shell">
+      <header className="sticky top-0 z-30 border-b border-base-300/80 bg-base-100/85 backdrop-blur-md">
         <div className="navbar min-h-14 gap-2 w-full max-w-[1400px] mx-auto px-3 sm:px-4 lg:px-6">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
           <div className="dropdown lg:hidden">
@@ -128,7 +128,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
       {!locked ? (
         <>
-          <div className="hidden lg:block border-b border-base-300 bg-base-100">
+          <div className="hidden lg:block border-b border-base-300/70 bg-base-100/70 backdrop-blur-sm">
             <div className="px-6 max-w-[1400px] mx-auto overflow-x-auto">
               <div role="tablist" className="tabs tabs-bordered">
                 {primary.map((item) => {
@@ -154,7 +154,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </div>
 
           {secondary.length > 0 ? (
-            <div className="hidden lg:block border-b border-base-300 bg-base-200/70">
+            <div className="hidden lg:block border-b border-base-300/60 bg-base-200/55 backdrop-blur-sm">
               <div className="px-6 max-w-[1400px] mx-auto overflow-x-auto">
                 <div role="tablist" className="tabs tabs-sm items-center">
                   {secondary.map((item) => (

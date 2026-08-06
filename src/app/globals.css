@@ -108,6 +108,17 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* One size for every app page title (PageHeader h1) */
+.page-title {
+  font-family: var(--font-display), Oswald, ui-sans-serif, sans-serif;
+  font-size: 1.5rem; /* 24px — text-2xl */
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-base-content);
+}
+
 .font-mono,
 .tabular-nums {
   font-family: var(--font-mono), "IBM Plex Mono", ui-monospace, monospace;
@@ -172,6 +183,87 @@ body {
     radial-gradient(circle at 12% 8%, color-mix(in oklch, var(--color-primary) 9%, transparent), transparent 44%),
     radial-gradient(circle at 88% 0%, color-mix(in oklch, var(--color-secondary) 8%, transparent), transparent 40%);
   background-attachment: fixed;
+}
+
+/**
+ * Interior app atmosphere — kraft wash + paper grain.
+ * Fixed behind content so tables/cards stay readable.
+ */
+.app-shell {
+  position: relative;
+  isolation: isolate;
+  background-color: transparent;
+}
+
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--color-base-200);
+  background-image:
+    /* Kraft / jobsite wash */
+    radial-gradient(
+      ellipse 80% 55% at 8% -5%,
+      color-mix(in oklch, var(--color-primary) 14%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 70% 50% at 96% 4%,
+      color-mix(in oklch, var(--color-secondary) 11%, transparent),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse 90% 40% at 50% 110%,
+      color-mix(in oklch, var(--color-accent) 10%, transparent),
+      transparent 55%
+    );
+  background-attachment: fixed;
+}
+
+/* Paper grain as a separate soft overlay so grids stay crisp */
+.app-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.045;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  background-attachment: fixed;
+}
+
+[data-theme="jobsite-dark"] .app-shell::before {
+  background-image:
+    radial-gradient(
+      ellipse 80% 55% at 8% -5%,
+      color-mix(in oklch, var(--color-primary) 16%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 70% 50% at 96% 4%,
+      color-mix(in oklch, var(--color-secondary) 12%, transparent),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse 90% 40% at 50% 110%,
+      color-mix(in oklch, var(--color-accent) 8%, transparent),
+      transparent 55%
+    );
+}
+
+[data-theme="jobsite-dark"] .app-shell::after {
+  opacity: 0.07;
+  mix-blend-mode: soft-light;
+}
+
+/* Nav bars sit slightly translucent so atmosphere peeks through */
+.app-shell .tabs-bordered,
+.app-shell [role="tablist"] {
+  background-color: transparent;
 }
 
 /* Intentional motion — row hover + page enter */

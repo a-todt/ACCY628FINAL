@@ -73,9 +73,7 @@ export function PageHeader({
       className={`flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between ${compact ? "mb-2" : "mb-5 gap-3"}`}
     >
       <div className="min-w-0">
-        <h1 className={`font-display font-semibold uppercase tracking-wide text-base-content ${compact ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl"}`}>
-          {title}
-        </h1>
+        <h1 className="page-title">{title}</h1>
         {subtitle ? (
           <p className={`opacity-65 ${compact ? "mt-0.5 text-xs line-clamp-1" : "mt-1 text-sm"}`}>{subtitle}</p>
         ) : null}
