@@ -192,7 +192,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
         {!locked ? <GlobalSearch /> : <div className="flex-1" />}
-        <div className="flex-none flex items-center gap-1 sm:gap-1.5 shrink-0">
+        <div className="ml-auto flex-none flex items-center gap-1 sm:gap-1.5 shrink-0">
           {!locked ? <AlertsBell /> : null}
           <UserMenu />
         </div>
