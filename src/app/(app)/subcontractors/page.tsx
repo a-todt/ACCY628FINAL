@@ -65,7 +65,7 @@ type EditForm = {
 
 function editFormFromSub(sub: Subcontractor): EditForm {
   return {
-    contract_id: sub.contract_id,
+    contract_id: sub.contract_id ?? "",
     company_name: sub.company_name,
     contact_name: sub.contact_name ?? "",
     contact_email: sub.contact_email ?? "",

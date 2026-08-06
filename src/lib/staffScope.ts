@@ -29,11 +29,14 @@ export interface ScopedContractBundle {
   userProfiles: UserProfile[];
 }
 
-function filterByContractIds<T extends { contract_id: string }>(
+function filterByContractIds<T extends { contract_id: string | null }>(
   rows: T[],
   contractIds: Set<string>
 ): T[] {
-  return rows.filter((row) => contractIds.has(row.contract_id));
+  return rows.filter(
+    (row): row is T & { contract_id: string } =>
+      row.contract_id != null && contractIds.has(row.contract_id)
+  );
 }
 
 /**
