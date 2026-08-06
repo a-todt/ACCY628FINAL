@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Building2,
+  Calendar,
   HardHat,
   LayoutDashboard,
   LogOut,
@@ -28,6 +29,7 @@ import { ProjectFavoritesProvider } from "@/hooks/useProjectFavorites";
 import { useAccessStatus } from "@/hooks/useAccessStatus";
 import {
   categoryFromPath,
+  canViewCalendar,
   isNavItemActive,
   primaryNavForRole,
   secondaryNavForCategory,
@@ -45,6 +47,7 @@ function AppShellLoading() {
 const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
   favorites: Star,
   dashboard: LayoutDashboard,
+  calendar: Calendar,
   reports: BarChart3,
   contracts: Building2,
   finance: Wallet,
@@ -136,6 +139,18 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         <div className="ml-auto flex-none flex items-center gap-1 sm:gap-1.5 shrink-0">
           {!locked ? <MessagesInboxButton /> : null}
           {!locked ? <AlertsBell /> : null}
+          {!locked && canViewCalendar(effectiveRole) ? (
+            <Link
+              href="/calendar"
+              className={`btn btn-ghost btn-sm h-8 min-h-8 btn-square ${
+                pathname.startsWith("/calendar") ? "btn-active text-primary" : ""
+              }`}
+              title="Calendar"
+              aria-label="Calendar"
+            >
+              <Calendar className="h-4 w-4" />
+            </Link>
+          ) : null}
           <SettingsMenu />
           <UserMenu />
           <button
