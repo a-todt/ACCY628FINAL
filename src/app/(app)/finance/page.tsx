@@ -145,7 +145,7 @@ export default function FinanceOverviewPage() {
               type="button"
               className="btn btn-primary btn-sm"
               onClick={() =>
-                downloadPdfTables("finance-overview.pdf", "GC Contract Manager — Finance Overview", [
+                downloadPdfTables("finance-overview.pdf", "General Contract Management — Finance Overview", [
                   {
                     title: "Summary",
                     columns: ["Metric", "Value"],

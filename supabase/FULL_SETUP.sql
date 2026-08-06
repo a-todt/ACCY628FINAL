@@ -1,5 +1,5 @@
 -- ============================================================================
--- GC Contract Manager - Core Schema
+-- General Contract Management - Core Schema
 -- ============================================================================
 -- Tables, helper functions, triggers, and Row Level Security policies for a
 -- general contractor contract management app. Roles: admin, project_manager,
@@ -729,7 +729,7 @@ grant all on all tables in schema public to service_role;
 
 
 -- ============================================================================
--- GC Contract Manager - Demo Seed Data
+-- General Contract Management - Demo Seed Data
 -- ============================================================================
 -- Creates 5 demo logins (all password: Demo123!) and a realistic set of
 -- contracts, change orders, subcontractors, cost entries, invoices,

@@ -96,7 +96,7 @@ export function ContractProfitabilitySection({ rows }: Props) {
   }
 
   function exportPdf() {
-    downloadPdfTables("contract-profitability.pdf", "GC Contract Manager — Contract Profitability", [
+    downloadPdfTables("contract-profitability.pdf", "General Contract Management — Contract Profitability", [
       {
         title: "Contract Profitability",
         columns: ["Contract", "Revised", "Billed", "Collected", "Costs", "Profit", "Margin"],

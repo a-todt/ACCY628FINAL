@@ -1,5 +1,5 @@
 -- ============================================================================
--- GC Contract Manager - Full Demo Reseed (40 contracts)
+-- General Contract Management - Full Demo Reseed (40 contracts)
 -- ============================================================================
 -- Safe to re-run. Wipes all prior operational demo data, ensures demo staff
 -- logins, and seeds 40 contracts with daily-ops child data.

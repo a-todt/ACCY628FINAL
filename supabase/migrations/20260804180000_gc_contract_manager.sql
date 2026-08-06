@@ -1,5 +1,5 @@
 -- ============================================================================
--- GC Contract Manager - Core Schema
+-- General Contract Management - Core Schema
 -- ============================================================================
 -- Tables, helper functions, triggers, and Row Level Security policies for a
 -- general contractor contract management app. Roles: admin, project_manager,

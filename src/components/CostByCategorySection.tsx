@@ -86,7 +86,7 @@ export function CostByCategorySection({ rows }: Props) {
   }
 
   function exportPdf() {
-    downloadPdfTables("costs-by-category.pdf", "GC Contract Manager — Cost by Category", [
+    downloadPdfTables("costs-by-category.pdf", "General Contract Management — Cost by Category", [
       {
         title: "Cost by Category",
         columns: ["Category", "Total"],
