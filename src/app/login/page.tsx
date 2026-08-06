@@ -353,8 +353,8 @@ export default function LoginPage() {
               <div className="bg-base-200/80 rounded-box border border-base-300 p-3 text-xs space-y-1">
                 <p className="font-semibold tracking-tight">Demo logins (password: Demo123!)</p>
                 <p className="opacity-80">admin@gcmanager.demo · client@gcmanager.demo</p>
-                <p className="opacity-80">PMs: pm@ · pm2@gcmanager.demo</p>
-                <p className="opacity-80">Field: field@ · field2@gcmanager.demo</p>
+                <p className="opacity-80">PMs: pm@ … pm5@gcmanager.demo</p>
+                <p className="opacity-80">Field: field@ … field6@gcmanager.demo</p>
                 <p className="opacity-80">Subs: sub@ · sub2@gcmanager.demo</p>
               </div>
             </div>
