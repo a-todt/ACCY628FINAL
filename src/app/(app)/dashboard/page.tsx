@@ -23,19 +23,25 @@ import {
   Gavel,
   Plus,
   Receipt,
+  Settings2,
   TrendingUp,
   Wrench,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useDashboardLayout } from "@/hooks/useDashboardLayout";
 import { useDismissedAlerts } from "@/hooks/useDismissedAlerts";
+import { DashboardCustomizeModal } from "@/components/DashboardCustomizeModal";
+import { DashboardPaneGrid } from "@/components/DashboardPaneGrid";
+import { ExpandableChart } from "@/components/ExpandableChart";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { buildAlertsForRole, type AlertItem } from "@/lib/alerts";
 import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
 import { CHART_COLORS } from "@/lib/chartColors";
+import { chartPanelHeight, panesForRole, type DashboardLayoutPrefs } from "@/lib/dashboardLayout";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
 import {
   canCreateChangeOrders,
@@ -72,6 +78,12 @@ interface DashboardData {
   milestones: Milestone[];
 }
 
+type DashboardPaneProps = DashboardData & {
+  role: UserRole;
+  layout: DashboardLayoutPrefs;
+  onCustomize: () => void;
+};
+
 function chartHasValues(
   rows: Array<Record<string, string | number>>,
   keys: string[]
@@ -82,6 +94,8 @@ function chartHasValues(
 export default function DashboardPage() {
   const { effectiveRole, profile, user } = useAuth();
   const data = useContractData();
+  const { layout, setLayout } = useDashboardLayout(effectiveRole);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
 
   const subScopeUserId = useMemo(
     () =>
@@ -124,12 +138,29 @@ export default function DashboardPage() {
     milestones: data.milestones,
   };
 
+  const paneProps = {
+    ...shared,
+    role: effectiveRole,
+    layout,
+    onCustomize: () => setCustomizeOpen(true),
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader
         compact
         title="Dashboard"
         subtitle={`Welcome back${profile?.full_name ? `, ${profile.full_name}` : ""}`}
+        actions={
+          <button
+            type="button"
+            className="btn btn-primary btn-sm gap-1.5"
+            onClick={() => setCustomizeOpen(true)}
+          >
+            <Settings2 className="h-4 w-4" />
+            Customize
+          </button>
+        }
       />
 
       <DashboardQuickActions role={effectiveRole} />
@@ -137,20 +168,21 @@ export default function DashboardPage() {
       {effectiveRole === "admin" ||
       effectiveRole === "owner" ||
       effectiveRole === "project_manager" ? (
-        <AdminDashboard {...shared} />
+        <AdminDashboard {...paneProps} />
       ) : effectiveRole === "field_supervisor" ? (
-        <FieldSupervisorDashboard {...shared} userId={fieldScopeUserId ?? user?.id} />
+        <FieldSupervisorDashboard {...paneProps} userId={fieldScopeUserId ?? user?.id} />
       ) : effectiveRole === "subcontractor" ? (
-        <SubcontractorDashboard {...shared} userId={subScopeUserId ?? user?.id} />
+        <SubcontractorDashboard {...paneProps} userId={subScopeUserId ?? user?.id} />
       ) : (
-        <ClientDashboard {...shared} />
+        <ClientDashboard {...paneProps} />
       )}
 
-      <DashboardAlertsPreview
+      <DashboardCustomizeModal
+        open={customizeOpen}
         role={effectiveRole}
-        invoices={data.invoices}
-        fieldLogs={data.fieldLogs}
-        changeOrders={data.changeOrders}
+        layout={layout}
+        onClose={() => setCustomizeOpen(false)}
+        onSave={setLayout}
       />
     </div>
   );
@@ -270,25 +302,34 @@ function DashboardAlertsPreview({
       compact
       title="Needs attention"
       actions={
-        <Link href="/alerts" className="btn btn-ghost btn-xs gap-1">
+        <Link href="/alerts" className="btn btn-primary btn-xs gap-1">
           <Bell className="h-3.5 w-3.5" />
           View all ({alerts.length})
         </Link>
       }
     >
-      <ul className="divide-y divide-base-300 max-h-[50vh] overflow-y-auto pr-1">
-        {preview.map((alert) => (
-          <AlertPreviewRow key={alert.id} alert={alert} />
-        ))}
-      </ul>
-      {remaining > 0 ? (
-        <p className="text-xs opacity-60 mt-2 shrink-0">
-          +{remaining} more in{" "}
-          <Link href="/alerts" className="link link-primary">
-            Alerts
-          </Link>
-        </p>
-      ) : null}
+      <div className="space-y-2">
+        <div
+          className="overflow-y-auto pr-1"
+          style={{ height: "var(--dashboard-chart-h, 220px)" }}
+        >
+          <ul className="divide-y divide-base-300">
+            {preview.map((alert) => (
+              <AlertPreviewRow key={alert.id} alert={alert} />
+            ))}
+          </ul>
+        </div>
+        {remaining > 0 ? (
+          <div className="flex justify-center pt-0.5">
+            <Link
+              href="/alerts"
+              className="btn btn-primary btn-xs gap-1.5"
+            >
+              +{remaining} more in Alerts
+            </Link>
+          </div>
+        ) : null}
+      </div>
     </SectionCard>
   );
 }
@@ -334,7 +375,11 @@ function AdminDashboard({
   invoices,
   payments,
   milestones,
-}: DashboardData) {
+  fieldLogs,
+  role,
+  layout,
+  onCustomize,
+}: DashboardPaneProps) {
   if (contracts.length === 0) {
     return (
       <EmptyState
@@ -414,11 +459,24 @@ function AdminDashboard({
     }))
   );
 
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <p className="text-[10px] uppercase tracking-wide opacity-50 px-0.5">Money pulse</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+  const catalog = panesForRole(role);
+  const chartHeight = chartPanelHeight(
+    Math.max(
+      1,
+      layout.panes.filter((id) => {
+        const def = catalog.find((pane) => pane.id === id);
+        return def && !def.fullWidth;
+      }).length
+    )
+  );
+
+  const panes: Record<string, ReactNode> = {
+    money_pulse: (
+      <SectionCard compact title="Money pulse">
+        <div
+          className="grid grid-cols-2 gap-2 content-start overflow-y-auto pr-0.5"
+          style={{ height: "var(--dashboard-chart-h, 220px)" }}
+        >
           <StatCard
             compact
             title="Revised Contract Value"
@@ -458,11 +516,14 @@ function AdminDashboard({
             href="/alerts"
           />
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-[10px] uppercase tracking-wide opacity-50 px-0.5">Operations</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      </SectionCard>
+    ),
+    operations: (
+      <SectionCard compact title="Operations">
+        <div
+          className="grid grid-cols-2 gap-2 content-start overflow-y-auto pr-0.5"
+          style={{ height: "var(--dashboard-chart-h, 220px)" }}
+        >
           <StatCard
             compact
             title="Active Contracts"
@@ -496,111 +557,160 @@ function AdminDashboard({
             href="/change-orders"
           />
         </div>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-3 xl:gap-4">
-        <SectionCard
-          compact
+      </SectionCard>
+    ),
+    chart_contract_value: (
+      <SectionCard
+        compact
+        title="Contract Value by Project"
+        actions={
+          <Link href="/contracts" className="btn btn-primary btn-xs">
+            View contracts
+          </Link>
+        }
+      >
+        <ExpandableChart
           title="Contract Value by Project"
-          actions={
-            <Link href="/contracts" className="btn btn-ghost btn-xs">
-              View contracts
-            </Link>
+          previewHeight={chartHeight}
+          hasData={chartHasValues(contractValueData, ["Value"])}
+          empty={
+            <p className="text-sm opacity-60 py-8 text-center">No contract values to chart yet.</p>
           }
         >
-          {chartHasValues(contractValueData, ["Value"]) ? (
-            <ScrollableBarChart data={contractValueData} panelHeight={200}>
+          {(height) => (
+            <ScrollableBarChart data={contractValueData} panelHeight={height}>
               <Bar dataKey="Value" fill={CHART_COLORS[0]} radius={[0, 5, 5, 0]} />
             </ScrollableBarChart>
-          ) : (
-            <p className="text-sm opacity-60 py-8 text-center">No contract values to chart yet.</p>
           )}
-        </SectionCard>
-
-        <SectionCard
-          compact
+        </ExpandableChart>
+      </SectionCard>
+    ),
+    chart_billed_vs_collected: (
+      <SectionCard
+        compact
+        title="Billed vs. Collected"
+        actions={
+          <Link href="/invoices" className="btn btn-primary btn-xs">
+            View invoices
+          </Link>
+        }
+      >
+        <ExpandableChart
           title="Billed vs. Collected"
-          actions={
-            <Link href="/invoices" className="btn btn-ghost btn-xs">
-              View invoices
-            </Link>
+          previewHeight={chartHeight}
+          heightBoost={28}
+          hasData={chartHasValues(billedVsCollectedData, ["Billed", "Collected"])}
+          empty={
+            <p className="text-sm opacity-60 py-8 text-center">No billing activity to chart yet.</p>
           }
         >
-          {chartHasValues(billedVsCollectedData, ["Billed", "Collected"]) ? (
-            <ScrollableBarChart data={billedVsCollectedData} panelHeight={200}>
+          {(height) => (
+            <ScrollableBarChart data={billedVsCollectedData} panelHeight={height}>
               <Legend verticalAlign="top" height={28} />
               <Bar dataKey="Billed" fill={CHART_COLORS[1]} radius={[0, 5, 5, 0]} />
               <Bar dataKey="Collected" fill={CHART_COLORS[3]} radius={[0, 5, 5, 0]} />
             </ScrollableBarChart>
-          ) : (
-            <p className="text-sm opacity-60 py-8 text-center">No billing activity to chart yet.</p>
           )}
-        </SectionCard>
-
-        <SectionCard
-          compact
+        </ExpandableChart>
+      </SectionCard>
+    ),
+    chart_costs_by_category: (
+      <SectionCard
+        compact
+        title="Costs by Category"
+        actions={
+          <Link href="/costs" className="btn btn-primary btn-xs">
+            View costs
+          </Link>
+        }
+      >
+        <ExpandableChart
           title="Costs by Category"
-          actions={
-            <Link href="/costs" className="btn btn-ghost btn-xs">
-              View costs
-            </Link>
-          }
-        >
-          {costsByCategoryData.length === 0 ? (
+          previewHeight={chartHeight}
+          hasData={costsByCategoryData.length > 0}
+          empty={
             <p className="text-sm opacity-60 py-8 text-center">No cost entries recorded yet.</p>
-          ) : (
-            <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={costsByCategoryData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={72}
-                    label={({ name, percent: p }) => `${name} ${((p ?? 0) * 100).toFixed(0)}%`}
-                  >
-                    {costsByCategoryData.map((entry, index) => (
-                      <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => money(Number(value))} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </SectionCard>
-
-        <SectionCard
-          compact
-          title="Approved Change Order Value by Project"
-          actions={
-            <Link href="/change-orders" className="btn btn-ghost btn-xs">
-              View change orders
-            </Link>
           }
         >
-          {chartHasValues(changeOrderValueData, ["Approved"]) ? (
-            <ScrollableBarChart data={changeOrderValueData} panelHeight={200}>
+          {(height, mode) => {
+            const radius =
+              mode === "full"
+                ? Math.min(180, Math.round(height * 0.34))
+                : Math.min(96, Math.round(height * 0.38));
+            return (
+              <div style={{ height }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={costsByCategoryData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={radius}
+                      label={({ name, percent: p }) => `${name} ${((p ?? 0) * 100).toFixed(0)}%`}
+                    >
+                      {costsByCategoryData.map((entry, index) => (
+                        <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => money(Number(value))} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          }}
+        </ExpandableChart>
+      </SectionCard>
+    ),
+    chart_change_order_value: (
+      <SectionCard
+        compact
+        title="Approved Change Order Value"
+        actions={
+          <Link href="/change-orders" className="btn btn-primary btn-xs">
+            View change orders
+          </Link>
+        }
+      >
+        <ExpandableChart
+          title="Approved Change Order Value"
+          previewHeight={chartHeight}
+          hasData={chartHasValues(changeOrderValueData, ["Approved"])}
+          empty={
+            <p className="text-sm opacity-60 py-8 text-center">
+              No approved change order value yet.
+            </p>
+          }
+        >
+          {(height) => (
+            <ScrollableBarChart data={changeOrderValueData} panelHeight={height}>
               <Bar dataKey="Approved" fill={CHART_COLORS[2]} radius={[0, 5, 5, 0]} />
             </ScrollableBarChart>
-          ) : (
-            <p className="text-sm opacity-60 py-8 text-center">No approved change order value yet.</p>
           )}
-        </SectionCard>
-
-        <SectionCard
-          compact
+        </ExpandableChart>
+      </SectionCard>
+    ),
+    chart_gross_profit: (
+      <SectionCard
+        compact
+        title="Gross Profit by Project"
+        actions={
+          <Link href="/finance" className="btn btn-primary btn-xs">
+            View finance
+          </Link>
+        }
+      >
+        <ExpandableChart
           title="Gross Profit by Project"
-          actions={
-            <Link href="/finance" className="btn btn-ghost btn-xs">
-              View finance
-            </Link>
+          previewHeight={chartHeight}
+          hasData={chartHasValues(grossProfitData, ["Gross Profit"])}
+          empty={
+            <p className="text-sm opacity-60 py-8 text-center">No gross profit data to chart yet.</p>
           }
         >
-          {chartHasValues(grossProfitData, ["Gross Profit"]) ? (
-            <ScrollableBarChart data={grossProfitData} panelHeight={200}>
+          {(height) => (
+            <ScrollableBarChart data={grossProfitData} panelHeight={height}>
               <Bar dataKey="Gross Profit" radius={[0, 5, 5, 0]}>
                 {grossProfitData.map((entry) => (
                   <Cell
@@ -610,12 +720,22 @@ function AdminDashboard({
                 ))}
               </Bar>
             </ScrollableBarChart>
-          ) : (
-            <p className="text-sm opacity-60 py-8 text-center">No gross profit data to chart yet.</p>
           )}
-        </SectionCard>
-      </div>
-    </div>
+        </ExpandableChart>
+      </SectionCard>
+    ),
+    alerts: (
+      <DashboardAlertsPreview
+        role={role}
+        invoices={invoices}
+        fieldLogs={fieldLogs}
+        changeOrders={changeOrders}
+      />
+    ),
+  };
+
+  return (
+    <DashboardPaneGrid role={role} layout={layout} panes={panes} onCustomize={onCustomize} />
   );
 }
 
@@ -623,8 +743,13 @@ function FieldSupervisorDashboard({
   contracts,
   fieldLogs,
   costEntries,
+  invoices,
+  changeOrders,
   userId,
-}: DashboardData & { userId?: string }) {
+  role,
+  layout,
+  onCustomize,
+}: DashboardPaneProps & { userId?: string }) {
   const myFieldLogs = fieldLogs.filter((f) => !userId || f.user_id === userId).slice(0, 6);
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
@@ -634,8 +759,8 @@ function FieldSupervisorDashboard({
   const costsThisWeekTotal = myCostsThisWeek.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
   const myLogCount = fieldLogs.filter((f) => !userId || f.user_id === userId).length;
 
-  return (
-    <div className="space-y-4">
+  const panes: Record<string, ReactNode> = {
+    kpi_stats: (
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
         <StatCard
           compact
@@ -660,7 +785,8 @@ function FieldSupervisorDashboard({
           href="/costs"
         />
       </div>
-
+    ),
+    assigned_projects: (
       <SectionCard
         compact
         title="Assigned Projects"
@@ -694,12 +820,13 @@ function FieldSupervisorDashboard({
           </div>
         )}
       </SectionCard>
-
+    ),
+    recent_field_logs: (
       <SectionCard
         compact
         title="My Recent Field Logs"
         actions={
-          <Link href="/field-logs" className="btn btn-ghost btn-xs">
+          <Link href="/field-logs" className="btn btn-primary btn-xs">
             View all
           </Link>
         }
@@ -745,7 +872,19 @@ function FieldSupervisorDashboard({
           </div>
         )}
       </SectionCard>
-    </div>
+    ),
+    alerts: (
+      <DashboardAlertsPreview
+        role={role}
+        invoices={invoices}
+        fieldLogs={fieldLogs}
+        changeOrders={changeOrders}
+      />
+    ),
+  };
+
+  return (
+    <DashboardPaneGrid role={role} layout={layout} panes={panes} onCustomize={onCustomize} />
   );
 }
 
@@ -753,8 +892,13 @@ function SubcontractorDashboard({
   subcontractors,
   fieldLogs,
   costEntries,
+  invoices,
+  changeOrders,
   userId,
-}: DashboardData & { userId?: string }) {
+  role,
+  layout,
+  onCustomize,
+}: DashboardPaneProps & { userId?: string }) {
   const mySubs = subcontractors.filter((s) => !userId || s.user_id === userId);
   const myFieldLogs = fieldLogs
     .filter((f) => !userId || f.user_id === userId)
@@ -795,8 +939,8 @@ function SubcontractorDashboard({
     };
   }, []);
 
-  return (
-    <div className="space-y-4">
+  const panes: Record<string, ReactNode> = {
+    kpi_stats: (
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <StatCard
           compact
@@ -816,7 +960,8 @@ function SubcontractorDashboard({
           href="/costs"
         />
       </div>
-
+    ),
+    open_bid_packages: (
       <SectionCard
         compact
         title="Open bid packages"
@@ -871,7 +1016,8 @@ function SubcontractorDashboard({
           </div>
         )}
       </SectionCard>
-
+    ),
+    engagements: (
       <SectionCard
         compact
         title="My Subcontract Engagements"
@@ -932,12 +1078,13 @@ function SubcontractorDashboard({
           </div>
         )}
       </SectionCard>
-
+    ),
+    recent_field_logs: (
       <SectionCard
         compact
         title="My Recent Field Logs"
         actions={
-          <Link href="/field-logs" className="btn btn-ghost btn-xs">
+          <Link href="/field-logs" className="btn btn-primary btn-xs">
             View all
           </Link>
         }
@@ -981,7 +1128,19 @@ function SubcontractorDashboard({
           </div>
         )}
       </SectionCard>
-    </div>
+    ),
+    alerts: (
+      <DashboardAlertsPreview
+        role={role}
+        invoices={invoices}
+        fieldLogs={fieldLogs}
+        changeOrders={changeOrders}
+      />
+    ),
+  };
+
+  return (
+    <DashboardPaneGrid role={role} layout={layout} panes={panes} onCustomize={onCustomize} />
   );
 }
 
@@ -992,7 +1151,11 @@ function ClientDashboard({
   costEntries,
   milestones,
   payments,
-}: DashboardData) {
+  fieldLogs,
+  role,
+  layout,
+  onCustomize,
+}: DashboardPaneProps) {
   const router = useRouter();
   const approvedChangeOrders = changeOrders.filter((co) => co.status === "approved");
   const perContract = contracts.map((contract) => ({
@@ -1011,8 +1174,8 @@ function ClientDashboard({
   const totalPaid = perContract.reduce((sum, { metrics }) => sum + metrics.totalCollected, 0);
   const totalOutstanding = perContract.reduce((sum, { metrics }) => sum + metrics.outstanding, 0);
 
-  return (
-    <div className="space-y-4">
+  const panes: Record<string, ReactNode> = {
+    kpi_stats: (
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <StatCard
           compact
@@ -1046,7 +1209,8 @@ function ClientDashboard({
           href="/invoices"
         />
       </div>
-
+    ),
+    my_projects: (
       <SectionCard compact title="My Projects">
         {contracts.length === 0 ? (
           <p className="text-sm opacity-60 py-4 text-center">No projects linked to your account yet.</p>
@@ -1080,12 +1244,13 @@ function ClientDashboard({
           </div>
         )}
       </SectionCard>
-
+    ),
+    approved_change_orders: (
       <SectionCard
         compact
         title="Approved Change Orders"
         actions={
-          <Link href="/change-orders" className="btn btn-ghost btn-xs">
+          <Link href="/change-orders" className="btn btn-primary btn-xs">
             View all
           </Link>
         }
@@ -1127,7 +1292,8 @@ function ClientDashboard({
           </div>
         )}
       </SectionCard>
-
+    ),
+    invoices: (
       <SectionCard compact title="Invoices & Payment Status">
         {invoices.length === 0 ? (
           <p className="text-sm opacity-60 py-6 text-center">No invoices issued yet.</p>
@@ -1183,6 +1349,18 @@ function ClientDashboard({
           </div>
         )}
       </SectionCard>
-    </div>
+    ),
+    alerts: (
+      <DashboardAlertsPreview
+        role={role}
+        invoices={invoices}
+        fieldLogs={fieldLogs}
+        changeOrders={changeOrders}
+      />
+    ),
+  };
+
+  return (
+    <DashboardPaneGrid role={role} layout={layout} panes={panes} onCustomize={onCustomize} />
   );
 }
