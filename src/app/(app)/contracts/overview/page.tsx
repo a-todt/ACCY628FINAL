@@ -90,8 +90,9 @@ export default function ContractsOverviewPage() {
   }
 
   return (
-    <div>
+    <div className="space-y-2.5">
       <PageHeader
+        compact
         title="Contracts Overview"
         subtitle="Portfolio snapshot for contracts, change orders, and subcontractors."
         actions={
@@ -103,25 +104,42 @@ export default function ContractsOverviewPage() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard title="Contracts" value={String(contracts.length)} hint={`${activeContracts} active`} icon={Building2} />
-        <StatCard title="Revised Value" value={money(totalContractValue)} icon={ClipboardList} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <StatCard
+          compact
+          title="Contracts"
+          value={String(contracts.length)}
+          hint={`${activeContracts} active`}
+          icon={Building2}
+        />
+        <StatCard compact title="Revised Value" value={money(totalContractValue)} icon={ClipboardList} />
+        <StatCard
+          compact
           title="Change Orders"
           value={String(visibleChangeOrders.length)}
           hint={effectiveRole === "client" ? "Approved only" : `${pendingCOs} pending`}
           tone={pendingCOs > 0 ? "warning" : "default"}
         />
         {showSubs ? (
-          <StatCard title="Subcontracts" value={String(subcontractors.length)} hint={money(totalSubValue)} icon={Users} />
+          <StatCard
+            compact
+            title="Subcontracts"
+            value={String(subcontractors.length)}
+            hint={money(totalSubValue)}
+            icon={Users}
+          />
         ) : (
-          <StatCard title="Clients" value={String(new Set(contracts.map((c) => c.client_name).filter(Boolean)).size)} />
+          <StatCard
+            compact
+            title="Clients"
+            value={String(new Set(contracts.map((c) => c.client_name).filter(Boolean)).size)}
+          />
         )}
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <SectionCard title="Contract status mix">
-          <div className="flex flex-col items-start gap-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+        <SectionCard compact title="Contract status mix">
+          <div className="flex flex-wrap gap-1.5">
             {[
               { value: "active", label: "Active" },
               { value: "completed", label: "Completed" },
@@ -130,19 +148,19 @@ export default function ContractsOverviewPage() {
             ].map(({ value, label }) => {
               const count = contracts.filter((c) => c.status === value).length;
               return (
-                <span key={value} className={`badge ${statusBadgeClass(value)}`}>
+                <span key={value} className={`badge badge-sm ${statusBadgeClass(value)}`}>
                   {label}: {count}
                 </span>
               );
             })}
           </div>
         </SectionCard>
-        <SectionCard title="Change order status">
-          <div className="flex flex-col items-start gap-2">
+        <SectionCard compact title="Change order status">
+          <div className="flex flex-wrap gap-1.5">
             {["pending", "approved", "rejected"].map((status) => {
               const count = visibleChangeOrders.filter((c) => c.status === status).length;
               return (
-                <span key={status} className={`badge ${statusBadgeClass(status)}`}>
+                <span key={status} className={`badge badge-sm ${statusBadgeClass(status)}`}>
                   {labelize(status)}: {count}
                 </span>
               );
@@ -152,11 +170,12 @@ export default function ContractsOverviewPage() {
       </div>
 
       <ActivityLogPanel
+        compact
         title="Recent Activity"
         entityTypes={["contract"]}
         emptyTitle="No recent contract activity"
         emptyMessage="Contract creates, updates, status changes, cancels, and deletes will show up here."
-        limit={10}
+        limit={6}
       />
     </div>
   );

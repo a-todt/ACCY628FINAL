@@ -10,7 +10,7 @@ import {
 } from "@/lib/dashboardLayout";
 import type { UserRole } from "@/lib/types";
 
-const STORAGE_PREFIX = "gc_dashboard_layout_";
+const STORAGE_PREFIX = "gc_dashboard_layout_v2_";
 
 function storageKey(userId: string, role: UserRole) {
   return `${STORAGE_PREFIX}${userId}_${dashboardRoleKey(role)}`;

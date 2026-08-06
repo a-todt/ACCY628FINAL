@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  ColumnAutocompleteHeader,
+  ColumnSortHeader,
+  matchesColumnFilter,
+  uniqueSorted,
+  type ColumnSortDir,
+} from "@/components/ColumnAutocompleteHeader";
+import { compareValues } from "@/components/FilterSortBar";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProjectSelect } from "@/components/ProjectSelect";
 import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
@@ -13,6 +21,9 @@ const P = WIP_DB.projects;
 const C = WIP_DB.projectCosts;
 const B = WIP_DB.billings;
 const CO = WIP_DB.projectChangeOrders;
+
+type ActiveModal = "project" | "cost" | "billing" | "change_order" | null;
+type SortKey = "name" | "status" | "value" | "cost";
 
 const EMPTY_PROJECT = {
   project_name: "",
@@ -68,6 +79,11 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [selectRefreshKey, setSelectRefreshKey] = useState(0);
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+
+  const [nameFilter, setNameFilter] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<ColumnSortDir>("asc");
 
   const [projectForm, setProjectForm] = useState(EMPTY_PROJECT);
   const [costForm, setCostForm] = useState(EMPTY_COST);
@@ -111,6 +127,55 @@ export default function ProjectsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const closeModal = () => {
+    setActiveModal(null);
+    setProjectError(null);
+    setCostError(null);
+    setBillingError(null);
+    setChangeOrderError(null);
+  };
+
+  const openModal = (modal: Exclude<ActiveModal, null>) => {
+    setSuccess(null);
+    setProjectError(null);
+    setCostError(null);
+    setBillingError(null);
+    setChangeOrderError(null);
+    setActiveModal(modal);
+  };
+
+  const filteredProjects = useMemo(() => {
+    const filtered = projects.filter((p) =>
+      matchesColumnFilter(colStr(p, P.name), nameFilter)
+    );
+    return [...filtered].sort((a, b) => {
+      if (sortKey === "status") {
+        return compareValues(colStr(a, P.status, "active"), colStr(b, P.status, "active"), sortDir);
+      }
+      if (sortKey === "value") {
+        return compareValues(colNum(a, P.contractValue), colNum(b, P.contractValue), sortDir);
+      }
+      if (sortKey === "cost") {
+        return compareValues(colNum(a, P.estimatedCost), colNum(b, P.estimatedCost), sortDir);
+      }
+      return compareValues(colStr(a, P.name), colStr(b, P.name), sortDir);
+    });
+  }, [projects, nameFilter, sortKey, sortDir]);
+
+  const nameOptions = useMemo(
+    () => uniqueSorted(projects.map((p) => colStr(p, P.name))),
+    [projects]
+  );
+
+  const onSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "value" || key === "cost" ? "desc" : "asc");
+    }
+  };
 
   const onCreateProject = async (e: FormEvent) => {
     e.preventDefault();
@@ -175,6 +240,7 @@ export default function ProjectsPage() {
       setProjectForm(EMPTY_PROJECT);
       setSuccess("Project created.");
       setSelectRefreshKey((k) => k + 1);
+      closeModal();
       await load();
     } catch (err) {
       setProjectError(err instanceof Error ? err.message : "Failed to create project.");
@@ -224,6 +290,7 @@ export default function ProjectsPage() {
       if (insertError) throw insertError;
       setCostForm((prev) => ({ ...EMPTY_COST, project_id: prev.project_id }));
       setSuccess("Cost entry added.");
+      closeModal();
     } catch (err) {
       setCostError(err instanceof Error ? err.message : "Failed to add cost.");
     } finally {
@@ -288,6 +355,7 @@ export default function ProjectsPage() {
       if (insertError) throw insertError;
       setBillingForm((prev) => ({ ...EMPTY_BILLING, project_id: prev.project_id }));
       setSuccess("Billing added.");
+      closeModal();
     } catch (err) {
       setBillingError(err instanceof Error ? err.message : "Failed to add billing.");
     } finally {
@@ -341,6 +409,7 @@ export default function ProjectsPage() {
         project_id: prev.project_id,
       }));
       setSuccess("Change order added.");
+      closeModal();
     } catch (err) {
       setChangeOrderError(err instanceof Error ? err.message : "Failed to add change order.");
     } finally {
@@ -368,7 +437,7 @@ export default function ProjectsPage() {
   const hasProjects = projects.length > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title="Projects"
         subtitle="Create projects and enter costs/billings for WIP revenue recognition"
@@ -377,47 +446,139 @@ export default function ProjectsPage() {
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
       {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
 
+      {canEdit ? (
+        <div className="rounded-box border border-base-300 bg-base-100 px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide opacity-60 mr-1">
+              Add
+            </span>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => openModal("project")}>
+              Project
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => openModal("cost")}
+              disabled={!hasProjects}
+            >
+              Cost
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => openModal("billing")}
+              disabled={!hasProjects}
+            >
+              Billing
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => openModal("change_order")}
+              disabled={!hasProjects}
+            >
+              Change order
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <SectionCard title="Your projects">
         {!hasProjects ? (
-          <p className="text-sm opacity-60 py-4 text-center">No projects yet. Create one below.</p>
+          <p className="text-sm opacity-60 py-4 text-center">
+            No projects yet.{canEdit ? " Use Add → Project above to create one." : ""}
+          </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
+          <table className="table table-xs table-fixed w-full text-[11px]">
+            <colgroup>
+              <col className="w-[40%]" />
+              <col className="w-[16%]" />
+              <col className="w-[22%]" />
+              <col className="w-[22%]" />
+            </colgroup>
+            <thead>
+              <tr className="bg-base-200/80">
+                <ColumnAutocompleteHeader
+                  label="Name"
+                  listId="projects-filter-name"
+                  value={nameFilter}
+                  onChange={setNameFilter}
+                  options={nameOptions}
+                  sortActive={sortKey === "name"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("name")}
+                />
+                <ColumnSortHeader
+                  label="Status"
+                  sortActive={sortKey === "status"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("status")}
+                />
+                <ColumnSortHeader
+                  label="Revised Value"
+                  sortActive={sortKey === "value"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("value")}
+                  align="right"
+                />
+                <ColumnSortHeader
+                  label="Est. Cost"
+                  sortActive={sortKey === "cost"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("cost")}
+                  align="right"
+                />
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProjects.length === 0 ? (
                 <tr>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th className="text-right">Revised Value</th>
-                  <th className="text-right">Est. Cost</th>
+                  <td colSpan={4} className="text-center opacity-60 py-6">
+                    No projects match the name filter.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {projects.map((p) => {
+              ) : (
+                filteredProjects.map((p) => {
                   const id = colStr(p, P.pk);
                   return (
-                    <tr key={id}>
-                      <td className="font-medium">{colStr(p, P.name)}</td>
-                      <td>
+                    <tr key={id} className="hover:bg-base-200/60">
+                      <td className="font-medium truncate">{colStr(p, P.name)}</td>
+                      <td className="text-center">
                         <span
                           className={`badge badge-sm ${statusBadgeClass(colStr(p, P.status, "active"))}`}
                         >
                           {labelize(colStr(p, P.status, "active"))}
                         </span>
                       </td>
-                      <td className="text-right">{moneyExact(colNum(p, P.contractValue))}</td>
-                      <td className="text-right">{moneyExact(colNum(p, P.estimatedCost))}</td>
+                      <td className="text-right tabular-nums">
+                        {moneyExact(colNum(p, P.contractValue))}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {moneyExact(colNum(p, P.estimatedCost))}
+                      </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                })
+              )}
+            </tbody>
+          </table>
         )}
       </SectionCard>
 
-      {canEdit ? (
-        <>
-          <SectionCard title="Create project">
+      {activeModal === "project" ? (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="font-semibold text-lg">Create project</h3>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm btn-circle"
+                aria-label="Close"
+                onClick={closeModal}
+              >
+                ✕
+              </button>
+            </div>
             <form className="grid sm:grid-cols-2 gap-4" onSubmit={onCreateProject} noValidate>
               {projectError ? (
                 <div className="sm:col-span-2">
@@ -426,7 +587,7 @@ export default function ProjectsPage() {
               ) : null}
               <FormField label="Project name">
                 <input
-                  className="input input-bordered"
+                  className="input input-bordered w-full"
                   value={projectForm.project_name}
                   onChange={(e) => setProjectForm((p) => ({ ...p, project_name: e.target.value }))}
                   required
@@ -434,14 +595,14 @@ export default function ProjectsPage() {
               </FormField>
               <FormField label="Client name">
                 <input
-                  className="input input-bordered"
+                  className="input input-bordered w-full"
                   value={projectForm.client_name}
                   onChange={(e) => setProjectForm((p) => ({ ...p, client_name: e.target.value }))}
                 />
               </FormField>
               <FormField label="Original contract value">
                 <input
-                  className="input input-bordered"
+                  className="input input-bordered w-full"
                   inputMode="decimal"
                   placeholder="0.00"
                   value={projectForm.original_contract_value}
@@ -452,7 +613,7 @@ export default function ProjectsPage() {
               </FormField>
               <FormField label="Revised contract value">
                 <input
-                  className="input input-bordered"
+                  className="input input-bordered w-full"
                   inputMode="decimal"
                   placeholder="Defaults to original"
                   value={projectForm.revised_contract_value}
@@ -463,7 +624,7 @@ export default function ProjectsPage() {
               </FormField>
               <FormField label="Estimated total cost">
                 <input
-                  className="input input-bordered"
+                  className="input input-bordered w-full"
                   inputMode="decimal"
                   placeholder="0.00"
                   value={projectForm.estimated_total_cost}
@@ -474,7 +635,7 @@ export default function ProjectsPage() {
               </FormField>
               <FormField label="Status">
                 <select
-                  className="select select-bordered"
+                  className="select select-bordered w-full"
                   value={projectForm.status}
                   onChange={(e) => setProjectForm((p) => ({ ...p, status: e.target.value }))}
                 >
@@ -486,7 +647,7 @@ export default function ProjectsPage() {
               <FormField label="Start date">
                 <input
                   type="date"
-                  className="input input-bordered"
+                  className="input input-bordered w-full"
                   value={projectForm.start_date}
                   onChange={(e) => setProjectForm((p) => ({ ...p, start_date: e.target.value }))}
                 />
@@ -494,12 +655,15 @@ export default function ProjectsPage() {
               <FormField label="End date">
                 <input
                   type="date"
-                  className="input input-bordered"
+                  className="input input-bordered w-full"
                   value={projectForm.end_date}
                   onChange={(e) => setProjectForm((p) => ({ ...p, end_date: e.target.value }))}
                 />
               </FormField>
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 modal-action mt-2">
+                <button type="button" className="btn btn-ghost" onClick={closeModal}>
+                  Cancel
+                </button>
                 <button className="btn btn-primary" disabled={savingProject}>
                   {savingProject ? (
                     <span className="loading loading-spinner loading-sm" />
@@ -509,229 +673,281 @@ export default function ProjectsPage() {
                 </button>
               </div>
             </form>
-          </SectionCard>
+          </div>
+          <button type="button" className="modal-backdrop" aria-label="Close" onClick={closeModal} />
+        </div>
+      ) : null}
 
-          <div className="grid lg:grid-cols-3 gap-6">
-            <SectionCard title="Add project cost">
-              <form className="space-y-3" onSubmit={onAddCost} noValidate>
-                {costError ? <AlertBanner type="error">{costError}</AlertBanner> : null}
-                <FormField label="Project">
-                  <ProjectSelect
-                    value={costForm.project_id}
-                    onChange={(projectId) =>
-                      setCostForm((p) => ({ ...p, project_id: projectId }))
-                    }
-                    required
-                    refreshKey={selectRefreshKey}
-                  />
-                </FormField>
-                <FormField label="Cost date">
-                  <input
-                    type="date"
-                    className="input input-bordered"
-                    value={costForm.cost_date}
-                    onChange={(e) => setCostForm((p) => ({ ...p, cost_date: e.target.value }))}
-                    required
-                  />
-                </FormField>
-                <FormField label="Category">
-                  <select
-                    className="select select-bordered"
-                    value={costForm.cost_category}
-                    onChange={(e) => setCostForm((p) => ({ ...p, cost_category: e.target.value }))}
-                  >
-                    <option value="labor">Labor</option>
-                    <option value="materials">Materials</option>
-                    <option value="subcontractor">Subcontractor</option>
-                    <option value="equipment">Equipment</option>
-                    <option value="permits">Permits</option>
-                    <option value="other">Other</option>
-                  </select>
-                </FormField>
-                <FormField label="Amount">
-                  <input
-                    className="input input-bordered"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={costForm.amount}
-                    onChange={(e) => setCostForm((p) => ({ ...p, amount: e.target.value }))}
-                    required
-                  />
-                </FormField>
-                <FormField label="Description">
-                  <input
-                    className="input input-bordered"
-                    value={costForm.description}
-                    onChange={(e) => setCostForm((p) => ({ ...p, description: e.target.value }))}
-                  />
-                </FormField>
-                <button className="btn btn-primary btn-sm" disabled={savingCost || !hasProjects}>
+      {activeModal === "cost" ? (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-md">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="font-semibold text-lg">Add project cost</h3>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm btn-circle"
+                aria-label="Close"
+                onClick={closeModal}
+              >
+                ✕
+              </button>
+            </div>
+            <form className="space-y-3" onSubmit={onAddCost} noValidate>
+              {costError ? <AlertBanner type="error">{costError}</AlertBanner> : null}
+              <FormField label="Project">
+                <ProjectSelect
+                  value={costForm.project_id}
+                  onChange={(projectId) => setCostForm((p) => ({ ...p, project_id: projectId }))}
+                  required
+                  refreshKey={selectRefreshKey}
+                />
+              </FormField>
+              <FormField label="Cost date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={costForm.cost_date}
+                  onChange={(e) => setCostForm((p) => ({ ...p, cost_date: e.target.value }))}
+                  required
+                />
+              </FormField>
+              <FormField label="Category">
+                <select
+                  className="select select-bordered w-full"
+                  value={costForm.cost_category}
+                  onChange={(e) => setCostForm((p) => ({ ...p, cost_category: e.target.value }))}
+                >
+                  <option value="labor">Labor</option>
+                  <option value="materials">Materials</option>
+                  <option value="subcontractor">Subcontractor</option>
+                  <option value="equipment">Equipment</option>
+                  <option value="permits">Permits</option>
+                  <option value="other">Other</option>
+                </select>
+              </FormField>
+              <FormField label="Amount">
+                <input
+                  className="input input-bordered w-full"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={costForm.amount}
+                  onChange={(e) => setCostForm((p) => ({ ...p, amount: e.target.value }))}
+                  required
+                />
+              </FormField>
+              <FormField label="Description">
+                <input
+                  className="input input-bordered w-full"
+                  value={costForm.description}
+                  onChange={(e) => setCostForm((p) => ({ ...p, description: e.target.value }))}
+                />
+              </FormField>
+              <div className="modal-action">
+                <button type="button" className="btn btn-ghost" onClick={closeModal}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" disabled={savingCost || !hasProjects}>
                   {savingCost ? <span className="loading loading-spinner loading-xs" /> : "Add cost"}
                 </button>
-              </form>
-            </SectionCard>
+              </div>
+            </form>
+          </div>
+          <button type="button" className="modal-backdrop" aria-label="Close" onClick={closeModal} />
+        </div>
+      ) : null}
 
-            <SectionCard title="Add billing">
-              <form className="space-y-3" onSubmit={onAddBilling} noValidate>
-                {billingError ? <AlertBanner type="error">{billingError}</AlertBanner> : null}
-                <FormField label="Project">
-                  <ProjectSelect
-                    value={billingForm.project_id}
-                    onChange={(projectId) =>
-                      setBillingForm((p) => ({ ...p, project_id: projectId }))
-                    }
-                    required
-                    refreshKey={selectRefreshKey}
-                  />
-                </FormField>
-                <FormField label="Billing number">
-                  <input
-                    className="input input-bordered"
-                    value={billingForm.billing_number}
-                    onChange={(e) =>
-                      setBillingForm((p) => ({ ...p, billing_number: e.target.value }))
-                    }
-                  />
-                </FormField>
-                <FormField label="Billing date">
-                  <input
-                    type="date"
-                    className="input input-bordered"
-                    value={billingForm.billing_date}
-                    onChange={(e) => setBillingForm((p) => ({ ...p, billing_date: e.target.value }))}
-                    required
-                  />
-                </FormField>
-                <FormField label="Amount billed">
-                  <input
-                    className="input input-bordered"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={billingForm.amount_billed}
-                    onChange={(e) =>
-                      setBillingForm((p) => ({ ...p, amount_billed: e.target.value }))
-                    }
-                    required
-                  />
-                </FormField>
-                <FormField
-                  label="Retainage receivable"
-                  hint="ASC 606 contract asset — billed but withheld until conditions are met."
-                >
-                  <input
-                    className="input input-bordered"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={billingForm.retainage_held}
-                    onChange={(e) =>
-                      setBillingForm((p) => ({ ...p, retainage_held: e.target.value }))
-                    }
-                  />
-                </FormField>
-                <button
-                  className="btn btn-primary btn-sm"
-                  disabled={savingBilling || !hasProjects}
-                >
+      {activeModal === "billing" ? (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-md">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="font-semibold text-lg">Add billing</h3>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm btn-circle"
+                aria-label="Close"
+                onClick={closeModal}
+              >
+                ✕
+              </button>
+            </div>
+            <form className="space-y-3" onSubmit={onAddBilling} noValidate>
+              {billingError ? <AlertBanner type="error">{billingError}</AlertBanner> : null}
+              <FormField label="Project">
+                <ProjectSelect
+                  value={billingForm.project_id}
+                  onChange={(projectId) =>
+                    setBillingForm((p) => ({ ...p, project_id: projectId }))
+                  }
+                  required
+                  refreshKey={selectRefreshKey}
+                />
+              </FormField>
+              <FormField label="Billing number">
+                <input
+                  className="input input-bordered w-full"
+                  value={billingForm.billing_number}
+                  onChange={(e) =>
+                    setBillingForm((p) => ({ ...p, billing_number: e.target.value }))
+                  }
+                />
+              </FormField>
+              <FormField label="Billing date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={billingForm.billing_date}
+                  onChange={(e) => setBillingForm((p) => ({ ...p, billing_date: e.target.value }))}
+                  required
+                />
+              </FormField>
+              <FormField label="Amount billed">
+                <input
+                  className="input input-bordered w-full"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={billingForm.amount_billed}
+                  onChange={(e) =>
+                    setBillingForm((p) => ({ ...p, amount_billed: e.target.value }))
+                  }
+                  required
+                />
+              </FormField>
+              <FormField
+                label="Retainage receivable"
+                hint="ASC 606 contract asset — billed but withheld until conditions are met."
+              >
+                <input
+                  className="input input-bordered w-full"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={billingForm.retainage_held}
+                  onChange={(e) =>
+                    setBillingForm((p) => ({ ...p, retainage_held: e.target.value }))
+                  }
+                />
+              </FormField>
+              <div className="modal-action">
+                <button type="button" className="btn btn-ghost" onClick={closeModal}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" disabled={savingBilling || !hasProjects}>
                   {savingBilling ? (
                     <span className="loading loading-spinner loading-xs" />
                   ) : (
                     "Add billing"
                   )}
                 </button>
-              </form>
-            </SectionCard>
+              </div>
+            </form>
+          </div>
+          <button type="button" className="modal-backdrop" aria-label="Close" onClick={closeModal} />
+        </div>
+      ) : null}
 
-            <SectionCard title="Add change order">
-              <form className="space-y-3" onSubmit={onAddChangeOrder} noValidate>
-                {changeOrderError ? (
-                  <AlertBanner type="error">{changeOrderError}</AlertBanner>
-                ) : null}
-                <FormField label="Project">
-                  <ProjectSelect
-                    value={changeOrderForm.project_id}
-                    onChange={(projectId) =>
-                      setChangeOrderForm((p) => ({ ...p, project_id: projectId }))
-                    }
-                    required
-                    refreshKey={selectRefreshKey}
-                  />
-                </FormField>
-                <FormField label="CO number">
+      {activeModal === "change_order" ? (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-md">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="font-semibold text-lg">Add change order</h3>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm btn-circle"
+                aria-label="Close"
+                onClick={closeModal}
+              >
+                ✕
+              </button>
+            </div>
+            <form className="space-y-3" onSubmit={onAddChangeOrder} noValidate>
+              {changeOrderError ? <AlertBanner type="error">{changeOrderError}</AlertBanner> : null}
+              <FormField label="Project">
+                <ProjectSelect
+                  value={changeOrderForm.project_id}
+                  onChange={(projectId) =>
+                    setChangeOrderForm((p) => ({ ...p, project_id: projectId }))
+                  }
+                  required
+                  refreshKey={selectRefreshKey}
+                />
+              </FormField>
+              <FormField label="CO number">
+                <input
+                  className="input input-bordered w-full"
+                  value={changeOrderForm.change_order_number}
+                  onChange={(e) =>
+                    setChangeOrderForm((p) => ({
+                      ...p,
+                      change_order_number: e.target.value,
+                    }))
+                  }
+                  placeholder="e.g. CO-001"
+                />
+              </FormField>
+              <FormField label="Description">
+                <input
+                  className="input input-bordered w-full"
+                  value={changeOrderForm.description}
+                  onChange={(e) =>
+                    setChangeOrderForm((p) => ({ ...p, description: e.target.value }))
+                  }
+                />
+              </FormField>
+              <FormField label="Amount">
+                <input
+                  className="input input-bordered w-full"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={changeOrderForm.amount}
+                  onChange={(e) =>
+                    setChangeOrderForm((p) => ({ ...p, amount: e.target.value }))
+                  }
+                  required
+                />
+              </FormField>
+              <FormField label="Status">
+                <select
+                  className="select select-bordered w-full"
+                  value={changeOrderForm.status}
+                  onChange={(e) =>
+                    setChangeOrderForm((p) => ({ ...p, status: e.target.value }))
+                  }
+                >
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </FormField>
+              {changeOrderForm.status === "approved" ? (
+                <FormField label="Approved date">
                   <input
-                    className="input input-bordered"
-                    value={changeOrderForm.change_order_number}
+                    type="date"
+                    className="input input-bordered w-full"
+                    value={changeOrderForm.approved_date}
                     onChange={(e) =>
                       setChangeOrderForm((p) => ({
                         ...p,
-                        change_order_number: e.target.value,
+                        approved_date: e.target.value,
                       }))
                     }
-                    placeholder="e.g. CO-001"
                   />
                 </FormField>
-                <FormField label="Description">
-                  <input
-                    className="input input-bordered"
-                    value={changeOrderForm.description}
-                    onChange={(e) =>
-                      setChangeOrderForm((p) => ({ ...p, description: e.target.value }))
-                    }
-                  />
-                </FormField>
-                <FormField label="Amount">
-                  <input
-                    className="input input-bordered"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={changeOrderForm.amount}
-                    onChange={(e) =>
-                      setChangeOrderForm((p) => ({ ...p, amount: e.target.value }))
-                    }
-                    required
-                  />
-                </FormField>
-                <FormField label="Status">
-                  <select
-                    className="select select-bordered"
-                    value={changeOrderForm.status}
-                    onChange={(e) =>
-                      setChangeOrderForm((p) => ({ ...p, status: e.target.value }))
-                    }
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
-                </FormField>
-                {changeOrderForm.status === "approved" ? (
-                  <FormField label="Approved date">
-                    <input
-                      type="date"
-                      className="input input-bordered"
-                      value={changeOrderForm.approved_date}
-                      onChange={(e) =>
-                        setChangeOrderForm((p) => ({
-                          ...p,
-                          approved_date: e.target.value,
-                        }))
-                      }
-                    />
-                  </FormField>
-                ) : null}
-                <button
-                  className="btn btn-primary btn-sm"
-                  disabled={savingChangeOrder || !hasProjects}
-                >
+              ) : null}
+              <div className="modal-action">
+                <button type="button" className="btn btn-ghost" onClick={closeModal}>
+                  Cancel
+                </button>
+                <button className="btn btn-primary" disabled={savingChangeOrder || !hasProjects}>
                   {savingChangeOrder ? (
                     <span className="loading loading-spinner loading-xs" />
                   ) : (
                     "Add change order"
                   )}
                 </button>
-              </form>
-            </SectionCard>
+              </div>
+            </form>
           </div>
-        </>
+          <button type="button" className="modal-backdrop" aria-label="Close" onClick={closeModal} />
+        </div>
       ) : null}
     </div>
   );

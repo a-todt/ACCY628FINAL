@@ -15,6 +15,10 @@ export type DashboardLayoutPrefs = {
 const ADMIN_PANES: DashboardPaneDef[] = [
   { id: "money_pulse", label: "Money pulse" },
   { id: "operations", label: "Operations" },
+  { id: "schedule_pulse", label: "Schedule pulse" },
+  { id: "cash_controls", label: "Cash controls" },
+  { id: "wip_pulse", label: "WIP pulse" },
+  { id: "compliance_pulse", label: "Compliance pulse" },
   { id: "chart_contract_value", label: "Top contracts by value" },
   { id: "chart_billed_vs_collected", label: "Lowest collection rates" },
   { id: "chart_costs_by_category", label: "Costs by category" },

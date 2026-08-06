@@ -20,7 +20,7 @@ import {
 import type { UserRole } from "@/lib/types";
 
 function PaneMockPreview({ pane }: { pane: DashboardPaneDef }) {
-  if (pane.id.includes("kpi") || pane.id.includes("pulse") || pane.id === "operations") {
+  if (pane.id.includes("kpi") || pane.id.includes("pulse") || pane.id.includes("controls") || pane.id === "operations") {
     return (
       <div className="mt-2 h-16 grid grid-cols-2 gap-1.5 content-start">
         {Array.from({ length: 4 }).map((_, i) => (

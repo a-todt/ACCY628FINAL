@@ -51,9 +51,11 @@ function formatAction(action: string) {
 function detailSummary(details: Record<string, unknown> | null) {
   if (!details) return "—";
   const name =
+    (typeof details.invoice_number === "string" && details.invoice_number) ||
     (typeof details.contract_name === "string" && details.contract_name) ||
     (typeof details.work_performed === "string" && details.work_performed) ||
     (typeof details.label === "string" && details.label) ||
+    (typeof details.description === "string" && details.description) ||
     null;
   const from = typeof details.from_status === "string" ? details.from_status : null;
   const to = typeof details.to_status === "string" ? details.to_status : null;
@@ -69,6 +71,7 @@ export function ActivityLogPanel({
   enabled = true,
   refreshKey = 0,
   limit = 50,
+  compact = false,
   emptyTitle = "No changes logged yet",
   emptyMessage = "Cancel and delete actions will appear here.",
 }: {
@@ -77,6 +80,7 @@ export function ActivityLogPanel({
   enabled?: boolean;
   refreshKey?: number;
   limit?: number;
+  compact?: boolean;
   emptyTitle?: string;
   emptyMessage?: string;
 }) {
@@ -89,45 +93,46 @@ export function ActivityLogPanel({
   if (!enabled) return null;
 
   return (
-    <SectionCard title={title}>
+    <SectionCard compact={compact} title={title}>
       {loading ? (
-        <div className="grid place-items-center py-8">
+        <div className={`grid place-items-center ${compact ? "py-4" : "py-8"}`}>
           <span className="loading loading-spinner loading-md text-primary" />
         </div>
       ) : error ? (
         <p className="text-sm text-error">{error}</p>
       ) : entries.length === 0 ? (
-        <EmptyState title={emptyTitle} message={emptyMessage} />
+        compact ? (
+          <p className="text-xs opacity-60 py-2">{emptyMessage}</p>
+        ) : (
+          <EmptyState title={emptyTitle} message={emptyMessage} />
+        )
       ) : (
-        <div className="overflow-x-auto">
-          <table className="table table-sm">
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Who</th>
-                <th>Action</th>
-                <th>Details</th>
+        <table className={`table table-fixed w-full ${compact ? "table-xs text-[11px]" : "table-sm"}`}>
+          <thead>
+            <tr>
+              <th className="w-[22%]">When</th>
+              <th className="w-[22%]">Who</th>
+              <th className="w-[22%]">Action</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((row) => (
+              <tr key={row.id}>
+                <td className="whitespace-nowrap text-xs truncate">
+                  {new Date(row.created_at).toLocaleString()}
+                </td>
+                <td className="text-sm truncate">{row.actor_email || "—"}</td>
+                <td className="truncate">
+                  <span className="badge badge-ghost badge-sm capitalize">
+                    {formatAction(row.action)}
+                  </span>
+                </td>
+                <td className="text-sm truncate">{detailSummary(row.details)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {entries.map((row) => (
-                <tr key={row.id}>
-                  <td className="whitespace-nowrap text-xs">
-                    {new Date(row.created_at).toLocaleString()}
-                  </td>
-                  <td className="text-sm">{row.actor_email || "—"}</td>
-                  <td>
-                    <span className="badge badge-ghost badge-sm capitalize">
-                      {formatAction(row.action)}
-                    </span>
-                    <span className="ml-2 text-xs opacity-50">{row.entity_type}</span>
-                  </td>
-                  <td className="text-sm max-w-md truncate">{detailSummary(row.details)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       )}
     </SectionCard>
   );

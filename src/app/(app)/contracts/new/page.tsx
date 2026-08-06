@@ -57,7 +57,7 @@ export default function NewContractPage() {
   if (!canManageContracts(effectiveRole)) {
     return (
       <div>
-        <PageHeader title="Add Contract" />
+        <PageHeader compact title="Add Contract" />
         <AlertBanner type="error">
           Access denied. Only admins and project managers can create contracts.
         </AlertBanner>
@@ -150,9 +150,13 @@ export default function NewContractPage() {
     }
   };
 
+  const fieldClass = "input input-bordered input-sm w-full";
+  const selectClass = "select select-bordered select-sm w-full";
+
   return (
-    <div>
+    <div className="space-y-2">
       <PageHeader
+        compact
         title="Add Contract"
         subtitle="Create a new project contract and its schedule of values."
         actions={
@@ -162,25 +166,17 @@ export default function NewContractPage() {
         }
       />
 
-      {error ? (
-        <div className="mb-4">
-          <AlertBanner type="error">{error}</AlertBanner>
-        </div>
-      ) : null}
-      {success ? (
-        <div className="mb-4">
-          <AlertBanner type="success">{success}</AlertBanner>
-        </div>
-      ) : null}
+      {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
+      {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
 
-      <form onSubmit={onSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <SectionCard title="Project & Client">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <form onSubmit={onSubmit} className="space-y-2.5">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-2.5 items-start">
+          <SectionCard compact title="Project & Client">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="sm:col-span-2">
                 <FormField stacked label="Contract Name">
                   <input
-                    className="input input-bordered w-full"
+                    className={fieldClass}
                     value={form.contract_name}
                     onChange={(e) => updateField("contract_name", e.target.value)}
                     required
@@ -189,14 +185,14 @@ export default function NewContractPage() {
               </div>
               <FormField stacked label="Client Name">
                 <input
-                  className="input input-bordered w-full"
+                  className={fieldClass}
                   value={form.client_name}
                   onChange={(e) => updateField("client_name", e.target.value)}
                 />
               </FormField>
               <FormField stacked label="Client Phone">
                 <input
-                  className="input input-bordered w-full"
+                  className={fieldClass}
                   value={form.client_phone}
                   onChange={(e) => updateField("client_phone", e.target.value)}
                 />
@@ -204,18 +200,14 @@ export default function NewContractPage() {
               <FormField stacked label="Client Email">
                 <input
                   type="email"
-                  className="input input-bordered w-full"
+                  className={fieldClass}
                   value={form.client_email}
                   onChange={(e) => updateField("client_email", e.target.value)}
                 />
               </FormField>
-              <FormField
-                stacked
-                label="Linked Client User"
-                hint="Optional — grants that client login access to this contract."
-              >
+              <FormField stacked label="Linked Client User">
                 <select
-                  className="select select-bordered w-full"
+                  className={selectClass}
                   value={form.client_user_id}
                   onChange={(e) => updateField("client_user_id", e.target.value)}
                 >
@@ -230,7 +222,7 @@ export default function NewContractPage() {
               <div className="sm:col-span-2">
                 <FormField stacked label="Project Address">
                   <input
-                    className="input input-bordered w-full"
+                    className={fieldClass}
                     value={form.project_address}
                     onChange={(e) => updateField("project_address", e.target.value)}
                   />
@@ -238,14 +230,14 @@ export default function NewContractPage() {
               </div>
               <FormField stacked label="City">
                 <input
-                  className="input input-bordered w-full"
+                  className={fieldClass}
                   value={form.city}
                   onChange={(e) => updateField("city", e.target.value)}
                 />
               </FormField>
               <FormField stacked label="State">
                 <input
-                  className="input input-bordered w-full"
+                  className={fieldClass}
                   value={form.state}
                   onChange={(e) => updateField("state", e.target.value)}
                 />
@@ -253,11 +245,11 @@ export default function NewContractPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Terms & Dates">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <SectionCard compact title="Terms & Dates">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <FormField stacked label="Contract Type">
                 <select
-                  className="select select-bordered w-full"
+                  className={selectClass}
                   value={form.contract_type}
                   onChange={(e) => updateField("contract_type", e.target.value as ContractType)}
                 >
@@ -268,7 +260,7 @@ export default function NewContractPage() {
               </FormField>
               <FormField stacked label="Status">
                 <select
-                  className="select select-bordered w-full"
+                  className={selectClass}
                   value={form.status}
                   onChange={(e) => updateField("status", e.target.value as typeof form.status)}
                 >
@@ -279,7 +271,7 @@ export default function NewContractPage() {
                 </select>
               </FormField>
               <FormField stacked label="Original Value">
-                <label className="input input-bordered flex items-center gap-2 w-full">
+                <label className="input input-bordered input-sm flex items-center gap-2 w-full">
                   $
                   <input
                     type="number"
@@ -297,7 +289,7 @@ export default function NewContractPage() {
                   step="0.1"
                   min="0"
                   max="100"
-                  className="input input-bordered w-full"
+                  className={fieldClass}
                   value={form.retainage_percent}
                   onChange={(e) => updateField("retainage_percent", e.target.value)}
                 />
@@ -305,7 +297,7 @@ export default function NewContractPage() {
               <FormField stacked label="Start Date">
                 <input
                   type="date"
-                  className="input input-bordered w-full"
+                  className={fieldClass}
                   value={form.start_date}
                   onChange={(e) => updateField("start_date", e.target.value)}
                 />
@@ -313,83 +305,87 @@ export default function NewContractPage() {
               <FormField stacked label="End Date">
                 <input
                   type="date"
-                  className="input input-bordered w-full"
+                  className={fieldClass}
                   value={form.end_date}
                   onChange={(e) => updateField("end_date", e.target.value)}
                 />
               </FormField>
-              <div className="sm:col-span-2">
-                <FormField stacked label="Scope Description">
-                  <textarea
-                    className="textarea textarea-bordered w-full"
-                    rows={3}
-                    value={form.scope_description}
-                    onChange={(e) => updateField("scope_description", e.target.value)}
-                  />
-                </FormField>
-              </div>
-              <div className="sm:col-span-2">
-                <FormField stacked label="Special Terms">
-                  <textarea
-                    className="textarea textarea-bordered w-full"
-                    rows={3}
-                    value={form.special_terms}
-                    onChange={(e) => updateField("special_terms", e.target.value)}
-                  />
-                </FormField>
-              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard compact title="Scope & Terms">
+            <div className="space-y-2">
+              <FormField stacked label="Scope Description">
+                <textarea
+                  className="textarea textarea-bordered textarea-sm w-full leading-snug"
+                  rows={3}
+                  value={form.scope_description}
+                  onChange={(e) => updateField("scope_description", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Special Terms">
+                <textarea
+                  className="textarea textarea-bordered textarea-sm w-full leading-snug"
+                  rows={3}
+                  value={form.special_terms}
+                  onChange={(e) => updateField("special_terms", e.target.value)}
+                />
+              </FormField>
             </div>
           </SectionCard>
         </div>
 
         <SectionCard
+          compact
           title="Milestones / Schedule of Values"
           actions={
-            <button type="button" className="btn btn-ghost btn-sm" onClick={addMilestone}>
-              <Plus className="h-4 w-4" /> Add Milestone
+            <button type="button" className="btn btn-ghost btn-xs gap-1" onClick={addMilestone}>
+              <Plus className="h-3.5 w-3.5" /> Add
             </button>
           }
         >
-          <div className="space-y-4">
+          <div className="space-y-1.5">
             {milestones.map((milestone, index) => (
               <div
                 key={index}
-                className="grid grid-cols-1 sm:grid-cols-[1fr_140px_160px_150px_auto] gap-2 items-end border-b border-base-300 pb-4 last:border-none last:pb-0"
+                className="grid grid-cols-1 sm:grid-cols-[1fr_100px_130px_120px_auto] gap-1.5 items-end"
               >
                 <div>
-                  <label className="text-xs opacity-60">Milestone Name</label>
+                  <label className="text-[10px] opacity-60">Milestone Name</label>
                   <input
-                    className="input input-bordered input-sm w-full mt-1"
+                    className={`${fieldClass} mt-0.5`}
                     value={milestone.milestone_name}
                     onChange={(e) => updateMilestone(index, "milestone_name", e.target.value)}
                     placeholder="e.g. Foundation complete"
                   />
                 </div>
                 <div>
-                  <label className="text-xs opacity-60">Value</label>
+                  <label className="text-[10px] opacity-60">Value</label>
                   <input
                     type="number"
                     step="0.01"
-                    className="input input-bordered input-sm w-full mt-1"
+                    className={`${fieldClass} mt-0.5`}
                     value={milestone.milestone_value}
                     onChange={(e) => updateMilestone(index, "milestone_value", e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="text-xs opacity-60">Due Date</label>
+                  <label className="text-[10px] opacity-60">Due Date</label>
                   <input
                     type="date"
-                    className="input input-bordered input-sm w-full mt-1"
+                    className={`${fieldClass} mt-0.5`}
                     value={milestone.due_date}
                     onChange={(e) => updateMilestone(index, "due_date", e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="text-xs opacity-60">Status</label>
+                  <label className="text-[10px] opacity-60">Status</label>
                   <select
-                    className="select select-bordered select-sm w-full mt-1"
+                    className={`${selectClass} mt-0.5`}
                     value={milestone.status}
-                    onChange={(e) => updateMilestone(index, "status", e.target.value as MilestoneStatus)}
+                    onChange={(e) =>
+                      updateMilestone(index, "status", e.target.value as MilestoneStatus)
+                    }
                   >
                     <option value="pending">Pending</option>
                     <option value="in_progress">In Progress</option>
@@ -398,12 +394,12 @@ export default function NewContractPage() {
                 </div>
                 <button
                   type="button"
-                  className="btn btn-ghost btn-sm text-error"
+                  className="btn btn-ghost btn-xs text-error"
                   onClick={() => removeMilestone(index)}
                   disabled={milestones.length === 1}
                   aria-label="Remove milestone"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             ))}
@@ -411,10 +407,10 @@ export default function NewContractPage() {
         </SectionCard>
 
         <div className="flex justify-end gap-2">
-          <button type="button" className="btn btn-ghost" onClick={resetForm} disabled={saving}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={resetForm} disabled={saving}>
             Clear
           </button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
             {saving ? <span className="loading loading-spinner loading-sm" /> : null}
             Save Contract
           </button>

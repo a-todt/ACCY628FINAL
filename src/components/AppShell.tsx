@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -10,7 +10,6 @@ import {
   Calendar,
   HardHat,
   LayoutDashboard,
-  LogOut,
   Menu,
   Settings2,
   Star,
@@ -24,7 +23,6 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { MessagesInboxButton } from "@/components/MessagesInboxButton";
 import { WeatherAlertsButton } from "@/components/WeatherAlertsButton";
 import { UserMenu } from "@/components/UserMenu";
-import { SettingsMenu } from "@/components/SettingsMenu";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ProjectFavoritesProvider } from "@/hooks/useProjectFavorites";
 import { useAccessStatus } from "@/hooks/useAccessStatus";
@@ -45,6 +43,48 @@ function AppShellLoading() {
   );
 }
 
+/** Bell → calendar → account; menu width matches this strip (bell left to right edge). */
+function HeaderAccountCluster({ showCalendar }: { showCalendar: boolean }) {
+  const pathname = usePathname();
+  const clusterRef = useRef<HTMLDivElement>(null);
+  const [menuWidth, setMenuWidth] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const node = clusterRef.current;
+    if (!node) return;
+
+    const update = () => {
+      const width = Math.round(node.getBoundingClientRect().width);
+      if (width > 0) setMenuWidth(width);
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [showCalendar]);
+
+  return (
+    <div ref={clusterRef} className="flex items-center gap-1 sm:gap-1.5">
+      <AlertsBell />
+      <WeatherAlertsButton />
+      {showCalendar ? (
+        <Link
+          href="/calendar"
+          className={`btn btn-ghost btn-sm h-8 min-h-8 btn-square ${
+            pathname.startsWith("/calendar") ? "btn-active text-primary" : ""
+          }`}
+          title="Calendar"
+          aria-label="Calendar"
+        >
+          <Calendar className="h-4 w-4" />
+        </Link>
+      ) : null}
+      <UserMenu panelWidthPx={menuWidth} />
+    </div>
+  );
+}
+
 const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
   favorites: Star,
   dashboard: LayoutDashboard,
@@ -57,21 +97,15 @@ const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
 };
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
-  const { effectiveRole, loading, signOut } = useAuth();
+  const { effectiveRole, loading } = useAuth();
   const access = useAccessStatus();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const search = searchParams.toString();
 
   const primary = primaryNavForRole(effectiveRole);
   const activeCategory = categoryFromPath(pathname);
   const secondary = secondaryNavForCategory(activeCategory, effectiveRole);
-
-  const onLogout = async () => {
-    await signOut();
-    router.replace("/login");
-  };
 
   if (loading || access.loading) {
     return <AppShellLoading />;
@@ -139,32 +173,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         {!locked ? <GlobalSearch /> : <div className="flex-1" />}
         <div className="ml-auto flex-none flex items-center gap-1 sm:gap-1.5 shrink-0">
           {!locked ? <MessagesInboxButton /> : null}
-          {!locked ? <AlertsBell /> : null}
-          {!locked ? <WeatherAlertsButton /> : null}
-          {!locked && canViewCalendar(effectiveRole) ? (
-            <Link
-              href="/calendar"
-              className={`btn btn-ghost btn-sm h-8 min-h-8 btn-square ${
-                pathname.startsWith("/calendar") ? "btn-active text-primary" : ""
-              }`}
-              title="Calendar"
-              aria-label="Calendar"
-            >
-              <Calendar className="h-4 w-4" />
-            </Link>
-          ) : null}
-          <SettingsMenu />
-          <UserMenu />
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm gap-1.5 text-error"
-            onClick={() => void onLogout()}
-            title="Log out"
-            aria-label="Log out"
-          >
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Log out</span>
-          </button>
+          {!locked ? (
+            <HeaderAccountCluster showCalendar={canViewCalendar(effectiveRole)} />
+          ) : (
+            <UserMenu />
+          )}
         </div>
         </div>
       </header>

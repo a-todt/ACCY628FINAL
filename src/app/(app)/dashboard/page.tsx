@@ -15,6 +15,7 @@ import {
   Banknote,
   Bell,
   Building2,
+  Calendar,
   ChevronRight,
   CircleDollarSign,
   ClipboardList,
@@ -25,12 +26,14 @@ import {
   Plus,
   Receipt,
   Settings2,
+  ShieldAlert,
   TrendingUp,
   Wrench,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useDashboardExtraKpis } from "@/hooks/useDashboardExtraKpis";
 import { useDashboardLayout } from "@/hooks/useDashboardLayout";
 import { useDismissedAlerts } from "@/hooks/useDismissedAlerts";
 import { startOrGetThread } from "@/hooks/useMessages";
@@ -51,6 +54,10 @@ import {
 } from "@/lib/alerts";
 import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
 import { CHART_COLORS } from "@/lib/chartColors";
+import {
+  computeCashControlsKpis,
+  computeSchedulePulseKpis,
+} from "@/lib/dashboardKpis";
 import { chartPanelHeight, panesForRole, type DashboardLayoutPrefs } from "@/lib/dashboardLayout";
 import {
   computeContractMetrics,
@@ -437,6 +444,8 @@ function AdminDashboard({
   layout,
   onCustomize,
 }: DashboardPaneProps) {
+  const { wip, compliance } = useDashboardExtraKpis(true);
+
   if (contracts.length === 0) {
     return (
       <EmptyState
@@ -482,6 +491,21 @@ function AdminDashboard({
   const pendingCOs = changeOrders.filter((c) => c.status === "pending").length;
   const overdueInvoices = invoices.filter(
     (i) => (i.status === "unpaid" || i.status === "partially_paid") && daysPastDue(i.due_date) > 0
+  );
+
+  const schedulePulse = computeSchedulePulseKpis(
+    contracts,
+    changeOrders,
+    invoices,
+    costEntries,
+    milestones,
+    payments
+  );
+  const cashControls = computeCashControlsKpis(
+    payments,
+    invoices,
+    totals.totalBilled,
+    totals.totalCollected
   );
 
   // Ranked lists (not charts) — top contracts by value, gross profit losses-first
@@ -662,6 +686,154 @@ function AdminDashboard({
             icon={ClipboardList}
             tone={pendingCOs > 0 ? "warning" : "default"}
             href="/change-orders"
+          />
+        </div>
+      </SectionCard>
+    ),
+    schedule_pulse: (
+      <SectionCard compact title="Schedule pulse">
+        <div
+          className="grid grid-cols-2 gap-2 content-start overflow-y-auto pr-0.5"
+          style={{ height: "var(--dashboard-chart-h, 220px)" }}
+        >
+          <StatCard
+            compact
+            title="Avg Completion"
+            value={percent(schedulePulse.avgCompletion)}
+            icon={Calendar}
+            href="/contracts"
+          />
+          <StatCard
+            compact
+            title="Behind Schedule"
+            value={String(schedulePulse.jobsBehind)}
+            tone={schedulePulse.jobsBehind > 0 ? "error" : "default"}
+            href="/calendar"
+          />
+          <StatCard
+            compact
+            title="On Track"
+            value={String(schedulePulse.jobsOnTrack)}
+            tone="success"
+            href="/contracts"
+          />
+          <StatCard
+            compact
+            title="Overdue Milestones"
+            value={String(schedulePulse.overdueMilestones)}
+            tone={schedulePulse.overdueMilestones > 0 ? "warning" : "default"}
+            href="/calendar"
+          />
+        </div>
+      </SectionCard>
+    ),
+    cash_controls: (
+      <SectionCard compact title="Cash controls">
+        <div
+          className="grid grid-cols-2 gap-2 content-start overflow-y-auto pr-0.5"
+          style={{ height: "var(--dashboard-chart-h, 220px)" }}
+        >
+          <StatCard
+            compact
+            title="Pending Approvals"
+            value={String(cashControls.pendingApprovals)}
+            icon={Banknote}
+            tone={cashControls.pendingApprovals > 0 ? "warning" : "default"}
+            href="/invoices"
+          />
+          <StatCard
+            compact
+            title="Posted This Month"
+            value={money(cashControls.postedThisMonth)}
+            tone="success"
+            href="/invoices"
+          />
+          <StatCard
+            compact
+            title="Collection Rate"
+            value={percent(cashControls.collectionRate)}
+            href="/finance"
+          />
+          <StatCard
+            compact
+            title="Overdue AR"
+            value={money(cashControls.overdueAr)}
+            tone={cashControls.overdueAr > 0 ? "error" : "default"}
+            href="/invoices"
+          />
+        </div>
+      </SectionCard>
+    ),
+    wip_pulse: (
+      <SectionCard compact title="WIP pulse">
+        <div
+          className="grid grid-cols-2 gap-2 content-start overflow-y-auto pr-0.5"
+          style={{ height: "var(--dashboard-chart-h, 220px)" }}
+        >
+          <StatCard
+            compact
+            title="Net Over/(Under)bill"
+            value={money(wip.netOverUnder)}
+            hint={wip.netOverUnder >= 0 ? "Net overbilling" : "Net underbilling"}
+            tone={wip.netOverUnder < 0 ? "warning" : "default"}
+            href="/wip"
+          />
+          <StatCard
+            compact
+            title="Jobs Underbilled"
+            value={String(wip.jobsUnderbilled)}
+            tone={wip.jobsUnderbilled > 0 ? "warning" : "default"}
+            href="/wip"
+          />
+          <StatCard
+            compact
+            title="Jobs Overbilled"
+            value={String(wip.jobsOverbilled)}
+            href="/wip"
+          />
+          <StatCard
+            compact
+            title="Avg Cost % Complete"
+            value={percent(wip.avgCostPercentComplete)}
+            href="/wip"
+          />
+        </div>
+      </SectionCard>
+    ),
+    compliance_pulse: (
+      <SectionCard compact title="Compliance pulse">
+        <div
+          className="grid grid-cols-2 gap-2 content-start overflow-y-auto pr-0.5"
+          style={{ height: "var(--dashboard-chart-h, 220px)" }}
+        >
+          <StatCard
+            compact
+            title="COIs Expired"
+            value={String(compliance.coiExpired)}
+            icon={ShieldAlert}
+            tone={compliance.coiExpired > 0 ? "error" : "default"}
+            href="/management?tab=compliance"
+          />
+          <StatCard
+            compact
+            title="COIs Expiring ≤30d"
+            value={String(compliance.coiExpiringSoon)}
+            tone={compliance.coiExpiringSoon > 0 ? "warning" : "default"}
+            href="/management?tab=compliance"
+          />
+          <StatCard
+            compact
+            title="Open Incidents"
+            value={String(compliance.openIncidents)}
+            tone={compliance.openIncidents > 0 ? "warning" : "default"}
+            href="/safety"
+          />
+          <StatCard
+            compact
+            title="High-Severity Open"
+            value={String(compliance.highSeverityOpen)}
+            tone={compliance.highSeverityOpen > 0 ? "error" : "default"}
+            href="/safety"
           />
         </div>
       </SectionCard>
