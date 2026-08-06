@@ -5,6 +5,11 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { RevenueRecognitionDashboard } from "@/components/RevenueRecognitionDashboard";
+import {
+  ColumnSortHeader,
+  type ColumnSortDir,
+} from "@/components/ColumnAutocompleteHeader";
+import { compareValues } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, PageHeader } from "@/components/ui";
 import { downloadCsv } from "@/lib/export";
 import { moneyExact, percent } from "@/lib/metrics";
@@ -27,12 +32,33 @@ const P = WIP_DB.projects;
 const C = WIP_DB.projectCosts;
 const B = WIP_DB.billings;
 
+type SortKey =
+  | "health"
+  | "name"
+  | "contractValue"
+  | "estimatedCost"
+  | "costsToDate"
+  | "completion"
+  | "revenueEarned"
+  | "billedToDate"
+  | "overbilling"
+  | "underbilling"
+  | "retainageHeld"
+  | "projectedProfit"
+  | "projectedMargin";
+
 interface WIPRow {
   project: DbRow;
   projectId: string;
   calcs: WIPCalculations;
   health: "healthy" | "watch" | "at_risk";
 }
+
+const HEALTH_RANK: Record<WIPRow["health"], number> = {
+  healthy: 0,
+  watch: 1,
+  at_risk: 2,
+};
 
 function healthFromMargin(marginPct: number): WIPRow["health"] {
   if (marginPct < 0) return "at_risk";
@@ -58,8 +84,19 @@ export default function WIPSchedulePage() {
   const [retainageByProject, setRetainageByProject] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<ColumnSortDir>("asc");
 
   const allowed = canViewCosts(effectiveRole);
+
+  const onSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === "name" || key === "health" ? "asc" : "desc");
+  };
 
   const load = useCallback(async () => {
     if (!user || !allowed) {
@@ -169,6 +206,55 @@ export default function WIPSchedulePage() {
     [projects, costsByProject, billedByProject, retainageByProject]
   );
 
+  const sortedRows = useMemo(() => {
+    const next = [...rows];
+    next.sort((a, b) => {
+      switch (sortKey) {
+        case "health":
+          return compareValues(HEALTH_RANK[a.health], HEALTH_RANK[b.health], sortDir);
+        case "name":
+          return compareValues(colStr(a.project, P.name), colStr(b.project, P.name), sortDir);
+        case "contractValue":
+          return compareValues(
+            colNum(a.project, P.contractValue),
+            colNum(b.project, P.contractValue),
+            sortDir
+          );
+        case "estimatedCost":
+          return compareValues(
+            colNum(a.project, P.estimatedCost),
+            colNum(b.project, P.estimatedCost),
+            sortDir
+          );
+        case "costsToDate":
+          return compareValues(a.calcs.actualCostsToDate, b.calcs.actualCostsToDate, sortDir);
+        case "completion":
+          return compareValues(
+            a.calcs.completionPercentage,
+            b.calcs.completionPercentage,
+            sortDir
+          );
+        case "revenueEarned":
+          return compareValues(a.calcs.revenueEarned, b.calcs.revenueEarned, sortDir);
+        case "billedToDate":
+          return compareValues(a.calcs.billedToDate, b.calcs.billedToDate, sortDir);
+        case "overbilling":
+          return compareValues(a.calcs.overbilling, b.calcs.overbilling, sortDir);
+        case "underbilling":
+          return compareValues(a.calcs.underbilling, b.calcs.underbilling, sortDir);
+        case "retainageHeld":
+          return compareValues(a.calcs.retainageHeld, b.calcs.retainageHeld, sortDir);
+        case "projectedProfit":
+          return compareValues(a.calcs.projectedProfit, b.calcs.projectedProfit, sortDir);
+        case "projectedMargin":
+          return compareValues(a.calcs.projectedMargin, b.calcs.projectedMargin, sortDir);
+        default:
+          return 0;
+      }
+    });
+    return next;
+  }, [rows, sortKey, sortDir]);
+
   const totals = useMemo(() => {
     return rows.reduce(
       (acc, { project, calcs }) => {
@@ -203,7 +289,7 @@ export default function WIPSchedulePage() {
 
   const exportCsv = () => {
     const exportRows = [
-      ...rows.map(({ project, calcs, health }) => ({
+      ...sortedRows.map(({ project, calcs, health }) => ({
         Project: colStr(project, P.name),
         "Contract Value": colNum(project, P.contractValue),
         "Estimated Total Cost": colNum(project, P.estimatedCost),
@@ -295,23 +381,94 @@ export default function WIPSchedulePage() {
           <table className="table table-sm">
             <thead>
               <tr>
-                <th>Health</th>
-                <th>Project Name</th>
-                <th className="text-right">Contract Value</th>
-                <th className="text-right hidden xl:table-cell">Est. Total Cost</th>
-                <th className="text-right">Costs to Date</th>
-                <th className="min-w-[140px]">Completion %</th>
-                <th className="text-right">Revenue Earned</th>
-                <th className="text-right">Billed to Date</th>
-                <th className="text-right hidden xl:table-cell">Overbilling</th>
-                <th className="text-right hidden xl:table-cell">Underbilling</th>
-                <th className="text-right hidden xl:table-cell">Retainage Held</th>
-                <th className="text-right">Projected Profit</th>
-                <th className="text-right hidden xl:table-cell">Projected Margin %</th>
+                <ColumnSortHeader
+                  label="Health"
+                  sortActive={sortKey === "health"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("health")}
+                />
+                <ColumnSortHeader
+                  label="Project Name"
+                  sortActive={sortKey === "name"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("name")}
+                />
+                <ColumnSortHeader
+                  label="Contract Value"
+                  sortActive={sortKey === "contractValue"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("contractValue")}
+                />
+                <ColumnSortHeader
+                  label="Est. Total Cost"
+                  sortActive={sortKey === "estimatedCost"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("estimatedCost")}
+                  className="hidden xl:table-cell"
+                />
+                <ColumnSortHeader
+                  label="Costs to Date"
+                  sortActive={sortKey === "costsToDate"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("costsToDate")}
+                />
+                <ColumnSortHeader
+                  label="Completion %"
+                  sortActive={sortKey === "completion"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("completion")}
+                  className="min-w-[140px]"
+                />
+                <ColumnSortHeader
+                  label="Revenue Earned"
+                  sortActive={sortKey === "revenueEarned"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("revenueEarned")}
+                />
+                <ColumnSortHeader
+                  label="Billed to Date"
+                  sortActive={sortKey === "billedToDate"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("billedToDate")}
+                />
+                <ColumnSortHeader
+                  label="Overbilling"
+                  sortActive={sortKey === "overbilling"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("overbilling")}
+                  className="hidden xl:table-cell"
+                />
+                <ColumnSortHeader
+                  label="Underbilling"
+                  sortActive={sortKey === "underbilling"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("underbilling")}
+                  className="hidden xl:table-cell"
+                />
+                <ColumnSortHeader
+                  label="Retainage Held"
+                  sortActive={sortKey === "retainageHeld"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("retainageHeld")}
+                  className="hidden xl:table-cell"
+                />
+                <ColumnSortHeader
+                  label="Projected Profit"
+                  sortActive={sortKey === "projectedProfit"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("projectedProfit")}
+                />
+                <ColumnSortHeader
+                  label="Projected Margin %"
+                  sortActive={sortKey === "projectedMargin"}
+                  sortDir={sortDir}
+                  onSort={() => onSort("projectedMargin")}
+                  className="hidden xl:table-cell"
+                />
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ project, projectId, calcs, health }) => (
+              {sortedRows.map(({ project, projectId, calcs, health }) => (
                 <tr key={projectId} className="hover:bg-base-200/50">
                   <td>{healthBadge(health)}</td>
                   <td className="font-medium whitespace-nowrap">{colStr(project, P.name)}</td>
