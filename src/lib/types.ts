@@ -348,6 +348,28 @@ export interface Milestone {
   created_at: string;
 }
 
+export type SafetyIncidentType = "injury" | "near_miss" | "property_damage" | "other";
+export type SafetyIncidentSeverity = "low" | "medium" | "high";
+export type SafetyIncidentStatus = "open" | "closed";
+
+export interface SafetyIncident {
+  id: string;
+  contract_id: string;
+  reported_by: string | null;
+  incident_date: string;
+  incident_type: SafetyIncidentType;
+  severity: SafetyIncidentSeverity;
+  status: SafetyIncidentStatus;
+  injured_party: string | null;
+  description: string;
+  corrective_action: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  contracts?: { contract_name: string } | null;
+  user_profiles?: { full_name: string | null; email: string | null } | null;
+}
+
 export type InsuranceHolderType = "gc" | "subcontractor";
 export type InsurancePolicyType =
   | "general_liability"
