@@ -1,33 +1,23 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ChevronRight, Download, FileDown } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { ProjectPeriodReportsSection } from "@/components/ProjectPeriodReportsSection";
+import { ContractProfitabilitySection } from "@/components/ContractProfitabilitySection";
+import { CostByCategorySection } from "@/components/CostByCategorySection";
 import {
-  ProjectPeriodReportsSection,
-  periodReportCsvRows,
-} from "@/components/ProjectPeriodReportsSection";
-import { AlertBanner, PageHeader, SectionCard, StatCard } from "@/components/ui";
-import { downloadCsv, downloadPdfTables } from "@/lib/export";
-import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
-import type { PeriodReportRow } from "@/lib/periodReports";
+  AR_AGING_BUCKETS,
+  ArAgingSection,
+  type ArAgingBucket,
+} from "@/components/ArAgingSection";
+import { RetainageSummarySection } from "@/components/RetainageSummarySection";
+import { ChangeOrderSummarySection } from "@/components/ChangeOrderSummarySection";
+import { AlertBanner, PageHeader } from "@/components/ui";
+import { computeContractMetrics, daysPastDue, labelize } from "@/lib/metrics";
 import { canViewReports } from "@/lib/roles";
 
-type ExportSection =
-  | "period_reports"
-  | "profitability"
-  | "ar_aging"
-  | "costs"
-  | "retainage"
-  | "change_orders";
-
-const AGING_BUCKETS = ["Current", "1-30 Days", "31-60 Days", "61-90 Days", "90+ Days"] as const;
-
-function agingBucket(days: number): (typeof AGING_BUCKETS)[number] {
+function agingBucket(days: number): ArAgingBucket {
   if (days <= 0) return "Current";
   if (days <= 30) return "1-30 Days";
   if (days <= 60) return "31-60 Days";
@@ -36,28 +26,7 @@ function agingBucket(days: number): (typeof AGING_BUCKETS)[number] {
 }
 
 export default function ReportsPage() {
-  const router = useRouter();
   const { effectiveRole } = useAuth();
-  const [csvSection, setCsvSection] = useState<ExportSection>("period_reports");
-  const [periodExport, setPeriodExport] = useState<{
-    rows: PeriodReportRow[];
-    unspecified: PeriodReportRow | null;
-    totals: {
-      expenses: number;
-      billed: number;
-      collected: number;
-      earnedPeriod: number;
-      earnedYtd: number;
-      grossBilled: number;
-      grossEarned: number;
-      wipExpenses: number;
-      wipBilled: number;
-    };
-  } | null>(null);
-
-  const onPeriodReportChange = useCallback((payload: NonNullable<typeof periodExport>) => {
-    setPeriodExport(payload);
-  }, []);
 
   const {
     contracts,
@@ -98,7 +67,7 @@ export default function ReportsPage() {
       })
       .filter((row) => row.outstanding > 0.01);
 
-    const totals = AGING_BUCKETS.reduce<Record<string, number>>((acc, bucket) => {
+    const totals = AR_AGING_BUCKETS.reduce<Record<string, number>>((acc, bucket) => {
       acc[bucket] = 0;
       return acc;
     }, {});
@@ -184,385 +153,29 @@ export default function ReportsPage() {
     return <AlertBanner type="error">{error}</AlertBanner>;
   }
 
-  const totalOutstanding = AGING_BUCKETS.reduce((sum, bucket) => sum + arAging.totals[bucket], 0);
-
-  const exportCsv = () => {
-    if (csvSection === "period_reports") {
-      if (!periodExport) return;
-      downloadCsv(
-        "project-period-reports.csv",
-        periodReportCsvRows(periodExport.rows, periodExport.unspecified, periodExport.totals)
-      );
-      return;
-    }
-    if (csvSection === "profitability") {
-      downloadCsv(
-        "contract-profitability.csv",
-        profitability.map(({ contract, metrics }) => ({
-          Contract: contract.contract_name,
-          "Revised Value": metrics.revisedValue,
-          Billed: metrics.totalBilled,
-          Collected: metrics.totalCollected,
-          Costs: metrics.totalCosts,
-          "Gross Profit": metrics.grossProfit,
-          Margin: metrics.grossMargin,
-        }))
-      );
-      return;
-    }
-    if (csvSection === "ar_aging") {
-      downloadCsv(
-        "ar-aging.csv",
-        arAging.rows.map(({ invoice, outstanding, bucket }) => ({
-          "Invoice #": invoice.invoice_number,
-          Project: invoice.contracts?.contract_name,
-          "Due Date": invoice.due_date,
-          Bucket: bucket,
-          Outstanding: outstanding,
-        }))
-      );
-      return;
-    }
-    if (csvSection === "costs") {
-      downloadCsv(
-        "costs-by-category.csv",
-        costsByCategory.map((row) => ({ Category: row.name, Total: row.total }))
-      );
-      return;
-    }
-    if (csvSection === "retainage") {
-      downloadCsv(
-        "retainage-summary.csv",
-        retainageSummary.map((row) => ({
-          Contract: row.contract.contract_name,
-          "Invoice Retainage": row.invoiceRetainage,
-          "Sub Retainage Est": row.subRetainage,
-        }))
-      );
-      return;
-    }
-    downloadCsv(
-      "change-order-summary.csv",
-      changeOrderSummary.byContract.map((row) => ({
-        Contract: row.contract.contract_name,
-        Pending: row.pending,
-        "Approved Value": row.approved,
-        Rejected: row.rejected,
-      }))
-    );
-  };
-
-  const exportPdf = () => {
-    const periodRows = periodExport
-      ? periodReportCsvRows(periodExport.rows, periodExport.unspecified, periodExport.totals)
-      : [];
-
-    downloadPdfTables("reports-summary.pdf", "GC Contract Manager — Reports", [
-      {
-        title: "Project Period Reports",
-        columns: ["Project", "Period", "Expenses", "Billed", "Collected", "Earned", "Gross Billed"],
-        rows: periodRows.map((row) => [
-          String(row.Project ?? ""),
-          String(row.Period ?? ""),
-          money(Number(row.Expenses ?? 0)),
-          money(Number(row.Billed ?? 0)),
-          money(Number(row.Collected ?? 0)),
-          money(Number(row["Earned (period)"] ?? 0)),
-          money(Number(row["Gross (Billed)"] ?? 0)),
-        ]),
-      },
-      {
-        title: "Contract Profitability",
-        columns: ["Contract", "Revised", "Billed", "Collected", "Costs", "Profit", "Margin"],
-        rows: profitability.map(({ contract, metrics }) => [
-          contract.contract_name ?? "",
-          money(metrics.revisedValue),
-          money(metrics.totalBilled),
-          money(metrics.totalCollected),
-          money(metrics.totalCosts),
-          money(metrics.grossProfit),
-          percent(metrics.grossMargin),
-        ]),
-      },
-      {
-        title: "AR Aging",
-        columns: ["Invoice #", "Project", "Due", "Bucket", "Outstanding"],
-        rows: arAging.rows.map(({ invoice, outstanding, bucket }) => [
-          invoice.invoice_number ?? "",
-          invoice.contracts?.contract_name ?? "",
-          invoice.due_date ?? "",
-          bucket,
-          money(outstanding),
-        ]),
-      },
-      {
-        title: "Cost by Category",
-        columns: ["Category", "Total"],
-        rows: costsByCategory.map((row) => [row.name, money(row.total)]),
-      },
-      {
-        title: "Retainage Summary",
-        columns: ["Contract", "Invoice Retainage", "Sub Retainage Est."],
-        rows: retainageSummary.map((row) => [
-          row.contract.contract_name ?? "",
-          money(row.invoiceRetainage),
-          money(row.subRetainage),
-        ]),
-      },
-      {
-        title: "Change Orders by Contract",
-        columns: ["Contract", "Pending", "Approved Value", "Rejected"],
-        rows: changeOrderSummary.byContract.map((row) => [
-          row.contract.contract_name ?? "",
-          row.pending,
-          money(row.approved),
-          row.rejected,
-        ]),
-      },
-    ]);
-  };
-
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Reports"
-        subtitle="Portfolio-wide financial and operational insights."
-        actions={
-          <>
-            <select
-              className="select select-bordered select-sm"
-              value={csvSection}
-              onChange={(e) => setCsvSection(e.target.value as ExportSection)}
-              aria-label="CSV export section"
-            >
-              <option value="period_reports">Period Reports</option>
-              <option value="profitability">Profitability</option>
-              <option value="ar_aging">AR Aging</option>
-              <option value="costs">Cost by Category</option>
-              <option value="retainage">Retainage</option>
-              <option value="change_orders">Change Orders</option>
-            </select>
-            <button type="button" className="btn btn-outline btn-sm" onClick={exportCsv}>
-              <Download className="h-4 w-4" />
-              Export CSV
-            </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={exportPdf}>
-              <FileDown className="h-4 w-4" />
-              Export PDF
-            </button>
-          </>
-        }
-      />
-
+    <div className="-my-2 md:-my-4 grid grid-cols-1 md:grid-cols-2 gap-1.5 items-start content-start">
       <ProjectPeriodReportsSection
         contracts={contracts}
         costEntries={costEntries}
         invoices={invoices}
         payments={payments}
         changeOrders={changeOrders}
-        onReportChange={onPeriodReportChange}
       />
 
-      <SectionCard title="Contract Profitability">
-        <div className="overflow-x-auto">
-          <table className="table table-sm">
-            <thead>
-              <tr>
-                <th>Contract</th>
-                <th className="text-right">Revised Value</th>
-                <th className="text-right">Billed</th>
-                <th className="text-right">Collected</th>
-                <th className="text-right">Costs</th>
-                <th className="text-right">Gross Profit</th>
-                <th className="text-right">Margin</th>
-              </tr>
-            </thead>
-            <tbody>
-              {profitability.map(({ contract, metrics }) => (
-                <tr key={contract.id}>
-                  <td>{contract.contract_name}</td>
-                  <td className="text-right">{money(metrics.revisedValue)}</td>
-                  <td className="text-right">{money(metrics.totalBilled)}</td>
-                  <td className="text-right">{money(metrics.totalCollected)}</td>
-                  <td className="text-right">{money(metrics.totalCosts)}</td>
-                  <td className={`text-right ${metrics.grossProfit < 0 ? "text-error" : ""}`}>
-                    {money(metrics.grossProfit)}
-                  </td>
-                  <td className="text-right">{percent(metrics.grossMargin)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+      <ContractProfitabilitySection rows={profitability} />
 
-      <SectionCard title="AR Aging">
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-          {AGING_BUCKETS.map((bucket) => (
-            <StatCard
-              key={bucket}
-              title={bucket}
-              value={money(arAging.totals[bucket])}
-              tone={bucket !== "Current" && arAging.totals[bucket] > 0 ? "warning" : "default"}
-            />
-          ))}
-        </div>
-        {arAging.rows.length === 0 ? (
-          <p className="text-sm opacity-60 py-4 text-center">No outstanding invoice balances.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Invoice #</th>
-                  <th>Project</th>
-                  <th>Due Date</th>
-                  <th>Bucket</th>
-                  <th className="text-right">Outstanding</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {arAging.rows.map(({ invoice, outstanding, bucket }) => (
-                  <tr
-                    key={invoice.id}
-                    className="hover:bg-base-200/50 cursor-pointer"
-                    onClick={() => router.push(`/invoices/${invoice.id}`)}
-                  >
-                    <td>
-                      <Link
-                        href={`/invoices/${invoice.id}`}
-                        className="link link-primary font-medium"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {invoice.invoice_number ?? "View"}
-                      </Link>
-                    </td>
-                    <td>{invoice.contracts?.contract_name ?? "—"}</td>
-                    <td>{invoice.due_date ?? "—"}</td>
-                    <td>
-                      <span className="badge badge-ghost badge-sm">{bucket}</span>
-                    </td>
-                    <td className="text-right font-medium">{money(outstanding)}</td>
-                    <td className="text-right">
-                      <ChevronRight className="h-4 w-4 opacity-40 inline" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="font-semibold">
-                  <td colSpan={4}>Total outstanding</td>
-                  <td className="text-right">{money(totalOutstanding)}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </SectionCard>
+      <ArAgingSection rows={arAging.rows} totals={arAging.totals} />
 
-      <SectionCard title="Cost by Category">
-        {costsByCategory.length === 0 ? (
-          <p className="text-sm opacity-60 py-4 text-center">No cost entries yet.</p>
-        ) : (
-          <div className="grid lg:grid-cols-2 gap-4">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={costsByCategory} margin={{ top: 8, right: 8, left: 8, bottom: 48 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 11 }}
-                    interval={0}
-                    angle={-25}
-                    textAnchor="end"
-                  />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={72} />
-                  <Tooltip formatter={(value) => money(Number(value))} />
-                  <Bar dataKey="total" fill="#0d9488" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="table table-sm">
-                <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th className="text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {costsByCategory.map((row) => (
-                    <tr key={row.name}>
-                      <td>{row.name}</td>
-                      <td className="text-right">{money(row.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </SectionCard>
+      <CostByCategorySection rows={costsByCategory} />
 
-      <SectionCard title="Retainage Summary">
-        <div className="overflow-x-auto">
-          <table className="table table-sm">
-            <thead>
-              <tr>
-                <th>Contract</th>
-                <th className="text-right">Invoice Retainage</th>
-                <th className="text-right">Sub Retainage Est.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {retainageSummary.map((row) => (
-                <tr key={row.contract.id}>
-                  <td>{row.contract.contract_name}</td>
-                  <td className="text-right">{money(row.invoiceRetainage)}</td>
-                  <td className="text-right">{money(row.subRetainage)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+      <RetainageSummarySection rows={retainageSummary} />
 
-      <SectionCard title="Change Order Summary">
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          {changeOrderSummary.overall.map((row) => (
-            <StatCard
-              key={row.status}
-              title={labelize(row.status)}
-              value={String(row.count)}
-              hint={money(row.total)}
-            />
-          ))}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="table table-sm">
-            <thead>
-              <tr>
-                <th>Contract</th>
-                <th className="text-right">Pending</th>
-                <th className="text-right">Approved Value</th>
-                <th className="text-right">Rejected</th>
-              </tr>
-            </thead>
-            <tbody>
-              {changeOrderSummary.byContract.map((row) => (
-                <tr key={row.contract.id}>
-                  <td>{row.contract.contract_name}</td>
-                  <td className="text-right">{row.pending}</td>
-                  <td className="text-right">{money(row.approved)}</td>
-                  <td className="text-right">{row.rejected}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+      <ChangeOrderSummarySection
+        overall={changeOrderSummary.overall}
+        byContract={changeOrderSummary.byContract}
+        changeOrders={changeOrders}
+      />
     </div>
   );
 }
