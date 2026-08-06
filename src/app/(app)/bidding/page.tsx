@@ -9,7 +9,7 @@ import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/c
 import { StarRating } from "@/components/StarRating";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize, money } from "@/lib/metrics";
-import { canManageBidPackages, canReviewBids, statusBadgeClass } from "@/lib/roles";
+import { canManageBidPackages, canReviewBids, canStaffEnterBids, statusBadgeClass } from "@/lib/roles";
 import { complianceBadgeClass, complianceFromExpiration, complianceLabel } from "@/lib/compliance";
 import { resolveSubcontractorScopeUserId } from "@/lib/subScope";
 import { createClient } from "@/lib/supabase/client";
@@ -108,6 +108,7 @@ function BiddingPage() {
   const { contracts, subcontractors, userProfiles, loading: contractsLoading, refresh: refreshContractData } =
     useContractData();
   const canManage = canManageBidPackages(effectiveRole);
+  const canStaffEnter = canStaffEnterBids(effectiveRole);
   const canReview = canReviewBids(effectiveRole);
   const isSub = effectiveRole === "subcontractor";
 
@@ -186,8 +187,12 @@ function BiddingPage() {
     ]);
     if (pkgRes.error) setError(pkgRes.error.message);
     else setPackages((pkgRes.data as BidPackage[]) ?? []);
-    if (bidRes.error && !pkgRes.error) setError(bidRes.error.message);
-    else setBids((bidRes.data as Bid[]) ?? []);
+    if (bidRes.error) {
+      setError((prev) => prev ?? bidRes.error!.message);
+      setBids([]);
+    } else {
+      setBids((bidRes.data as Bid[]) ?? []);
+    }
     setLoading(false);
   }, []);
 
@@ -224,6 +229,21 @@ function BiddingPage() {
     () => (selected ? bids.filter((b) => b.bid_package_id === selected.id) : []),
     [bids, selected]
   );
+
+  /** Submitted bids across all packages — so owners/PMs see new proposals without hunting. */
+  const pendingReviewBids = useMemo(() => {
+    if (!canReview) return [];
+    return bids
+      .filter((b) => b.status === "submitted")
+      .map((b) => ({
+        bid: b,
+        pkg: packages.find((p) => p.id === b.bid_package_id) ?? null,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.bid.created_at).getTime() - new Date(a.bid.created_at).getTime()
+      );
+  }, [bids, packages, canReview]);
 
   const winningBids = useMemo(() => {
     return bids
@@ -306,7 +326,7 @@ function BiddingPage() {
 
   const onAddStaffBid = async (e: FormEvent) => {
     e.preventDefault();
-    if (!canManage || !selected) return;
+    if (!canStaffEnter || !selected) return;
     if (selected.status !== "open" && selected.status !== "closed") {
       setError("Bids can only be added on open or closed packages.");
       return;
@@ -660,7 +680,9 @@ function BiddingPage() {
         subtitle={
           isSub
             ? "Review detailed bid packages and submit your price, schedule, and license info."
-            : "Publish detailed bid packages for open work and review subcontractor proposals."
+            : canReview
+              ? "Review subcontractor proposals and accept or reject bids. Owners approve — they do not submit bids."
+              : "Publish detailed bid packages for open work and review subcontractor proposals."
         }
         actions={
           canManage ? (
@@ -674,6 +696,63 @@ function BiddingPage() {
 
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
       {message ? <AlertBanner type="success">{message}</AlertBanner> : null}
+
+      {canReview && pendingReviewBids.length > 0 ? (
+        <SectionCard title={`Bids awaiting decision (${pendingReviewBids.length})`}>
+          <p className="text-sm opacity-70 mb-3">
+            All submitted proposals across packages. Open a row to review, accept, or reject.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Package</th>
+                  <th>Amount</th>
+                  <th>Submitted</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {pendingReviewBids.map(({ bid, pkg }) => (
+                  <tr key={bid.id}>
+                    <td>
+                      <div className="font-medium">{bid.company_name}</div>
+                      <div className="text-xs opacity-60">
+                        {[bid.contact_name, bid.contact_email].filter(Boolean).join(" · ") ||
+                          "—"}
+                      </div>
+                    </td>
+                    <td className="text-sm">
+                      {pkg?.title ?? "Package"}
+                      {pkg?.trade ? (
+                        <div className="text-xs opacity-60">{pkg.trade}</div>
+                      ) : null}
+                    </td>
+                    <td>{money(bid.amount)}</td>
+                    <td className="text-xs opacity-70">
+                      {bid.created_at
+                        ? new Date(bid.created_at).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="text-right">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-xs"
+                        onClick={() => {
+                          if (pkg) setSelectedId(pkg.id);
+                        }}
+                      >
+                        Review
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      ) : null}
 
       {canManage && showCreate ? (
         <SectionCard title="Create bid package">
@@ -1174,7 +1253,7 @@ function BiddingPage() {
                 <SectionCard
                   title={`Received bids (${packageBids.length})`}
                   actions={
-                    canManage && (selected.status === "open" || selected.status === "closed") ? (
+                    canStaffEnter && (selected.status === "open" || selected.status === "closed") ? (
                       <button
                         type="button"
                         className="btn btn-primary btn-xs"
@@ -1186,7 +1265,7 @@ function BiddingPage() {
                     ) : null
                   }
                 >
-                  {showAddBid ? (
+                  {showAddBid && canStaffEnter ? (
                     <form
                       onSubmit={onAddStaffBid}
                       className="mb-4 grid gap-3 rounded-lg border border-base-300 bg-base-200/40 p-3 md:grid-cols-2"
