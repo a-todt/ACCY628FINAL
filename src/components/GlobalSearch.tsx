@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,8 +9,15 @@ import {
   buildSearchIndex,
   filterSearchResults,
   groupSearchResults,
+  searchPlaceholderForRole,
   type SearchResult,
 } from "@/lib/globalSearch";
+import {
+  canViewBidding,
+  canViewSafetyIncidents,
+} from "@/lib/roles";
+import { createClient } from "@/lib/supabase/client";
+import type { BidPackage, SafetyIncident } from "@/lib/types";
 
 export function GlobalSearch() {
   const router = useRouter();
@@ -22,6 +29,48 @@ export function GlobalSearch() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [safetyIncidents, setSafetyIncidents] = useState<SafetyIncident[]>([]);
+  const [bidPackages, setBidPackages] = useState<BidPackage[]>([]);
+  const [extraLoading, setExtraLoading] = useState(false);
+
+  const loadExtra = useCallback(async () => {
+    const needSafety = canViewSafetyIncidents(effectiveRole);
+    const needBids = canViewBidding(effectiveRole);
+    if (!needSafety && !needBids) {
+      setSafetyIncidents([]);
+      setBidPackages([]);
+      return;
+    }
+
+    setExtraLoading(true);
+    const supabase = createClient();
+    try {
+      const [safetyRes, bidsRes] = await Promise.all([
+        needSafety
+          ? supabase
+              .from("safety_incidents")
+              .select("*, contracts(contract_name)")
+              .order("incident_date", { ascending: false })
+          : Promise.resolve({ data: [] as SafetyIncident[], error: null }),
+        needBids
+          ? supabase.from("bid_packages").select("*").order("updated_at", { ascending: false })
+          : Promise.resolve({ data: [] as BidPackage[], error: null }),
+      ]);
+
+      if (!safetyRes.error) {
+        setSafetyIncidents((safetyRes.data as SafetyIncident[]) ?? []);
+      }
+      if (!bidsRes.error) {
+        setBidPackages((bidsRes.data as BidPackage[]) ?? []);
+      }
+    } finally {
+      setExtraLoading(false);
+    }
+  }, [effectiveRole]);
+
+  useEffect(() => {
+    void loadExtra();
+  }, [loadExtra]);
 
   const index = useMemo(() => {
     if (data.loading) return [];
@@ -29,9 +78,14 @@ export function GlobalSearch() {
       {
         contracts: data.contracts,
         invoices: data.invoices,
+        payments: data.payments,
+        costEntries: data.costEntries,
+        milestones: data.milestones,
         subcontractors: data.subcontractors,
         changeOrders: data.changeOrders,
         fieldLogs: data.fieldLogs,
+        safetyIncidents,
+        bidPackages,
         userProfiles: data.userProfiles,
       },
       effectiveRole
@@ -40,16 +94,23 @@ export function GlobalSearch() {
     data.loading,
     data.contracts,
     data.invoices,
+    data.payments,
+    data.costEntries,
+    data.milestones,
     data.subcontractors,
     data.changeOrders,
     data.fieldLogs,
     data.userProfiles,
+    safetyIncidents,
+    bidPackages,
     effectiveRole,
   ]);
 
   const results = useMemo(() => filterSearchResults(index, query), [index, query]);
   const groups = useMemo(() => groupSearchResults(results), [results]);
   const flatResults = results;
+  const placeholder = searchPlaceholderForRole(effectiveRole);
+  const loading = data.loading || extraLoading;
 
   useEffect(() => {
     setActiveIndex(0);
@@ -114,7 +175,7 @@ export function GlobalSearch() {
           ref={inputRef}
           type="search"
           className="grow min-w-0 bg-transparent outline-none text-sm"
-          placeholder="Search contracts, invoices, people…"
+          placeholder={placeholder}
           value={query}
           aria-label="Global search"
           aria-expanded={showDropdown}
@@ -136,13 +197,13 @@ export function GlobalSearch() {
           role="listbox"
           className="absolute left-0 right-0 z-50 mt-1.5 max-h-[min(24rem,70vh)] overflow-y-auto rounded-box border border-base-300 bg-base-100 shadow-xl"
         >
-          {data.loading ? (
+          {loading ? (
             <div className="px-3 py-8 grid place-items-center">
               <span className="loading loading-spinner loading-sm text-primary" />
             </div>
           ) : !trimmed ? (
             <p className="px-3 py-6 text-sm opacity-60 text-center">
-              Start typing to search contracts, invoices, people, and more.
+              Search only shows records and pages available to your role.
             </p>
           ) : flatResults.length === 0 ? (
             <p className="px-3 py-6 text-sm opacity-60 text-center">No matches for “{trimmed}”.</p>
@@ -174,8 +235,8 @@ export function GlobalSearch() {
                                   <p className="text-xs opacity-60 truncate">{item.subtitle}</p>
                                 ) : null}
                               </div>
-                              <span className="badge badge-ghost badge-sm shrink-0 capitalize">
-                                {group.label.replace(/s$/, "")}
+                              <span className="badge badge-ghost badge-sm shrink-0">
+                                {group.label}
                               </span>
                             </div>
                           </button>
