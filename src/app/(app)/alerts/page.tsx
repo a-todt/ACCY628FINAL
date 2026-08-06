@@ -11,6 +11,12 @@ import { useToast } from "@/components/ToastProvider";
 import { AlertBanner, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 import {
   buildAlertsForRole,
+  alertBadgeClass,
+  alertBadgeLabel,
+  alertRowClass,
+  alertTitleClass,
+  alertDetailClass,
+  alertMetaClass,
   type AlertCategory,
   type AlertSeverity,
 } from "@/lib/alerts";
@@ -171,7 +177,7 @@ export default function AlertsPage() {
           <option value="all">All categories</option>
           <option value="invoice">Invoices</option>
           <option value="change_order">Change orders</option>
-          <option value="fraud">Fraud / controls</option>
+          <option value="fraud">Potential fraud</option>
         </select>
         {filtered.length > 0 ? (
           <label className="label cursor-pointer gap-2 py-0 ml-auto">
@@ -204,7 +210,10 @@ export default function AlertsPage() {
         >
           <ul className="divide-y divide-base-300">
             {filtered.map((alert) => (
-              <li key={alert.id} className="flex items-start gap-2 py-3 px-1">
+              <li
+                key={alert.id}
+                className={`flex items-start gap-2 py-3 px-1 ${alertRowClass(alert)}`}
+              >
                 <input
                   type="checkbox"
                   className="checkbox checkbox-sm mt-1 shrink-0"
@@ -216,26 +225,18 @@ export default function AlertsPage() {
                   href={alert.href}
                   className="flex items-start gap-3 min-w-0 flex-1 hover:bg-base-200/60 rounded-lg transition-colors px-1 -mx-1 py-0.5"
                 >
-                  <span
-                    className={`badge badge-sm mt-0.5 ${
-                      alert.severity === "critical"
-                        ? "badge-error"
-                        : alert.severity === "warning"
-                          ? "badge-warning"
-                          : "badge-info"
-                    }`}
-                  >
-                    {alert.category === "fraud"
-                      ? "Fraud"
-                      : alert.category === "invoice" && alert.severity === "critical"
-                        ? "Overdue"
-                        : labelize(alert.severity)}
+                  <span className={`badge mt-0.5 ${alertBadgeClass(alert, "sm")}`}>
+                    {alertBadgeLabel(alert)}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium leading-tight">{alert.title}</p>
-                    <p className="text-sm opacity-70 mt-0.5">{alert.detail}</p>
+                    <p className={`font-medium leading-tight ${alertTitleClass(alert)}`}>
+                      {alert.title}
+                    </p>
+                    <p className={`text-sm mt-0.5 ${alertDetailClass(alert)}`}>{alert.detail}</p>
                     <p className="text-sm text-primary mt-1">{alert.action}</p>
-                    <p className="text-xs opacity-50 mt-1">{labelize(alert.category)}</p>
+                    <p className={`text-xs mt-1 ${alertMetaClass(alert)}`}>
+                      {alert.category === "fraud" ? "Potential fraud" : labelize(alert.category)}
+                    </p>
                   </div>
                   <ChevronRight className="h-4 w-4 opacity-40 shrink-0 mt-1" />
                 </Link>

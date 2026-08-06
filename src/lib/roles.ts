@@ -207,9 +207,9 @@ export function canApprovePayments(role: UserRole): boolean {
   return role === "owner";
 }
 
-/** Owner-only fraud / control exception alerts. */
+/** Owner fraud / control exception alerts (admin can also view for demos). */
 export function canViewFraudAlerts(role: UserRole): boolean {
-  return role === "owner";
+  return role === "owner" || role === "admin";
 }
 
 export function canCreateChangeOrders(role: UserRole): boolean {

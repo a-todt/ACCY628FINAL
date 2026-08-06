@@ -1,4 +1,4 @@
-import { daysPastDue, money } from "@/lib/metrics";
+import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { canViewFraudAlerts } from "@/lib/roles";
 import { isBadWeather } from "@/lib/weather";
 import type {
@@ -76,7 +76,7 @@ export function buildWeatherAlerts(fieldLogs: FieldLog[]): AlertItem[] {
 const LARGE_CO_THRESHOLD = 50_000;
 const COST_SPIKE_RATIO = 1.15;
 
-/** Rule-based fraud / control exceptions — owner inbox only (no ML scoring). */
+/** Rule-based fraud / control exceptions — owner + admin inbox (no ML scoring). */
 function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   const alerts: AlertItem[] = [];
   const payments = data.payments ?? [];
@@ -94,7 +94,7 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
       id: `fraud-payment-pending-${payment.id}`,
       severity: "critical",
       category: "fraud",
-      title: `Payment awaiting approval · ${money(payment.payment_amount)}`,
+      title: `Potential fraud — payment awaiting approval · ${money(payment.payment_amount)}`,
       detail: `${number} · ${project}${payment.reference_number ? ` · Ref ${payment.reference_number}` : ""}`,
       action: "Open invoice to approve or reject this payment (dual approval)",
       href: `/invoices/${payment.invoice_id}?tab=payments`,
@@ -113,7 +113,7 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
       id: `fraud-overpayment-${invoice.id}`,
       severity: "critical",
       category: "fraud",
-      title: `${number} overpaid by ${money(over)}`,
+      title: `Potential fraud — ${number} overpaid by ${money(over)}`,
       detail: `${invoice.contracts?.contract_name ?? "Project"} · Paid ${money(paid)} vs net due ${money(net)}`,
       action: "Review payment history and correct the overpayment",
       href: `/invoices/${invoice.id}`,
@@ -135,9 +135,9 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     const first = list[0];
     alerts.push({
       id: `fraud-dup-invoice-${key}`,
-      severity: "warning",
+      severity: "critical",
       category: "fraud",
-      title: `Duplicate invoice number “${first.invoice_number}”`,
+      title: `Potential fraud — duplicate invoice number “${first.invoice_number}”`,
       detail: `${list.length} invoices share this number — possible duplicate billing`,
       action: "Open invoices and verify each billing is unique",
       href: `/invoices`,
@@ -154,9 +154,9 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     const q = co.change_order_number?.trim() || co.description?.trim() || "";
     alerts.push({
       id: `fraud-large-co-${co.id}`,
-      severity: "warning",
+      severity: "critical",
       category: "fraud",
-      title: `Large pending CO · ${money(amount)}`,
+      title: `Potential fraud — large pending CO · ${money(amount)}`,
       detail: `${number} · ${co.contracts?.contract_name ?? "Project"}`,
       action: "Review and approve/reject before work is billed",
       href: q ? `/change-orders?q=${encodeQuery(q)}` : "/change-orders",
@@ -178,9 +178,9 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     if (contractCosts <= baseline * COST_SPIKE_RATIO) continue;
     alerts.push({
       id: `fraud-cost-spike-${contract.id}`,
-      severity: "warning",
+      severity: "critical",
       category: "fraud",
-      title: `Cost spike on ${contract.contract_name}`,
+      title: `Potential fraud — cost spike on ${contract.contract_name}`,
       detail: `Costs ${money(contractCosts)} exceed ${billed > 0 ? "billings" : "contract value"} ${money(baseline)} by >15%`,
       action: "Review cost entries and billing status for this job",
       href: `/contracts/${contract.id}`,
@@ -195,9 +195,9 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     const invoice = invoices.find((i) => i.id === payment.invoice_id);
     alerts.push({
       id: `fraud-payment-noref-${payment.id}`,
-      severity: "info",
+      severity: "warning",
       category: "fraud",
-      title: `Posted payment missing reference #`,
+      title: `Potential fraud — posted payment missing reference #`,
       detail: `${invoice?.invoice_number ?? "Invoice"} · ${money(payment.payment_amount)}`,
       action: "Add a check/ACH reference for audit trail completeness",
       href: `/invoices/${payment.invoice_id}`,
@@ -206,6 +206,45 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   }
 
   return alerts;
+}
+
+export function alertBadgeLabel(alert: AlertItem): string {
+  if (alert.category === "fraud") return "Potential fraud";
+  if (alert.category === "invoice" && alert.severity === "critical") return "Overdue";
+  return labelize(alert.severity);
+}
+
+/** High-contrast fraud styling that stays readable on light backgrounds. */
+export function alertBadgeClass(alert: AlertItem, size: "xs" | "sm" = "sm"): string {
+  const sizeClass = size === "xs" ? "badge-xs" : "badge-sm";
+  if (alert.category === "fraud") {
+    return `${sizeClass} border border-red-900 bg-red-700 text-white font-semibold`;
+  }
+  if (alert.severity === "critical") return `${sizeClass} badge-error`;
+  if (alert.severity === "warning") return `${sizeClass} badge-warning`;
+  return `${sizeClass} badge-info`;
+}
+
+export function alertRowClass(alert: AlertItem): string {
+  if (alert.category === "fraud") {
+    return "rounded-md bg-red-50 border border-red-200 border-l-[6px] border-l-red-700 my-1 px-1.5";
+  }
+  return "";
+}
+
+export function alertTitleClass(alert: AlertItem): string {
+  if (alert.category === "fraud") return "text-red-950 font-semibold";
+  return "";
+}
+
+export function alertDetailClass(alert: AlertItem): string {
+  if (alert.category === "fraud") return "text-red-900";
+  return "opacity-70";
+}
+
+export function alertMetaClass(alert: AlertItem): string {
+  if (alert.category === "fraud") return "text-red-800 font-medium";
+  return "opacity-50";
 }
 
 export function buildAlertsForRole(role: UserRole, data: AlertSourceData): AlertItem[] {
@@ -268,7 +307,11 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
     alerts.push(...buildFraudAlerts(data, now));
   }
 
+  // Fraud first, then severity, then newest.
   return alerts.sort((a, b) => {
+    const fraudRank = (alert: AlertItem) => (alert.category === "fraud" ? 0 : 1);
+    const byFraud = fraudRank(a) - fraudRank(b);
+    if (byFraud !== 0) return byFraud;
     const severityRank: Record<AlertSeverity, number> = { critical: 0, warning: 1, info: 2 };
     const bySeverity = severityRank[a.severity] - severityRank[b.severity];
     if (bySeverity !== 0) return bySeverity;

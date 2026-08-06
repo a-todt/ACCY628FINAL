@@ -7,9 +7,15 @@ import { Bell, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useDismissedAlerts } from "@/hooks/useDismissedAlerts";
-import { buildAlertsForRole } from "@/lib/alerts";
+import {
+  buildAlertsForRole,
+  alertBadgeClass,
+  alertBadgeLabel,
+  alertRowClass,
+  alertTitleClass,
+  alertDetailClass,
+} from "@/lib/alerts";
 import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
-import { labelize } from "@/lib/metrics";
 import { canViewAlerts } from "@/lib/roles";
 
 const PREVIEW_LIMIT = 5;
@@ -118,30 +124,22 @@ export function AlertsBell() {
           ) : (
             <ul className="max-h-80 overflow-y-auto divide-y divide-base-300">
               {preview.map((alert) => (
-                <li key={alert.id}>
+                <li key={alert.id} className={alertRowClass(alert)}>
                   <Link
                     href={alert.href}
                     className="flex items-start gap-2 px-3 py-2.5 hover:bg-base-200/70 transition-colors"
                     onClick={() => setOpen(false)}
                   >
-                    <span
-                      className={`badge badge-xs mt-1 shrink-0 ${
-                        alert.severity === "critical"
-                          ? "badge-error"
-                          : alert.severity === "warning"
-                            ? "badge-warning"
-                            : "badge-info"
-                      }`}
-                    >
-                      {alert.category === "invoice" && alert.severity === "critical"
-                        ? "Overdue"
-                        : labelize(alert.severity)}
+                    <span className={`badge mt-1 shrink-0 ${alertBadgeClass(alert, "xs")}`}>
+                      {alertBadgeLabel(alert)}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium leading-tight line-clamp-1">
+                      <span
+                        className={`block text-sm font-medium leading-tight line-clamp-1 ${alertTitleClass(alert)}`}
+                      >
                         {alert.title}
                       </span>
-                      <span className="block text-xs opacity-60 mt-0.5 line-clamp-1">
+                      <span className={`block text-xs mt-0.5 line-clamp-1 ${alertDetailClass(alert)}`}>
                         {alert.detail}
                       </span>
                       <span className="block text-xs text-primary mt-0.5 line-clamp-1">

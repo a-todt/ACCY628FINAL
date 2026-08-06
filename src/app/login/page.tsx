@@ -367,6 +367,9 @@ export default function LoginPage() {
                 <p className="opacity-80">PMs: pm@ … pm5@gcmanager.demo</p>
                 <p className="opacity-80">Field: field@ … field6@gcmanager.demo</p>
                 <p className="opacity-80">Subs: sub@ · sub2@gcmanager.demo</p>
+                <p className="opacity-80">
+                  Fraud alerts: sign in as admin (or preview as Owner) → Alerts → Potential fraud
+                </p>
               </div>
             </div>
           </div>
