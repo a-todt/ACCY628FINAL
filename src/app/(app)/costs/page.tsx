@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
   Bar,
@@ -13,6 +13,7 @@ import {
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useOpenCreateFromQuery } from "@/hooks/useOpenCreateFromQuery";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
@@ -72,6 +73,17 @@ export default function CostsPage() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   const canEnter = canEnterCosts(effectiveRole);
+
+  const openCreateForm = useCallback(() => {
+    setShowForm(true);
+    window.setTimeout(() => {
+      document.getElementById("cost-create-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
+  }, []);
+  useOpenCreateFromQuery(canEnter && !loading, openCreateForm);
 
   const scopedEntries = useMemo(
     () => costEntries.filter((cost) => costMatchesFilters(cost, search, categoryFilter, jobFilter)),
@@ -284,6 +296,93 @@ export default function CostsPage() {
         }
       />
 
+      {canEnter && showForm ? (
+        <SectionCard title="New Cost Entry">
+          <div id="cost-create-form">
+          {formError ? <AlertBanner type="error">{formError}</AlertBanner> : null}
+          {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
+          <form onSubmit={onSubmit} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField stacked label="Contract">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.contract_id}
+                  onChange={(e) => updateField("contract_id", e.target.value)}
+                  required
+                >
+                  <option value="">Select a contract…</option>
+                  {contracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.contract_name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Category">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.category}
+                  onChange={(e) => updateField("category", e.target.value as CostCategory)}
+                >
+                  {CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {labelize(category)}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Amount">
+                <label className="input input-bordered flex items-center gap-2 w-full">
+                  $
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="grow"
+                    value={form.amount}
+                    onChange={(e) => updateField("amount", e.target.value)}
+                    required
+                  />
+                </label>
+              </FormField>
+              <FormField stacked label="Date Incurred">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={form.date_incurred}
+                  onChange={(e) => updateField("date_incurred", e.target.value)}
+                />
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Description">
+                  <input
+                    className="input input-bordered w-full"
+                    value={form.description}
+                    onChange={(e) => updateField("description", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Notes">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={2}
+                    value={form.notes}
+                    onChange={(e) => updateField("notes", e.target.value)}
+                  />
+                </FormField>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? <span className="loading loading-spinner loading-sm" /> : null}
+                Save Cost Entry
+              </button>
+            </div>
+          </form>
+          </div>
+        </SectionCard>
+      ) : null}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Total Costs" value={money(grandTotal)} hint={`${scopedEntries.length} entries`} />
         <StatCard title="Jobs with Costs" value={String(byJob.length)} />
@@ -369,91 +468,6 @@ export default function CostsPage() {
           </>
         }
       />
-
-      {canEnter && showForm ? (
-        <SectionCard title="New Cost Entry">
-          {formError ? <AlertBanner type="error">{formError}</AlertBanner> : null}
-          {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
-          <form onSubmit={onSubmit} className="mt-4 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField stacked label="Contract">
-                <select
-                  className="select select-bordered w-full"
-                  value={form.contract_id}
-                  onChange={(e) => updateField("contract_id", e.target.value)}
-                  required
-                >
-                  <option value="">Select a contract…</option>
-                  {contracts.map((contract) => (
-                    <option key={contract.id} value={contract.id}>
-                      {contract.contract_name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField stacked label="Category">
-                <select
-                  className="select select-bordered w-full"
-                  value={form.category}
-                  onChange={(e) => updateField("category", e.target.value as CostCategory)}
-                >
-                  {CATEGORIES.map((category) => (
-                    <option key={category} value={category}>
-                      {labelize(category)}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField stacked label="Amount">
-                <label className="input input-bordered flex items-center gap-2 w-full">
-                  $
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="grow"
-                    value={form.amount}
-                    onChange={(e) => updateField("amount", e.target.value)}
-                    required
-                  />
-                </label>
-              </FormField>
-              <FormField stacked label="Date Incurred">
-                <input
-                  type="date"
-                  className="input input-bordered w-full"
-                  value={form.date_incurred}
-                  onChange={(e) => updateField("date_incurred", e.target.value)}
-                />
-              </FormField>
-              <div className="sm:col-span-2">
-                <FormField stacked label="Description">
-                  <input
-                    className="input input-bordered w-full"
-                    value={form.description}
-                    onChange={(e) => updateField("description", e.target.value)}
-                  />
-                </FormField>
-              </div>
-              <div className="sm:col-span-2">
-                <FormField stacked label="Notes">
-                  <textarea
-                    className="textarea textarea-bordered w-full"
-                    rows={2}
-                    value={form.notes}
-                    onChange={(e) => updateField("notes", e.target.value)}
-                  />
-                </FormField>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? <span className="loading loading-spinner loading-sm" /> : null}
-                Save Cost Entry
-              </button>
-            </div>
-          </form>
-        </SectionCard>
-      ) : null}
 
       {scopedEntries.length === 0 ? (
         <EmptyState

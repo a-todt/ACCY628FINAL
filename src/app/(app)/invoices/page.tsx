@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Building2, ChevronDown, FileText, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useOpenCreateFromQuery } from "@/hooks/useOpenCreateFromQuery";
 import { compareValues } from "@/components/FilterSortBar";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { StatusFilterChips } from "@/components/StatusFilterChips";
@@ -96,6 +97,17 @@ export default function InvoicesPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [statusChip, setStatusChip] = useState("all");
   const { toast } = useToast();
+
+  const openInvoiceForm = useCallback(() => {
+    setShowInvoiceForm(true);
+    window.setTimeout(() => {
+      document.getElementById("invoice-create-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
+  }, []);
+  useOpenCreateFromQuery(canManage && !loading, openInvoiceForm);
 
   const filtered = useMemo(() => {
     const next = invoices.filter((invoice) => {
@@ -455,6 +467,122 @@ export default function InvoicesPage() {
         }
       />
 
+      {canManage && showInvoiceForm ? (
+        <SectionCard title="New Invoice">
+          <div id="invoice-create-form">
+            {invoiceError ? <AlertBanner type="error">{invoiceError}</AlertBanner> : null}
+            {invoiceSuccess ? <AlertBanner type="success">{invoiceSuccess}</AlertBanner> : null}
+            <form onSubmit={onSubmitInvoice} className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField stacked label="Contract">
+                  <select
+                    className="select select-bordered w-full"
+                    value={invoiceForm.contract_id}
+                    onChange={(e) => onContractChange(e.target.value)}
+                    required
+                  >
+                    <option value="">Select a contract…</option>
+                    {contracts.map((contract) => (
+                      <option key={contract.id} value={contract.id}>
+                        {contract.contract_name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField stacked label="Invoice Number">
+                  <input
+                    className="input input-bordered w-full"
+                    value={invoiceForm.invoice_number}
+                    onChange={(e) => updateInvoiceField("invoice_number", e.target.value)}
+                    required
+                  />
+                </FormField>
+                <FormField stacked label="Invoice Date">
+                  <input
+                    type="date"
+                    className="input input-bordered w-full"
+                    value={invoiceForm.invoice_date}
+                    onChange={(e) => updateInvoiceField("invoice_date", e.target.value)}
+                  />
+                </FormField>
+                <FormField stacked label="Due Date">
+                  <input
+                    type="date"
+                    className="input input-bordered w-full"
+                    value={invoiceForm.due_date}
+                    onChange={(e) => updateInvoiceField("due_date", e.target.value)}
+                  />
+                </FormField>
+                <FormField stacked label="Invoice Amount">
+                  <label className="input input-bordered flex items-center gap-2 w-full">
+                    $
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="grow"
+                      value={invoiceForm.invoice_amount}
+                      onChange={(e) => updateInvoiceField("invoice_amount", e.target.value)}
+                      required
+                    />
+                  </label>
+                </FormField>
+                <FormField stacked label="Retainage %">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input input-bordered w-full"
+                    value={invoiceForm.retainage_percent}
+                    onChange={(e) => updateInvoiceField("retainage_percent", e.target.value)}
+                  />
+                </FormField>
+                <FormField stacked label="Retainage Amount">
+                  <input
+                    className="input input-bordered w-full"
+                    value={money(computedRetainageAmount)}
+                    disabled
+                    readOnly
+                  />
+                </FormField>
+                <FormField stacked label="Net Amount Due" hint="Invoice amount less retainage withheld.">
+                  <input
+                    className="input input-bordered font-medium w-full"
+                    value={money(computedNetAmountDue)}
+                    disabled
+                    readOnly
+                  />
+                </FormField>
+                <div className="sm:col-span-2">
+                  <FormField stacked label="Description">
+                    <textarea
+                      className="textarea textarea-bordered w-full"
+                      rows={2}
+                      value={invoiceForm.description}
+                      onChange={(e) => updateInvoiceField("description", e.target.value)}
+                    />
+                  </FormField>
+                </div>
+                <div className="sm:col-span-2">
+                  <FormField stacked label="Notes">
+                    <textarea
+                      className="textarea textarea-bordered w-full"
+                      rows={2}
+                      value={invoiceForm.notes}
+                      onChange={(e) => updateInvoiceField("notes", e.target.value)}
+                    />
+                  </FormField>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="submit" className="btn btn-primary" disabled={savingInvoice}>
+                  {savingInvoice ? <span className="loading loading-spinner loading-sm" /> : null}
+                  Save Invoice
+                </button>
+              </div>
+            </form>
+          </div>
+        </SectionCard>
+      ) : null}
+
       <StickyToolbar>
         <StatusFilterChips
           options={STATUS_OPTIONS}
@@ -512,124 +640,6 @@ export default function InvoicesPage() {
 
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
       {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
-
-      {canManage && showInvoiceForm ? (
-        <SectionCard title="New Invoice">
-          {invoiceError ? <AlertBanner type="error">{invoiceError}</AlertBanner> : null}
-          {invoiceSuccess ? <AlertBanner type="success">{invoiceSuccess}</AlertBanner> : null}
-          <form onSubmit={onSubmitInvoice} className="mt-4 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField stacked label="Contract">
-                <select
-                  className="select select-bordered w-full"
-                  value={invoiceForm.contract_id}
-                  onChange={(e) => onContractChange(e.target.value)}
-                  required
-                >
-                  <option value="">Select a contract…</option>
-                  {contracts.map((contract) => (
-                    <option key={contract.id} value={contract.id}>
-                      {contract.contract_name}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-              <FormField stacked label="Invoice Number">
-                <input
-                  className="input input-bordered w-full"
-                  value={invoiceForm.invoice_number}
-                  onChange={(e) => updateInvoiceField("invoice_number", e.target.value)}
-                  placeholder="e.g. INV-1007"
-                />
-              </FormField>
-              <FormField stacked label="Invoice Date">
-                <input
-                  type="date"
-                  className="input input-bordered w-full"
-                  value={invoiceForm.invoice_date}
-                  onChange={(e) => updateInvoiceField("invoice_date", e.target.value)}
-                />
-              </FormField>
-              <FormField stacked label="Due Date">
-                <input
-                  type="date"
-                  className="input input-bordered w-full"
-                  value={invoiceForm.due_date}
-                  onChange={(e) => updateInvoiceField("due_date", e.target.value)}
-                />
-              </FormField>
-              <FormField stacked label="Invoice Amount">
-                <label className="input input-bordered flex items-center gap-2 w-full">
-                  $
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="grow"
-                    value={invoiceForm.invoice_amount}
-                    onChange={(e) => updateInvoiceField("invoice_amount", e.target.value)}
-                    required
-                  />
-                </label>
-              </FormField>
-              <FormField stacked label="Retainage %">
-                <input
-                  type="number"
-                  step="0.1"
-                  className="input input-bordered w-full"
-                  value={invoiceForm.retainage_percent}
-                  onChange={(e) => updateInvoiceField("retainage_percent", e.target.value)}
-                />
-              </FormField>
-              <FormField
-                stacked
-                label="Retainage Amount"
-                hint="Calculated automatically from invoice amount × retainage %."
-              >
-                <input
-                  className="input input-bordered w-full"
-                  value={money(computedRetainageAmount)}
-                  disabled
-                  readOnly
-                />
-              </FormField>
-              <FormField stacked label="Net Amount Due" hint="Invoice amount less retainage withheld.">
-                <input
-                  className="input input-bordered font-medium w-full"
-                  value={money(computedNetAmountDue)}
-                  disabled
-                  readOnly
-                />
-              </FormField>
-              <div className="sm:col-span-2">
-                <FormField stacked label="Description">
-                  <textarea
-                    className="textarea textarea-bordered w-full"
-                    rows={2}
-                    value={invoiceForm.description}
-                    onChange={(e) => updateInvoiceField("description", e.target.value)}
-                  />
-                </FormField>
-              </div>
-              <div className="sm:col-span-2">
-                <FormField stacked label="Notes">
-                  <textarea
-                    className="textarea textarea-bordered w-full"
-                    rows={2}
-                    value={invoiceForm.notes}
-                    onChange={(e) => updateInvoiceField("notes", e.target.value)}
-                  />
-                </FormField>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="submit" className="btn btn-primary" disabled={savingInvoice}>
-                {savingInvoice ? <span className="loading loading-spinner loading-sm" /> : null}
-                Save Invoice
-              </button>
-            </div>
-          </form>
-        </SectionCard>
-      ) : null}
 
       {canManage && showPaymentForm ? (
         <SectionCard title="Record Payment">

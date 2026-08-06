@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -32,6 +33,14 @@ import {
   type NavCategoryId,
 } from "@/lib/roles";
 
+function AppShellLoading() {
+  return (
+    <div className="min-h-screen grid place-items-center app-shell">
+      <span className="loading loading-spinner loading-lg text-primary" />
+    </div>
+  );
+}
+
 const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
   favorites: Star,
   dashboard: LayoutDashboard,
@@ -60,11 +69,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   };
 
   if (loading || access.loading) {
-    return (
-      <div className="min-h-screen grid place-items-center app-shell">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+    return <AppShellLoading />;
   }
 
   const locked =
@@ -124,9 +129,6 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </div>
           <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 shrink-0 group">
             <NailItLogo size="sm" />
-            <span className="text-[11px] leading-tight opacity-50 whitespace-nowrap hidden xl:block group-hover:opacity-70 transition-opacity">
-              General Contract Management
-            </span>
           </Link>
         </div>
         {!locked ? <GlobalSearch /> : <div className="flex-1" />}
@@ -211,7 +213,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
       <ProjectFavoritesProvider>
-        <AppShellInner>{children}</AppShellInner>
+        <Suspense fallback={<AppShellLoading />}>
+          <AppShellInner>{children}</AppShellInner>
+        </Suspense>
       </ProjectFavoritesProvider>
     </ToastProvider>
   );
