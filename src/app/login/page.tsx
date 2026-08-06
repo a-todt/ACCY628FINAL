@@ -11,9 +11,12 @@ import { passwordResetRedirectTo } from "@/lib/authUrls";
 import { loadUserPreferences } from "@/lib/userPreferences";
 import type { UserRole } from "@/lib/types";
 
-type Mode = "login" | "signup" | "forgot";
+type Mode = "login" | "signup" | "client_signup" | "forgot";
 
-const SIGNUP_ROLES: UserRole[] = COMPANY_ROLES.filter((r) => r !== "owner");
+/** Staff / sub signup only — clients use the separate “Register as a client” flow. */
+const SIGNUP_ROLES: UserRole[] = COMPANY_ROLES.filter(
+  (r) => r !== "owner" && r !== "client"
+);
 
 const FEATURES = [
   "Built specifically for general contractors",
@@ -54,6 +57,9 @@ function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const isSignup = mode === "signup" || mode === "client_signup";
+  const isClientSignup = mode === "client_signup";
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", "jobsite");
   }, []);
@@ -62,6 +68,14 @@ function LoginPage() {
     const fromLink = searchParams.get("error");
     if (fromLink) setError(fromLink);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (mode === "client_signup") {
+      setAccountType("client");
+    } else if (mode === "signup") {
+      setAccountType((prev) => (prev === "client" ? "field_supervisor" : prev));
+    }
+  }, [mode]);
 
   const ensureBidderDirectory = async (
     userId: string,
@@ -83,6 +97,7 @@ function LoginPage() {
     });
     if (dirError) console.warn(dirError.message);
   };
+
   const looksLikeClientId = (value: string) => {
     const v = value.trim();
     return /^CLT-/i.test(v) || (!v.includes("@") && /^[A-Z0-9-]{6,}$/i.test(v) && !v.includes("."));
@@ -136,12 +151,14 @@ function LoginPage() {
         });
         if (signInError) throw signInError;
 
-        // Ensure intended signup role sticks (e.g. subcontractor) if profile still defaulted.
         const signedIn = signInData.user;
         const intended = String(signedIn?.user_metadata?.intended_role ?? "");
         if (
           signedIn?.id &&
-          (intended === "subcontractor" || intended === "client" || intended === "project_manager" || intended === "field_supervisor")
+          (intended === "subcontractor" ||
+            intended === "client" ||
+            intended === "project_manager" ||
+            intended === "field_supervisor")
         ) {
           await supabase
             .from("user_profiles")
@@ -152,7 +169,7 @@ function LoginPage() {
             .eq("id", signedIn.id);
         }
 
-        if (signedIn?.id && (intended === "subcontractor" || signInData.user?.user_metadata?.intended_role === "subcontractor")) {
+        if (signedIn?.id && intended === "subcontractor") {
           const meta = signedIn.user_metadata ?? {};
           await ensureBidderDirectory(signedIn.id, {
             company_name: (meta.company_name as string) || (meta.full_name as string) || null,
@@ -163,7 +180,6 @@ function LoginPage() {
           });
         }
 
-        // Also ensure directory when profile role is already subcontractor
         if (signedIn?.id) {
           const { data: profileRow } = await supabase
             .from("user_profiles")
@@ -188,22 +204,27 @@ function LoginPage() {
         return;
       }
 
-      if (accountType === "subcontractor" && !companyName.trim() && !fullName.trim()) {
+      const signupRole: UserRole = isClientSignup ? "client" : accountType;
+
+      if (signupRole === "subcontractor" && !companyName.trim() && !fullName.trim()) {
         throw new Error("Enter your company or business name.");
       }
 
-      const signupCompany = (companyName.trim() || fullName.trim());
+      const signupCompany = companyName.trim() || fullName.trim();
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: fullName.trim() || signupCompany,
-            intended_role: accountType,
-            company_name: accountType === "subcontractor" ? signupCompany : undefined,
+            intended_role: signupRole,
+            company_name: signupRole === "subcontractor" ? signupCompany : undefined,
             contact_name: fullName.trim() || signupCompany,
-            contact_phone: accountType === "subcontractor" ? contactPhone.trim() || undefined : undefined,
-            trade: accountType === "subcontractor" ? trade.trim() || undefined : undefined,
+            contact_phone:
+              signupRole === "subcontractor" || isClientSignup
+                ? contactPhone.trim() || undefined
+                : undefined,
+            trade: signupRole === "subcontractor" ? trade.trim() || undefined : undefined,
           },
         },
       });
@@ -211,14 +232,13 @@ function LoginPage() {
 
       const userId = data.user?.id;
       if (userId) {
-        // Prefer updating while session exists; handle_new_user also sets intended_role.
         const { error: profileError } = await supabase
           .from("user_profiles")
           .update({
             full_name: (fullName.trim() || signupCompany) || null,
-            secondary_name: secondaryName.trim() || null,
-            role: accountType,
-            onboarding_complete: accountType === "subcontractor",
+            secondary_name: isClientSignup ? null : secondaryName.trim() || null,
+            role: signupRole,
+            onboarding_complete: signupRole === "subcontractor",
             email,
           })
           .eq("id", userId);
@@ -226,7 +246,7 @@ function LoginPage() {
           console.warn(profileError.message);
         }
 
-        if (accountType === "subcontractor") {
+        if (signupRole === "subcontractor") {
           await ensureBidderDirectory(userId, {
             company_name: signupCompany,
             contact_name: fullName.trim() || signupCompany,
@@ -237,8 +257,7 @@ function LoginPage() {
         }
       }
 
-      // Subcontractors can enter the app immediately when signup returns a session.
-      if (accountType === "subcontractor" && data.session) {
+      if (signupRole === "subcontractor" && data.session) {
         setMessage("Account created. Opening Bidding…");
         router.replace("/bidding");
         router.refresh();
@@ -246,7 +265,7 @@ function LoginPage() {
       }
 
       let clientNote = "";
-      if (accountType === "client") {
+      if (signupRole === "client") {
         if (data.session) {
           try {
             const prospect = await registerClientProspect({
@@ -269,9 +288,9 @@ function LoginPage() {
       }
 
       setMessage(
-        accountType === "client"
+        signupRole === "client"
           ? `Account created.${clientNote}`
-          : accountType === "subcontractor"
+          : signupRole === "subcontractor"
             ? "Account created. Sign in and open Bidding to bid on open packages. You can link a GC invite later when you are awarded a project."
             : "Account created. Sign in — your Owner must assign you to a project before you can work."
       );
@@ -333,16 +352,20 @@ function LoginPage() {
                 <h2 className="text-2xl font-display font-semibold uppercase tracking-wide">
                   {mode === "login"
                     ? "Sign in"
-                    : mode === "signup"
-                      ? "Create account"
-                      : "Reset password"}
+                    : mode === "client_signup"
+                      ? "Register as a client"
+                      : mode === "signup"
+                        ? "Create account"
+                        : "Reset password"}
                 </h2>
                 <p className="text-sm opacity-65 mt-0.5">
                   {mode === "forgot"
                     ? "Reset via email or Client ID"
                     : mode === "login"
                       ? "Use your email or Client ID"
-                      : "Secure access for project stakeholders"}
+                      : mode === "client_signup"
+                        ? "Tell us about your project — no invite needed"
+                        : "Staff and subcontractor access"}
                 </p>
               </div>
 
@@ -350,12 +373,12 @@ function LoginPage() {
               {message ? <AlertBanner type="success">{message}</AlertBanner> : null}
 
               <form className="space-y-4" onSubmit={onSubmit}>
-                {mode === "signup" ? (
+                {isSignup ? (
                   <>
                     <FormField
                       label="Full name or business name"
                       hint={
-                        accountType === "client"
+                        isClientSignup
                           ? "Your name as you’d like our team to see it."
                           : "Use your personal name or business name — whichever your GC listed on the project invite."
                       }
@@ -369,7 +392,7 @@ function LoginPage() {
                         placeholder="Joe Durrett or Acme LLC"
                       />
                     </FormField>
-                    {accountType === "client" ? (
+                    {isClientSignup ? (
                       <>
                         <FormField
                           label="Company / organization (optional)"
@@ -404,68 +427,70 @@ function LoginPage() {
                         </FormField>
                       </>
                     ) : (
-                      <FormField
-                        label="Spouse / partner name (optional)"
-                        hint="If your GC listed a spouse/partner on this project, either of you can match and get that project's Client ID."
-                      >
-                        <input
-                          className="input input-bordered"
-                          value={secondaryName}
-                          onChange={(e) => setSecondaryName(e.target.value)}
-                          autoComplete="nickname"
-                        />
-                      </FormField>
-                    )}
-                    <FormField
-                      label="Account type"
-                      hint="Clients can register without a prior invite, then message us. Subcontractors can register to bid; a GC invite links you to a project when awarded."
-                    >
-                      <select
-                        className="select select-bordered"
-                        value={accountType}
-                        onChange={(e) => setAccountType(e.target.value as UserRole)}
-                      >
-                        {SIGNUP_ROLES.map((role) => (
-                          <option key={role} value={role}>
-                            {ROLE_LABELS[role]}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
-                    {accountType === "subcontractor" ? (
                       <>
                         <FormField
-                          label="Company / business name"
-                          hint="Shown on the subcontractors list and with your bids."
+                          label="Spouse / partner name (optional)"
+                          hint="If your GC listed a spouse/partner on this project, either of you can match and get that project's Client ID."
                         >
                           <input
                             className="input input-bordered"
-                            value={companyName}
-                            onChange={(e) => setCompanyName(e.target.value)}
-                            required
-                            autoComplete="organization"
-                            placeholder="Acme Electric LLC"
+                            value={secondaryName}
+                            onChange={(e) => setSecondaryName(e.target.value)}
+                            autoComplete="nickname"
                           />
                         </FormField>
-                        <FormField label="Trade (optional)">
-                          <input
-                            className="input input-bordered"
-                            value={trade}
-                            onChange={(e) => setTrade(e.target.value)}
-                            placeholder="Electrical, HVAC, Concrete…"
-                          />
+                        <FormField
+                          label="Account type"
+                          hint="Subcontractors can register to bid; PMs and field staff wait for project assignment."
+                        >
+                          <select
+                            className="select select-bordered"
+                            value={accountType}
+                            onChange={(e) => setAccountType(e.target.value as UserRole)}
+                          >
+                            {SIGNUP_ROLES.map((role) => (
+                              <option key={role} value={role}>
+                                {ROLE_LABELS[role]}
+                              </option>
+                            ))}
+                          </select>
                         </FormField>
-                        <FormField label="Phone (optional)">
-                          <input
-                            className="input input-bordered"
-                            value={contactPhone}
-                            onChange={(e) => setContactPhone(e.target.value)}
-                            autoComplete="tel"
-                            placeholder="312-555-0100"
-                          />
-                        </FormField>
+                        {accountType === "subcontractor" ? (
+                          <>
+                            <FormField
+                              label="Company / business name"
+                              hint="Shown on the subcontractors list and with your bids."
+                            >
+                              <input
+                                className="input input-bordered"
+                                value={companyName}
+                                onChange={(e) => setCompanyName(e.target.value)}
+                                required
+                                autoComplete="organization"
+                                placeholder="Acme Electric LLC"
+                              />
+                            </FormField>
+                            <FormField label="Trade (optional)">
+                              <input
+                                className="input input-bordered"
+                                value={trade}
+                                onChange={(e) => setTrade(e.target.value)}
+                                placeholder="Electrical, HVAC, Concrete…"
+                              />
+                            </FormField>
+                            <FormField label="Phone (optional)">
+                              <input
+                                className="input input-bordered"
+                                value={contactPhone}
+                                onChange={(e) => setContactPhone(e.target.value)}
+                                autoComplete="tel"
+                                placeholder="312-555-0100"
+                              />
+                            </FormField>
+                          </>
+                        ) : null}
                       </>
-                    ) : null}
+                    )}
                     <FormField label="Email">
                       <input
                         type="email"
@@ -513,7 +538,13 @@ function LoginPage() {
 
                 <button className="btn btn-primary w-full" disabled={loading}>
                   {loading ? <span className="loading loading-spinner loading-sm" /> : null}
-                  {mode === "login" ? "Sign in" : mode === "signup" ? "Sign up" : "Send reset link"}
+                  {mode === "login"
+                    ? "Sign in"
+                    : mode === "client_signup"
+                      ? "Register as a client"
+                      : mode === "signup"
+                        ? "Sign up"
+                        : "Send reset link"}
                 </button>
               </form>
 
@@ -536,12 +567,13 @@ function LoginPage() {
               <p className="text-sm text-center opacity-80">
                 {mode === "login" ? (
                   <>
-                    Need an account?{" "}
+                    Need a staff account?{" "}
                     <button
                       className="link link-primary"
                       type="button"
                       onClick={() => {
                         setMode("signup");
+                        setAccountType("field_supervisor");
                         setError(null);
                         setMessage(null);
                       }}
@@ -566,6 +598,26 @@ function LoginPage() {
                   </>
                 )}
               </p>
+
+              {mode === "login" || mode === "signup" ? (
+                <div className="text-center pt-1 border-t border-base-300">
+                  <button
+                    type="button"
+                    className="link link-primary text-sm font-medium"
+                    onClick={() => {
+                      setMode("client_signup");
+                      setAccountType("client");
+                      setError(null);
+                      setMessage(null);
+                    }}
+                  >
+                    Register as a client
+                  </button>
+                  <p className="text-xs opacity-60 mt-1">
+                    Request a project with us — no Client ID needed
+                  </p>
+                </div>
+              ) : null}
 
               <div className="bg-base-200/80 rounded-box border border-base-300 p-3 text-xs space-y-1">
                 <p className="font-semibold tracking-tight">Demo logins (password: Demo123!)</p>
