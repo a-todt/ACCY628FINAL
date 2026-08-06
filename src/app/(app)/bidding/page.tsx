@@ -697,63 +697,6 @@ function BiddingPage() {
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
       {message ? <AlertBanner type="success">{message}</AlertBanner> : null}
 
-      {canReview && pendingReviewBids.length > 0 ? (
-        <SectionCard title={`Bids awaiting decision (${pendingReviewBids.length})`}>
-          <p className="text-sm opacity-70 mb-3">
-            All submitted proposals across packages. Open a row to review, accept, or reject.
-          </p>
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Company</th>
-                  <th>Package</th>
-                  <th>Amount</th>
-                  <th>Submitted</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {pendingReviewBids.map(({ bid, pkg }) => (
-                  <tr key={bid.id}>
-                    <td>
-                      <div className="font-medium">{bid.company_name}</div>
-                      <div className="text-xs opacity-60">
-                        {[bid.contact_name, bid.contact_email].filter(Boolean).join(" · ") ||
-                          "—"}
-                      </div>
-                    </td>
-                    <td className="text-sm">
-                      {pkg?.title ?? "Package"}
-                      {pkg?.trade ? (
-                        <div className="text-xs opacity-60">{pkg.trade}</div>
-                      ) : null}
-                    </td>
-                    <td>{money(bid.amount)}</td>
-                    <td className="text-xs opacity-70">
-                      {bid.created_at
-                        ? new Date(bid.created_at).toLocaleDateString()
-                        : "—"}
-                    </td>
-                    <td className="text-right">
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-xs"
-                        onClick={() => {
-                          if (pkg) setSelectedId(pkg.id);
-                        }}
-                      >
-                        Review
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
-      ) : null}
-
       {canManage && showCreate ? (
         <SectionCard title="Create bid package">
           <form onSubmit={onCreatePackage} className="mt-4 space-y-4">
@@ -1504,6 +1447,63 @@ function BiddingPage() {
           ) : null}
         </div>
       )}
+
+      {canReview && pendingReviewBids.length > 0 ? (
+        <SectionCard title={`Bids awaiting decision (${pendingReviewBids.length})`}>
+          <p className="text-sm opacity-70 mb-3">
+            All submitted proposals across packages. Open a row to review, accept, or reject.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Package</th>
+                  <th>Amount</th>
+                  <th>Submitted</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {pendingReviewBids.map(({ bid, pkg }) => (
+                  <tr key={bid.id}>
+                    <td>
+                      <div className="font-medium">{bid.company_name}</div>
+                      <div className="text-xs opacity-60">
+                        {[bid.contact_name, bid.contact_email].filter(Boolean).join(" · ") ||
+                          "—"}
+                      </div>
+                    </td>
+                    <td className="text-sm">
+                      {pkg?.title ?? "Package"}
+                      {pkg?.trade ? (
+                        <div className="text-xs opacity-60">{pkg.trade}</div>
+                      ) : null}
+                    </td>
+                    <td>{money(bid.amount)}</td>
+                    <td className="text-xs opacity-70">
+                      {bid.created_at
+                        ? new Date(bid.created_at).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="text-right">
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-xs"
+                        onClick={() => {
+                          if (pkg) setSelectedId(pkg.id);
+                        }}
+                      >
+                        Review
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      ) : null}
 
       {winningBids.length > 0 ? (
         <SectionCard title={`Past winning bids (${winningBids.length})`}>
