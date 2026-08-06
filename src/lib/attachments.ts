@@ -110,7 +110,7 @@ export function canUploadAttachments(
   entityType: AttachmentEntityType
 ): boolean {
   if (entityType === "invoice") {
-    return role !== "subcontractor" && role !== "field_supervisor";
+    return role !== "subcontractor" && role !== "field_supervisor" && role !== "client";
   }
   if (entityType === "change_order") {
     return role === "admin" || role === "owner" || role === "project_manager";
@@ -131,6 +131,7 @@ export function canDeleteAttachment(
   attachment: Attachment,
   userId: string | undefined
 ): boolean {
+  if (role === "client") return false;
   if (role === "admin" || role === "owner" || role === "project_manager") return true;
   return Boolean(userId && attachment.uploaded_by === userId);
 }
