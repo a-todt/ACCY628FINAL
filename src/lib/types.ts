@@ -221,6 +221,9 @@ export interface BidPackage {
   project_end_date: string | null;
   estimated_package_value: number | null;
   scope_of_work: string | null;
+  scope_inclusions: string | null;
+  scope_exclusions: string | null;
+  work_quantities: string | null;
   technical_specifications: string | null;
   materials_provided_by_gc: string | null;
   materials_by_subcontractor: string | null;
@@ -249,6 +252,9 @@ export interface Bid {
   bid_package_id: string;
   user_id: string | null;
   company_name: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
   amount: number;
   days_to_complete: number | null;
   proposal_notes: string | null;

@@ -253,7 +253,13 @@ export function canViewSubcontractors(role: UserRole): boolean {
   return hasPermission(role, "viewSubcontractors");
 }
 
+/** Create/delete bid packages and staff-enter bids (admin/owner only). */
 export function canManageBidPackages(role: UserRole): boolean {
+  return role === "admin" || role === "owner";
+}
+
+/** Review received bids, rate vendors, and accept/reject (includes PMs). */
+export function canReviewBids(role: UserRole): boolean {
   return role === "admin" || role === "owner" || role === "project_manager";
 }
 

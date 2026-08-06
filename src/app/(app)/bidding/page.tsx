@@ -9,7 +9,7 @@ import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/c
 import { StarRating } from "@/components/StarRating";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize, money } from "@/lib/metrics";
-import { canManageBidPackages, statusBadgeClass } from "@/lib/roles";
+import { canManageBidPackages, canReviewBids, statusBadgeClass } from "@/lib/roles";
 import { complianceBadgeClass, complianceFromExpiration, complianceLabel } from "@/lib/compliance";
 import { resolveSubcontractorScopeUserId } from "@/lib/subScope";
 import { createClient } from "@/lib/supabase/client";
@@ -17,8 +17,8 @@ import type { Bid, BidPackage, BidPackageStatus } from "@/lib/types";
 
 const RATING_OPTIONS = ["5", "4.5", "4", "3.5", "3", "2.5", "2", "1.5", "1"] as const;
 
+/** Fields shown after the expanded Scope of work block. */
 const DETAIL_FIELDS: Array<{ key: keyof BidPackage; label: string }> = [
-  { key: "scope_of_work", label: "Scope of work" },
   { key: "technical_specifications", label: "Technical specifications" },
   { key: "materials_provided_by_gc", label: "Materials provided by GC" },
   { key: "materials_by_subcontractor", label: "Materials by subcontractor" },
@@ -40,6 +40,9 @@ const EMPTY_PACKAGE = {
   status: "open" as BidPackageStatus,
   estimated_package_value: "",
   scope_of_work: "",
+  scope_inclusions: "",
+  scope_exclusions: "",
+  work_quantities: "",
   technical_specifications: "",
   materials_provided_by_gc: "",
   materials_by_subcontractor: "",
@@ -62,6 +65,9 @@ const EMPTY_PACKAGE = {
 
 const EMPTY_BID = {
   company_name: "",
+  contact_name: "",
+  contact_email: "",
+  contact_phone: "",
   amount: "",
   days_to_complete: "",
   proposal_notes: "",
@@ -102,6 +108,7 @@ function BiddingPage() {
   const { contracts, subcontractors, userProfiles, loading: contractsLoading, refresh: refreshContractData } =
     useContractData();
   const canManage = canManageBidPackages(effectiveRole);
+  const canReview = canReviewBids(effectiveRole);
   const isSub = effectiveRole === "subcontractor";
 
   const subScopeUserId = useMemo(
@@ -250,6 +257,16 @@ function BiddingPage() {
         linked?.company_name ||
         (profile?.role === "subcontractor" ? profile.full_name : "") ||
         "",
+      contact_name:
+        prev.contact_name || myBid?.contact_name || linked?.contact_name || "",
+      contact_email:
+        prev.contact_email ||
+        myBid?.contact_email ||
+        linked?.contact_email ||
+        profile?.email ||
+        "",
+      contact_phone:
+        prev.contact_phone || myBid?.contact_phone || linked?.contact_phone || "",
       amount: prev.amount || (myBid ? String(myBid.amount) : prev.amount),
       days_to_complete:
         prev.days_to_complete ||
@@ -358,7 +375,7 @@ function BiddingPage() {
 
   const onSaveReview = async (e: FormEvent) => {
     e.preventDefault();
-    if (!canManage || !reviewingBid) return;
+    if (!canReview || !reviewingBid) return;
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -441,6 +458,9 @@ function BiddingPage() {
           ? Number(pkgForm.estimated_package_value)
           : null,
         scope_of_work: pkgForm.scope_of_work.trim() || null,
+        scope_inclusions: pkgForm.scope_inclusions.trim() || null,
+        scope_exclusions: pkgForm.scope_exclusions.trim() || null,
+        work_quantities: pkgForm.work_quantities.trim() || null,
         technical_specifications: pkgForm.technical_specifications.trim() || null,
         materials_provided_by_gc: pkgForm.materials_provided_by_gc.trim() || null,
         materials_by_subcontractor: pkgForm.materials_by_subcontractor.trim() || null,
@@ -521,6 +541,15 @@ function BiddingPage() {
       if (!bidForm.company_name.trim() || Number.isNaN(amount) || amount < 0) {
         throw new Error("Company name and a valid bid amount are required.");
       }
+      if (!bidForm.contact_name.trim()) {
+        throw new Error("Contact name is required.");
+      }
+      if (!bidForm.contact_email.trim()) {
+        throw new Error("Contact email is required.");
+      }
+      if (!bidForm.contact_phone.trim()) {
+        throw new Error("Contact phone is required.");
+      }
       if (!bidForm.license_number.trim()) {
         throw new Error("License number is required to submit a bid.");
       }
@@ -535,6 +564,9 @@ function BiddingPage() {
         bid_package_id: selected.id,
         user_id: subScopeUserId,
         company_name: bidForm.company_name.trim(),
+        contact_name: bidForm.contact_name.trim(),
+        contact_email: bidForm.contact_email.trim(),
+        contact_phone: bidForm.contact_phone.trim(),
         amount,
         days_to_complete: bidForm.days_to_complete ? Number(bidForm.days_to_complete) : null,
         proposal_notes: bidForm.proposal_notes.trim() || null,
@@ -550,7 +582,7 @@ function BiddingPage() {
       });
       if (upsertError) throw upsertError;
 
-      // Keep linked / matching subcontractor license info current
+      // Keep linked / matching subcontractor company + contact + license current
       const matchIds = subcontractors
         .filter(
           (s) =>
@@ -562,6 +594,10 @@ function BiddingPage() {
         await supabase
           .from("subcontractors")
           .update({
+            company_name: payload.company_name,
+            contact_name: payload.contact_name,
+            contact_email: payload.contact_email,
+            contact_phone: payload.contact_phone,
             license_number: payload.license_number,
             license_state: payload.license_state,
             license_expiration: payload.license_expiration,
@@ -583,7 +619,7 @@ function BiddingPage() {
   };
 
   const onSetBidStatus = async (bidId: string, status: Bid["status"]) => {
-    if (!canManage) return;
+    if (!canReview) return;
     setBusy(true);
     setError(null);
     try {
@@ -717,7 +753,10 @@ function BiddingPage() {
               </FormField>
               {(
                 [
-                  ["scope_of_work", "Scope of work"],
+                  ["scope_of_work", "Scope of work (summary)"],
+                  ["scope_inclusions", "Scope inclusions"],
+                  ["scope_exclusions", "Scope exclusions"],
+                  ["work_quantities", "Work quantities / takeoff"],
                   ["technical_specifications", "Technical specifications"],
                   ["materials_provided_by_gc", "Materials provided by GC"],
                   ["materials_by_subcontractor", "Materials by subcontractor"],
@@ -740,6 +779,14 @@ function BiddingPage() {
                   />
                 </FormField>
               ))}
+              <FormField stacked label="Pre-bid meeting">
+                <input
+                  type="datetime-local"
+                  className="input input-bordered w-full"
+                  value={pkgForm.prebid_meeting_at}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, prebid_meeting_at: e.target.value }))}
+                />
+              </FormField>
               <FormField stacked label="GC contact name">
                 <input
                   className="input input-bordered w-full"
@@ -753,6 +800,13 @@ function BiddingPage() {
                   className="input input-bordered w-full"
                   value={pkgForm.contact_email}
                   onChange={(e) => setPkgForm((p) => ({ ...p, contact_email: e.target.value }))}
+                />
+              </FormField>
+              <FormField stacked label="GC contact phone">
+                <input
+                  className="input input-bordered w-full"
+                  value={pkgForm.contact_phone}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, contact_phone: e.target.value }))}
                 />
               </FormField>
             </div>
@@ -897,14 +951,52 @@ function BiddingPage() {
               </SectionCard>
 
               <SectionCard title="Project detail for bidders">
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  <div className="rounded-lg border border-base-300 bg-base-200/30 p-4 space-y-4">
+                    <h3 className="font-semibold">Scope of work</h3>
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-1">
+                        Summary
+                      </h4>
+                      <p className="text-sm whitespace-pre-wrap opacity-90">
+                        {selected.scope_of_work?.trim() || "—"}
+                      </p>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-1">
+                          Inclusions
+                        </h4>
+                        <p className="text-sm whitespace-pre-wrap opacity-90">
+                          {selected.scope_inclusions?.trim() || "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-1">
+                          Exclusions
+                        </h4>
+                        <p className="text-sm whitespace-pre-wrap opacity-90">
+                          {selected.scope_exclusions?.trim() || "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-1">
+                        Work quantities / takeoff
+                      </h4>
+                      <p className="text-sm whitespace-pre-wrap opacity-90">
+                        {selected.work_quantities?.trim() || "—"}
+                      </p>
+                    </div>
+                  </div>
+
                   {DETAIL_FIELDS.map(({ key, label }) => {
                     const value = selected[key];
-                    if (!value || typeof value !== "string") return null;
+                    const text = typeof value === "string" ? value.trim() : "";
                     return (
                       <div key={key}>
                         <h4 className="font-semibold text-sm mb-1">{label}</h4>
-                        <p className="text-sm whitespace-pre-wrap opacity-90">{value}</p>
+                        <p className="text-sm whitespace-pre-wrap opacity-90">{text || "—"}</p>
                       </div>
                     );
                   })}
@@ -914,9 +1006,15 @@ function BiddingPage() {
               {isSub && selected.status === "open" ? (
                 <SectionCard title={myBid ? "Update your bid" : "Submit a bid"}>
                   <p className="text-sm opacity-70 mb-3 md:col-span-2">
-                    License number, state, and expiration date are required with every bid.
+                    Include your company and contact information, plus license number, state, and
+                    expiration with every bid.
                   </p>
                   <form onSubmit={onSubmitBid} className="grid gap-3 md:grid-cols-2">
+                    <div className="md:col-span-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-1">
+                        Company information
+                      </p>
+                    </div>
                     <FormField label="Company name">
                       <input
                         className="input input-bordered"
@@ -925,6 +1023,41 @@ function BiddingPage() {
                         required
                       />
                     </FormField>
+                    <div className="md:col-span-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-1">
+                        Contact information
+                      </p>
+                    </div>
+                    <FormField label="Contact name">
+                      <input
+                        className="input input-bordered"
+                        value={bidForm.contact_name}
+                        onChange={(e) => setBidForm((p) => ({ ...p, contact_name: e.target.value }))}
+                        required
+                      />
+                    </FormField>
+                    <FormField label="Contact email">
+                      <input
+                        type="email"
+                        className="input input-bordered"
+                        value={bidForm.contact_email}
+                        onChange={(e) => setBidForm((p) => ({ ...p, contact_email: e.target.value }))}
+                        required
+                      />
+                    </FormField>
+                    <FormField label="Contact phone">
+                      <input
+                        className="input input-bordered"
+                        value={bidForm.contact_phone}
+                        onChange={(e) => setBidForm((p) => ({ ...p, contact_phone: e.target.value }))}
+                        required
+                      />
+                    </FormField>
+                    <div className="md:col-span-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide opacity-60 mb-1">
+                        Bid details
+                      </p>
+                    </div>
                     <FormField label="Bid amount">
                       <input
                         type="number"
@@ -1007,6 +1140,16 @@ function BiddingPage() {
                 <SectionCard title="Your submitted bid">
                   <div className="text-sm space-y-1">
                     <div>
+                      <span className="opacity-60">Company: </span>
+                      {myBid.company_name}
+                    </div>
+                    <div>
+                      <span className="opacity-60">Contact: </span>
+                      {[myBid.contact_name, myBid.contact_email, myBid.contact_phone]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </div>
+                    <div>
                       <span className="opacity-60">Amount: </span>
                       {money(myBid.amount)}
                     </div>
@@ -1027,11 +1170,11 @@ function BiddingPage() {
                 </SectionCard>
               ) : null}
 
-              {canManage ? (
+              {canReview ? (
                 <SectionCard
                   title={`Received bids (${packageBids.length})`}
                   actions={
-                    selected.status === "open" || selected.status === "closed" ? (
+                    canManage && (selected.status === "open" || selected.status === "closed") ? (
                       <button
                         type="button"
                         className="btn btn-primary btn-xs"
@@ -1159,6 +1302,7 @@ function BiddingPage() {
                         <thead>
                           <tr>
                             <th>Company</th>
+                            <th className="hidden lg:table-cell">Contact</th>
                             <th className="hidden xl:table-cell">Rating</th>
                             <th>Amount</th>
                             <th className="hidden xl:table-cell">Days</th>
@@ -1179,6 +1323,11 @@ function BiddingPage() {
                                       {vendor.notes}
                                     </div>
                                   ) : null}
+                                </td>
+                                <td className="text-xs hidden lg:table-cell">
+                                  {[bid.contact_name, bid.contact_email, bid.contact_phone]
+                                    .filter(Boolean)
+                                    .join(" · ") || "—"}
                                 </td>
                                 <td className="hidden xl:table-cell">
                                   <StarRating value={vendor.rating} size="xs" />
@@ -1334,7 +1483,7 @@ function BiddingPage() {
                     </td>
                     <td className="hidden xl:table-cell">{bid.days_to_complete ?? "—"}</td>
                     <td>
-                      {canManage ? (
+                      {canReview ? (
                         <button
                           type="button"
                           className="btn btn-ghost btn-xs"
