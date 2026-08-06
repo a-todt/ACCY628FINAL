@@ -419,11 +419,28 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
   return null;
 }
 
-export function isNavItemActive(pathname: string, href: string): boolean {
+export function isNavItemActive(
+  pathname: string,
+  href: string,
+  search = ""
+): boolean {
   if (href === "/dashboard") return pathname === "/dashboard";
-  if (href === "/management") return pathname.startsWith("/management");
-  if (href.startsWith("/management?")) {
-    return pathname.startsWith("/management");
+  if (href === "/management" || href.startsWith("/management?")) {
+    const onManagement =
+      pathname.startsWith("/management") || pathname.startsWith("/audit-log");
+    if (!onManagement) return false;
+
+    const hrefTab = new URL(href, "http://local").searchParams.get("tab");
+    const currentParams = new URLSearchParams(
+      search.startsWith("?") ? search.slice(1) : search
+    );
+    const currentTab = pathname.startsWith("/audit-log")
+      ? "audit"
+      : currentParams.get("tab");
+
+    // Overview is the default when `tab` is missing.
+    if (!hrefTab) return !currentTab || currentTab === "overview";
+    return currentTab === hrefTab;
   }
   if (href === "/contracts") {
     return (

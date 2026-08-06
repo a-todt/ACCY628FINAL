@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -40,6 +40,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { effectiveRole, loading } = useAuth();
   const access = useAccessStatus();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
 
   const primary = primaryNavForRole(effectiveRole);
   const activeCategory = categoryFromPath(pathname);
@@ -90,7 +92,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                                 <li key={sub.href}>
                                   <Link
                                     href={sub.href}
-                                    className={isNavItemActive(pathname, sub.href) ? "active" : ""}
+                                    className={
+                                      isNavItemActive(pathname, sub.href, search) ? "active" : ""
+                                    }
                                   >
                                     {sub.label}
                                   </Link>
@@ -154,7 +158,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         href={item.href}
                         role="tab"
                         className={`tab whitespace-nowrap transition-colors ${
-                          isNavItemActive(pathname, item.href)
+                          isNavItemActive(pathname, item.href, search)
                             ? "tab-active nav-tab-active"
                             : "opacity-70 hover:opacity-100"
                         }`}
