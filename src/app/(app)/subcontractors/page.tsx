@@ -834,16 +834,23 @@ export default function SubcontractorsPage() {
                           </div>
                         </td>
                         <td className="min-w-0 px-1 text-left">
-                          <Link
-                            href={`/contracts/${sub.contract_id}`}
-                            className="link link-primary block truncate font-medium"
-                            title={sub.contracts?.contract_name ?? "Project details"}
-                          >
-                            <span className="inline-flex max-w-full items-center gap-1">
+                          {sub.contract_id ? (
+                            <Link
+                              href={`/contracts/${sub.contract_id}`}
+                              className="link link-primary block truncate font-medium"
+                              title={sub.contracts?.contract_name ?? "Project details"}
+                            >
+                              <span className="inline-flex max-w-full items-center gap-1">
+                                <Building2 className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                                <span className="truncate">{sub.contracts?.contract_name ?? "—"}</span>
+                              </span>
+                            </Link>
+                          ) : (
+                            <span className="inline-flex max-w-full items-center gap-1 text-sm opacity-70">
                               <Building2 className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                              <span className="truncate">{sub.contracts?.contract_name ?? "—"}</span>
+                              <span className="truncate">Open bidder (no project yet)</span>
                             </span>
-                          </Link>
+                          )}
                         </td>
                         <td className="truncate px-1 text-center" title={sub.trade ?? "—"}>
                           {sub.trade ?? "—"}
@@ -978,9 +985,13 @@ export default function SubcontractorsPage() {
             <div className="grid sm:grid-cols-2 gap-3 text-sm">
               <DetailField label="Company">{viewing.company_name}</DetailField>
               <DetailField label="Project">
-                <Link href={`/contracts/${viewing.contract_id}`} className="link link-primary">
-                  {viewing.contracts?.contract_name ?? "—"}
-                </Link>
+                {viewing.contract_id ? (
+                  <Link href={`/contracts/${viewing.contract_id}`} className="link link-primary">
+                    {viewing.contracts?.contract_name ?? "—"}
+                  </Link>
+                ) : (
+                  "Open bidder (no project yet)"
+                )}
               </DetailField>
               <DetailField label="Trade">{viewing.trade ?? "—"}</DetailField>
               <DetailField label="Status">{labelize(viewing.status)}</DetailField>

@@ -113,7 +113,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   const locked =
     access.status === "locked" ||
-    access.status === "needs_invite" ||
+    (access.status === "needs_invite" && access.role !== "subcontractor") ||
     access.status === "needs_client_setup" ||
     access.status === "needs_email";
 

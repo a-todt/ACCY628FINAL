@@ -371,9 +371,9 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
         label: "Costing and Invoicing",
         show: canViewFinance(role),
       },
-      {
+        {
         id: "subcontracting" as const,
-        href: canViewSubcontractors(role) ? "/subcontractors" : "/bidding",
+        href: role === "subcontractor" ? "/bidding" : canViewSubcontractors(role) ? "/subcontractors" : "/bidding",
         label: "Subcontracting",
         show: showSubcontracting,
       },
@@ -581,6 +581,7 @@ export function statusBadgeClass(status: string): string {
     case "on_hold":
     case "submitted":
     case "draft":
+    case "prospect":
       return "badge-warning";
     case "overdue":
     case "rejected":

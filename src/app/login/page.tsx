@@ -48,6 +48,7 @@ function LoginPage() {
   const [companyName, setCompanyName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [projectInterest, setProjectInterest] = useState("");
+  const [trade, setTrade] = useState("");
   const [accountType, setAccountType] = useState<UserRole>("field_supervisor");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -62,6 +63,26 @@ function LoginPage() {
     if (fromLink) setError(fromLink);
   }, [searchParams]);
 
+  const ensureBidderDirectory = async (
+    userId: string,
+    meta?: {
+      company_name?: string | null;
+      contact_name?: string | null;
+      contact_email?: string | null;
+      contact_phone?: string | null;
+      trade?: string | null;
+    }
+  ) => {
+    const { error: dirError } = await supabase.rpc("ensure_subcontractor_directory_row", {
+      p_user_id: userId,
+      p_company_name: meta?.company_name?.trim() || fullName.trim() || email,
+      p_contact_name: meta?.contact_name?.trim() || fullName.trim() || null,
+      p_contact_email: meta?.contact_email?.trim() || email || null,
+      p_contact_phone: meta?.contact_phone?.trim() || contactPhone.trim() || null,
+      p_trade: meta?.trade?.trim() || trade.trim() || null,
+    });
+    if (dirError) console.warn(dirError.message);
+  };
   const looksLikeClientId = (value: string) => {
     const v = value.trim();
     return /^CLT-/i.test(v) || (!v.includes("@") && /^[A-Z0-9-]{6,}$/i.test(v) && !v.includes("."));
@@ -109,39 +130,119 @@ function LoginPage() {
 
       if (mode === "login") {
         const resolvedEmail = await resolveLoginEmail(loginId);
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: resolvedEmail,
           password,
         });
         if (signInError) throw signInError;
-        const landing = loadUserPreferences().defaultLandingPage || "/dashboard";
+
+        // Ensure intended signup role sticks (e.g. subcontractor) if profile still defaulted.
+        const signedIn = signInData.user;
+        const intended = String(signedIn?.user_metadata?.intended_role ?? "");
+        if (
+          signedIn?.id &&
+          (intended === "subcontractor" || intended === "client" || intended === "project_manager" || intended === "field_supervisor")
+        ) {
+          await supabase
+            .from("user_profiles")
+            .update({
+              role: intended,
+              ...(intended === "subcontractor" ? { onboarding_complete: true } : {}),
+            })
+            .eq("id", signedIn.id);
+        }
+
+        if (signedIn?.id && (intended === "subcontractor" || signInData.user?.user_metadata?.intended_role === "subcontractor")) {
+          const meta = signedIn.user_metadata ?? {};
+          await ensureBidderDirectory(signedIn.id, {
+            company_name: (meta.company_name as string) || (meta.full_name as string) || null,
+            contact_name: (meta.contact_name as string) || (meta.full_name as string) || null,
+            contact_email: signedIn.email ?? null,
+            contact_phone: (meta.contact_phone as string) || null,
+            trade: (meta.trade as string) || null,
+          });
+        }
+
+        // Also ensure directory when profile role is already subcontractor
+        if (signedIn?.id) {
+          const { data: profileRow } = await supabase
+            .from("user_profiles")
+            .select("role, full_name, email")
+            .eq("id", signedIn.id)
+            .maybeSingle();
+          if (profileRow?.role === "subcontractor") {
+            await ensureBidderDirectory(signedIn.id, {
+              company_name: profileRow.full_name,
+              contact_name: profileRow.full_name,
+              contact_email: profileRow.email ?? signedIn.email,
+            });
+          }
+        }
+
+        const landing =
+          intended === "subcontractor"
+            ? "/bidding"
+            : loadUserPreferences().defaultLandingPage || "/dashboard";
         router.replace(landing);
         router.refresh();
         return;
       }
 
+      if (accountType === "subcontractor" && !companyName.trim() && !fullName.trim()) {
+        throw new Error("Enter your company or business name.");
+      }
+
+      const signupCompany = (companyName.trim() || fullName.trim());
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName, intended_role: accountType } },
+        options: {
+          data: {
+            full_name: fullName.trim() || signupCompany,
+            intended_role: accountType,
+            company_name: accountType === "subcontractor" ? signupCompany : undefined,
+            contact_name: fullName.trim() || signupCompany,
+            contact_phone: accountType === "subcontractor" ? contactPhone.trim() || undefined : undefined,
+            trade: accountType === "subcontractor" ? trade.trim() || undefined : undefined,
+          },
+        },
       });
       if (signUpError) throw signUpError;
 
       const userId = data.user?.id;
       if (userId) {
+        // Prefer updating while session exists; handle_new_user also sets intended_role.
         const { error: profileError } = await supabase
           .from("user_profiles")
           .update({
-            full_name: fullName.trim() || null,
+            full_name: (fullName.trim() || signupCompany) || null,
             secondary_name: secondaryName.trim() || null,
             role: accountType,
-            onboarding_complete: false,
+            onboarding_complete: accountType === "subcontractor",
             email,
           })
           .eq("id", userId);
         if (profileError) {
           console.warn(profileError.message);
         }
+
+        if (accountType === "subcontractor") {
+          await ensureBidderDirectory(userId, {
+            company_name: signupCompany,
+            contact_name: fullName.trim() || signupCompany,
+            contact_email: email,
+            contact_phone: contactPhone.trim() || null,
+            trade: trade.trim() || null,
+          });
+        }
+      }
+
+      // Subcontractors can enter the app immediately when signup returns a session.
+      if (accountType === "subcontractor" && data.session) {
+        setMessage("Account created. Opening Bidding…");
+        router.replace("/bidding");
+        router.refresh();
+        return;
       }
 
       let clientNote = "";
@@ -171,7 +272,7 @@ function LoginPage() {
         accountType === "client"
           ? `Account created.${clientNote}`
           : accountType === "subcontractor"
-            ? "Account created. Sign in, then enter your invite code from your GC."
+            ? "Account created. Sign in and open Bidding to bid on open packages. You can link a GC invite later when you are awarded a project."
             : "Account created. Sign in — your Owner must assign you to a project before you can work."
       );
       setMode("login");
@@ -317,7 +418,7 @@ function LoginPage() {
                     )}
                     <FormField
                       label="Account type"
-                      hint="Clients can register without a prior invite, then message us. Subcontractors need an invite code after sign-in."
+                      hint="Clients can register without a prior invite, then message us. Subcontractors can register to bid; a GC invite links you to a project when awarded."
                     >
                       <select
                         className="select select-bordered"
@@ -331,6 +432,40 @@ function LoginPage() {
                         ))}
                       </select>
                     </FormField>
+                    {accountType === "subcontractor" ? (
+                      <>
+                        <FormField
+                          label="Company / business name"
+                          hint="Shown on the subcontractors list and with your bids."
+                        >
+                          <input
+                            className="input input-bordered"
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                            required
+                            autoComplete="organization"
+                            placeholder="Acme Electric LLC"
+                          />
+                        </FormField>
+                        <FormField label="Trade (optional)">
+                          <input
+                            className="input input-bordered"
+                            value={trade}
+                            onChange={(e) => setTrade(e.target.value)}
+                            placeholder="Electrical, HVAC, Concrete…"
+                          />
+                        </FormField>
+                        <FormField label="Phone (optional)">
+                          <input
+                            className="input input-bordered"
+                            value={contactPhone}
+                            onChange={(e) => setContactPhone(e.target.value)}
+                            autoComplete="tel"
+                            placeholder="312-555-0100"
+                          />
+                        </FormField>
+                      </>
+                    ) : null}
                     <FormField label="Email">
                       <input
                         type="email"

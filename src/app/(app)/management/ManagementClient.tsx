@@ -1004,7 +1004,7 @@ export default function ManagementPage() {
       const { error: updateError } = await supabase
         .from("subcontractors")
         .update({
-          contract_id: String(form.get("contract_id") || ""),
+          contract_id: String(form.get("contract_id") || "").trim() || null,
           company_name: String(form.get("company_name") || "").trim(),
           contact_name: String(form.get("contact_name") || "").trim() || null,
           contact_email: String(form.get("contact_email") || "").trim() || null,
@@ -2458,7 +2458,10 @@ export default function ManagementPage() {
                             <div className="opacity-60">{sub.contact_name || "—"}</div>
                             <div className="break-all opacity-60">{sub.contact_email || "—"}</div>
                           </td>
-                          <td className="px-1 break-words">{sub.contracts?.contract_name ?? "—"}</td>
+                          <td className="px-1 break-words">
+                            {sub.contracts?.contract_name ??
+                              (sub.contract_id ? "—" : "Open bidder (no project yet)")}
+                          </td>
                           <td className="px-1 break-words">{sub.trade || "—"}</td>
                           <td className="px-1 break-words">
                             <div>
@@ -2767,7 +2770,12 @@ export default function ManagementPage() {
                 <form onSubmit={onSaveSubcontractor} className="mt-4 grid gap-3 md:grid-cols-2">
                   <label className="form-control">
                     <span className="label-text mb-1 text-sm font-medium">Contract</span>
-                    <select name="contract_id" className="select select-bordered w-full" required defaultValue={editingSubcontractor.contract_id}>
+                    <select
+                      name="contract_id"
+                      className="select select-bordered w-full"
+                      defaultValue={editingSubcontractor.contract_id ?? ""}
+                    >
+                      <option value="">Open bidder (no project yet)</option>
                       {admin.contracts.map((contract) => (
                         <option key={contract.id} value={contract.id}>{contract.contract_name}</option>
                       ))}
