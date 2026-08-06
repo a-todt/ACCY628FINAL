@@ -535,9 +535,9 @@ export default function ContractsPage() {
                 <col className="w-[10%]" />
                 <col className="w-[8%]" />
                 <col className="w-[10%]" />
-                <col className="w-[8%]" />
-                <col className="w-[8%]" />
-                {showCosts ? <col className="w-[9%]" /> : null}
+                <col className="w-[8%] hidden xl:table-column" />
+                <col className="w-[8%] hidden xl:table-column" />
+                {showCosts ? <col className="w-[9%] hidden xl:table-column" /> : null}
                 <col className="w-[8%]" />
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
@@ -603,6 +603,7 @@ export default function ContractsPage() {
                     sortDir={sortDir}
                     onSort={() => onSort("billed")}
                     align="right"
+                    className="hidden xl:table-cell"
                   />
                   <ColumnSortHeader
                     label="Collected"
@@ -610,6 +611,7 @@ export default function ContractsPage() {
                     sortDir={sortDir}
                     onSort={() => onSort("collected")}
                     align="right"
+                    className="hidden xl:table-cell"
                   />
                   {showCosts ? (
                     <ColumnSortHeader
@@ -618,6 +620,7 @@ export default function ContractsPage() {
                       sortDir={sortDir}
                       onSort={() => onSort("profit")}
                       align="right"
+                      className="hidden xl:table-cell"
                     />
                   ) : null}
                   <ColumnSortHeader
@@ -672,18 +675,27 @@ export default function ContractsPage() {
                           {labelize(contract.status)}
                         </span>
                       </td>
-                      <td className="truncate px-1 text-center" title={money(metrics.revisedValue)}>
+                      <td
+                        className="truncate px-1 text-center"
+                        title={[
+                          `Billed: ${money(metrics.totalBilled)}`,
+                          `Collected: ${money(metrics.totalCollected)}`,
+                          showCosts ? `Gross profit: ${money(metrics.grossProfit)}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      >
                         {money(metrics.revisedValue)}
                       </td>
-                      <td className="truncate px-1 text-center" title={money(metrics.totalBilled)}>
+                      <td className="truncate px-1 text-center hidden xl:table-cell" title={money(metrics.totalBilled)}>
                         {money(metrics.totalBilled)}
                       </td>
-                      <td className="truncate px-1 text-center" title={money(metrics.totalCollected)}>
+                      <td className="truncate px-1 text-center hidden xl:table-cell" title={money(metrics.totalCollected)}>
                         {money(metrics.totalCollected)}
                       </td>
                       {showCosts ? (
                         <td
-                          className={`truncate px-1 text-center ${metrics.grossProfit < 0 ? "text-error" : ""}`}
+                          className={`truncate px-1 text-center hidden xl:table-cell ${metrics.grossProfit < 0 ? "text-error" : ""}`}
                           title={money(metrics.grossProfit)}
                         >
                           {money(metrics.grossProfit)}
@@ -957,10 +969,10 @@ function FieldSupervisorContracts({
                 <tr>
                   <th>Contract</th>
                   <th>Client</th>
-                  <th>Location</th>
-                  <th>Type</th>
+                  <th className="hidden xl:table-cell">Location</th>
+                  <th className="hidden xl:table-cell">Type</th>
                   <th>Status</th>
-                  <th>Schedule</th>
+                  <th className="hidden xl:table-cell">Schedule</th>
                   <th>Access</th>
                 </tr>
               </thead>
@@ -968,20 +980,35 @@ function FieldSupervisorContracts({
                 {filtered.map((contract) => (
                   <tr key={contract.id} className="hover:bg-base-200/60">
                     <td>
-                      <span className="inline-flex items-center gap-2 font-medium">
+                      <span
+                        className="inline-flex items-center gap-2 font-medium"
+                        title={[
+                          [contract.city, contract.state].filter(Boolean).join(", ") || null,
+                          contract.contract_type ? labelize(contract.contract_type) : null,
+                          formatContractDates(contract),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      >
                         <Building2 className="h-4 w-4 opacity-50" />
                         {contract.contract_name}
                       </span>
                     </td>
                     <td>{contract.client_name ?? "—"}</td>
-                    <td>{[contract.city, contract.state].filter(Boolean).join(", ") || "—"}</td>
-                    <td>{contract.contract_type ? labelize(contract.contract_type) : "—"}</td>
+                    <td className="hidden xl:table-cell">
+                      {[contract.city, contract.state].filter(Boolean).join(", ") || "—"}
+                    </td>
+                    <td className="hidden xl:table-cell">
+                      {contract.contract_type ? labelize(contract.contract_type) : "—"}
+                    </td>
                     <td>
                       <span className={`badge badge-sm ${statusBadgeClass(contract.status)}`}>
                         {labelize(contract.status)}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap">{formatContractDates(contract)}</td>
+                    <td className="whitespace-nowrap hidden xl:table-cell">
+                      {formatContractDates(contract)}
+                    </td>
                     <td>
                       <ContractAccessAction contract={contract} compact />
                     </td>

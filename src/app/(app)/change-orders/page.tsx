@@ -596,12 +596,12 @@ export default function ChangeOrdersPage() {
                 <col className="w-[13%]" />
                 <col className="w-[7%]" />
                 <col className="w-[15%]" />
-                <col className="w-[13%]" />
+                <col className="w-[13%] hidden xl:table-column" />
                 <col className="w-[8%]" />
                 <col className="w-[8%]" />
                 <col className="w-[8%]" />
-                <col className="w-[8%]" />
-                {!isClient ? <col className="w-[10%]" /> : null}
+                <col className="w-[8%] hidden xl:table-column" />
+                {!isClient ? <col className="w-[10%] hidden xl:table-column" /> : null}
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
               <thead>
@@ -638,7 +638,7 @@ export default function ChangeOrdersPage() {
                     onSort={() => onSort("number")}
                   />
                   <ColumnSortHeader label="Description" />
-                  <ColumnSortHeader label="Reason" />
+                  <ColumnSortHeader label="Reason" className="hidden xl:table-cell" />
                   <ColumnSortHeader
                     label="Amount"
                     sortActive={sortKey === "amount"}
@@ -657,8 +657,10 @@ export default function ChangeOrdersPage() {
                     sortDir={sortDir}
                     onSort={() => onSort("submitted")}
                   />
-                  <ColumnSortHeader label="Resolved" />
-                  {!isClient ? <ColumnSortHeader label="Notes" /> : null}
+                  <ColumnSortHeader label="Resolved" className="hidden xl:table-cell" />
+                  {!isClient ? (
+                    <ColumnSortHeader label="Notes" className="hidden xl:table-cell" />
+                  ) : null}
                   {canMutate ? <th className="text-center align-middle">Actions</th> : null}
                 </tr>
               </thead>
@@ -705,10 +707,23 @@ export default function ChangeOrdersPage() {
                           {co.change_order_number ?? "View"}
                         </button>
                       </td>
-                      <td className="truncate px-1 text-left" title={co.description ?? "—"}>
+                      <td
+                        className="truncate px-1 text-left"
+                        title={[
+                          co.description ?? "—",
+                          co.reason ? `Reason: ${co.reason}` : null,
+                          co.date_resolved ? `Resolved: ${co.date_resolved}` : null,
+                          !isClient && co.notes ? `Notes: ${co.notes}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      >
                         {co.description ?? "—"}
                       </td>
-                      <td className="truncate px-1 text-left" title={co.reason ?? "—"}>
+                      <td
+                        className="truncate px-1 text-left hidden xl:table-cell"
+                        title={co.reason ?? "—"}
+                      >
                         {co.reason ?? "—"}
                       </td>
                       <td className="truncate px-1 text-center">{money(co.amount)}</td>
@@ -718,9 +733,14 @@ export default function ChangeOrdersPage() {
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-1 text-center">{co.date_submitted ?? "—"}</td>
-                      <td className="whitespace-nowrap px-1 text-center">{co.date_resolved ?? "—"}</td>
+                      <td className="whitespace-nowrap px-1 text-center hidden xl:table-cell">
+                        {co.date_resolved ?? "—"}
+                      </td>
                       {!isClient ? (
-                        <td className="truncate px-1 text-center" title={co.notes ?? "—"}>
+                        <td
+                          className="truncate px-1 text-center hidden xl:table-cell"
+                          title={co.notes ?? "—"}
+                        >
                           {co.notes ?? "—"}
                         </td>
                       ) : null}

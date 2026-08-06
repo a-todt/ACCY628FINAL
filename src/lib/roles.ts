@@ -271,6 +271,7 @@ export type NavCategoryId =
   | "alerts"
   | "reports"
   | "contracts"
+  | "subcontracting"
   | "finance"
   | "management";
 
@@ -280,6 +281,7 @@ export interface NavItem {
 }
 
 export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCategoryId }> {
+  const showSubcontracting = canViewSubcontractors(role) || canViewBidding(role);
   return (
     [
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
@@ -296,6 +298,12 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
         href: "/finance",
         label: "Costing and Invoicing",
         show: canViewFinance(role),
+      },
+      {
+        id: "subcontracting" as const,
+        href: canViewSubcontractors(role) ? "/subcontractors" : "/bidding",
+        label: "Subcontracting",
+        show: showSubcontracting,
       },
       {
         id: "management" as const,
@@ -329,6 +337,20 @@ export function secondaryNavForCategory(
           show: canViewChangeOrders(role),
         },
         {
+          href: "/field-logs",
+          label: "Field Logs",
+          show: canViewFieldLogs(role),
+        },
+      ] as Array<NavItem & { show: boolean }>
+    )
+      .filter((item) => item.show)
+      .map(({ href, label }) => ({ href, label }));
+  }
+
+  if (category === "subcontracting") {
+    return (
+      [
+        {
           href: "/subcontractors",
           label: "Subcontractors",
           show: canViewSubcontractors(role),
@@ -337,11 +359,6 @@ export function secondaryNavForCategory(
           href: "/bidding",
           label: "Bidding",
           show: canViewBidding(role),
-        },
-        {
-          href: "/field-logs",
-          label: "Field Logs",
-          show: canViewFieldLogs(role),
         },
       ] as Array<NavItem & { show: boolean }>
     )
@@ -387,11 +404,12 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (pathname.startsWith("/reports")) return "reports";
   if (pathname.startsWith("/admin")) return "reports";
   if (pathname.startsWith("/audit-log") || pathname.startsWith("/management")) return "management";
+  if (pathname.startsWith("/subcontractors") || pathname.startsWith("/bidding")) {
+    return "subcontracting";
+  }
   if (
     pathname.startsWith("/contracts") ||
     pathname.startsWith("/change-orders") ||
-    pathname.startsWith("/subcontractors") ||
-    pathname.startsWith("/bidding") ||
     pathname.startsWith("/field-logs")
   ) {
     return "contracts";

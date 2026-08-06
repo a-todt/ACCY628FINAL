@@ -405,13 +405,13 @@ export default function FieldLogsPage() {
                 <tr>
                   <th>Date</th>
                   <th>Project</th>
-                  <th>Submitted By</th>
+                  <th className="hidden xl:table-cell">Submitted By</th>
                   <th>Work Performed</th>
                   <th className="text-right">Estimated Hours</th>
-                  <th className="text-right">Workers</th>
-                  <th>Weather</th>
+                  <th className="text-right hidden xl:table-cell">Workers</th>
+                  <th className="hidden xl:table-cell">Weather</th>
                   <th>Status</th>
-                  <th>Issues</th>
+                  <th className="hidden xl:table-cell">Issues</th>
                   <th className="text-right">Files</th>
                   {canManage ? <th className="text-right">Actions</th> : null}
                 </tr>
@@ -425,15 +425,27 @@ export default function FieldLogsPage() {
                     <tr className={status === "canceled" ? "opacity-60" : undefined}>
                       <td className="whitespace-nowrap">{log.log_date ?? "—"}</td>
                       <td>{log.contracts?.contract_name ?? "—"}</td>
-                      <td>
+                      <td className="hidden xl:table-cell">
                         {userProfiles.find((p) => p.id === log.user_id)?.full_name ??
                           userProfiles.find((p) => p.id === log.user_id)?.email ??
                           "—"}
                       </td>
-                      <td className="max-w-xs truncate">{log.work_performed ?? "—"}</td>
+                      <td
+                        className="max-w-xs truncate"
+                        title={[
+                          log.work_performed ?? "—",
+                          log.workers_on_site != null ? `Workers: ${log.workers_on_site}` : null,
+                          log.weather_conditions ? `Weather: ${log.weather_conditions}` : null,
+                          log.issues_or_delays ? `Issues: ${log.issues_or_delays}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      >
+                        {log.work_performed ?? "—"}
+                      </td>
                       <td className="text-right">{log.hours_worked ?? "—"}</td>
-                      <td className="text-right">{log.workers_on_site ?? "—"}</td>
-                      <td>
+                      <td className="text-right hidden xl:table-cell">{log.workers_on_site ?? "—"}</td>
+                      <td className="hidden xl:table-cell">
                         <WeatherBadge weather={log.weather_conditions} />
                       </td>
                       <td>
@@ -441,7 +453,9 @@ export default function FieldLogsPage() {
                           {labelize(status)}
                         </span>
                       </td>
-                      <td className="max-w-xs truncate">{log.issues_or_delays ?? "—"}</td>
+                      <td className="max-w-xs truncate hidden xl:table-cell">
+                        {log.issues_or_delays ?? "—"}
+                      </td>
                       <td className="text-right">
                         <button
                           type="button"

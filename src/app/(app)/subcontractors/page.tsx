@@ -693,9 +693,9 @@ export default function SubcontractorsPage() {
                 <col className="w-[16%]" />
                 <col className="w-[16%]" />
                 <col className="w-[10%]" />
-                <col className="w-[14%]" />
+                <col className="w-[14%] hidden xl:table-column" />
                 <col className="w-[10%]" />
-                <col className="w-[10%]" />
+                <col className="w-[10%] hidden xl:table-column" />
                 <col className="w-[10%]" />
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
@@ -738,7 +738,7 @@ export default function SubcontractorsPage() {
                     sortDir={sortDir}
                     onSort={() => onSort("trade")}
                   />
-                  <ColumnSortHeader label="Contact" />
+                  <ColumnSortHeader label="Contact" className="hidden xl:table-cell" />
                   <ColumnSortHeader
                     label="Value"
                     sortActive={sortKey === "value"}
@@ -750,6 +750,7 @@ export default function SubcontractorsPage() {
                     sortActive={sortKey === "paid"}
                     sortDir={sortDir}
                     onSort={() => onSort("paid")}
+                    className="hidden xl:table-cell"
                   />
                   <ColumnSortHeader
                     label="Status"
@@ -811,11 +812,21 @@ export default function SubcontractorsPage() {
                         <td className="truncate px-1 text-center" title={sub.trade ?? "—"}>
                           {sub.trade ?? "—"}
                         </td>
-                        <td className="truncate px-1 text-left" title={contactLabel(sub)}>
+                        <td
+                          className="truncate px-1 text-left hidden xl:table-cell"
+                          title={contactLabel(sub)}
+                        >
                           {contactLabel(sub)}
                         </td>
-                        <td className="truncate px-1 text-center">{money(sub.subcontract_value)}</td>
-                        <td className="truncate px-1 text-center">{money(sub.amount_paid)}</td>
+                        <td
+                          className="truncate px-1 text-center"
+                          title={`Paid: ${money(sub.amount_paid)} · Contact: ${contactLabel(sub)}`}
+                        >
+                          {money(sub.subcontract_value)}
+                        </td>
+                        <td className="truncate px-1 text-center hidden xl:table-cell">
+                          {money(sub.amount_paid)}
+                        </td>
                         <td className="px-1 text-center">
                           <div className="inline-flex flex-wrap items-center justify-center gap-1">
                             <span className={`badge badge-sm ${statusBadgeClass(sub.status)}`}>

@@ -1159,10 +1159,10 @@ function BiddingPage() {
                         <thead>
                           <tr>
                             <th>Company</th>
-                            <th>Rating</th>
+                            <th className="hidden xl:table-cell">Rating</th>
                             <th>Amount</th>
-                            <th>Days</th>
-                            <th>License</th>
+                            <th className="hidden xl:table-cell">Days</th>
+                            <th className="hidden xl:table-cell">License</th>
                             <th>Status</th>
                             <th />
                           </tr>
@@ -1180,12 +1180,26 @@ function BiddingPage() {
                                     </div>
                                   ) : null}
                                 </td>
-                                <td>
+                                <td className="hidden xl:table-cell">
                                   <StarRating value={vendor.rating} size="xs" />
                                 </td>
-                                <td>{money(bid.amount)}</td>
-                                <td>{bid.days_to_complete ?? "—"}</td>
-                                <td className="text-xs">
+                                <td
+                                  title={[
+                                    vendor.rating != null ? `Rating: ${vendor.rating}` : null,
+                                    bid.days_to_complete != null
+                                      ? `Days: ${bid.days_to_complete}`
+                                      : null,
+                                    bid.license_number
+                                      ? `License: ${bid.license_number} (${bid.license_state ?? "—"})`
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                >
+                                  {money(bid.amount)}
+                                </td>
+                                <td className="hidden xl:table-cell">{bid.days_to_complete ?? "—"}</td>
+                                <td className="text-xs hidden xl:table-cell">
                                   {bid.license_number ? (
                                     <div>
                                       <div>
@@ -1275,11 +1289,11 @@ function BiddingPage() {
                   <th>Awarded</th>
                   <th>Package</th>
                   <th>Project</th>
-                  <th>Trade</th>
+                  <th className="hidden xl:table-cell">Trade</th>
                   <th>Winner</th>
-                  <th>Rating</th>
+                  <th className="hidden xl:table-cell">Rating</th>
                   <th>Amount</th>
-                  <th>Days</th>
+                  <th className="hidden xl:table-cell">Days</th>
                   <th />
                 </tr>
               </thead>
@@ -1295,7 +1309,7 @@ function BiddingPage() {
                     <td>{formatDate(pkg?.updated_at ?? bid.updated_at)}</td>
                     <td className="font-medium">{pkg?.title ?? "—"}</td>
                     <td>{pkg?.project_name ?? "—"}</td>
-                    <td>{pkg?.trade ?? "—"}</td>
+                    <td className="hidden xl:table-cell">{pkg?.trade ?? "—"}</td>
                     <td>
                       <div>{bid.company_name}</div>
                       {bid.license_number ? (
@@ -1304,11 +1318,21 @@ function BiddingPage() {
                         </div>
                       ) : null}
                     </td>
-                    <td>
+                    <td className="hidden xl:table-cell">
                       <StarRating value={vendor.rating} size="xs" />
                     </td>
-                    <td>{money(bid.amount)}</td>
-                    <td>{bid.days_to_complete ?? "—"}</td>
+                    <td
+                      title={[
+                        pkg?.trade ? `Trade: ${pkg.trade}` : null,
+                        vendor.rating != null ? `Rating: ${vendor.rating}` : null,
+                        bid.days_to_complete != null ? `Days: ${bid.days_to_complete}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    >
+                      {money(bid.amount)}
+                    </td>
+                    <td className="hidden xl:table-cell">{bid.days_to_complete ?? "—"}</td>
                     <td>
                       {canManage ? (
                         <button

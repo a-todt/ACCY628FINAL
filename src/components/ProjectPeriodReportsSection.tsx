@@ -104,13 +104,19 @@ function MetricCells({
       <td className={`text-right whitespace-nowrap ${row.grossBilled < 0 ? "text-error" : ""}`}>
         {money(row.grossBilled)}
       </td>
-      <td className={`text-right whitespace-nowrap ${row.grossEarned < 0 ? "text-error" : ""}`}>
+      <td
+        className={`text-right whitespace-nowrap hidden xl:table-cell ${row.grossEarned < 0 ? "text-error" : ""}`}
+      >
         {money(row.grossEarned)}
       </td>
       {showWip ? (
         <>
-          <td className="text-right whitespace-nowrap">{moneyCell(row.wipExpenses)}</td>
-          <td className="text-right whitespace-nowrap">{moneyCell(row.wipBilled)}</td>
+          <td className="text-right whitespace-nowrap hidden xl:table-cell">
+            {moneyCell(row.wipExpenses)}
+          </td>
+          <td className="text-right whitespace-nowrap hidden xl:table-cell">
+            {moneyCell(row.wipBilled)}
+          </td>
         </>
       ) : null}
     </>
@@ -192,7 +198,7 @@ function PeriodTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="table table-sm min-w-[1100px]">
+      <table className="table table-sm">
         <thead>
           <tr>
             {groupByMonth ? (
@@ -217,11 +223,11 @@ function PeriodTable({
             <th className="text-right">Earned (period)</th>
             <th className="text-right">Earned (YTD)</th>
             <th className="text-right">Gross (Billed)</th>
-            <th className="text-right">Gross (Earned)</th>
+            <th className="text-right hidden xl:table-cell">Gross (Earned)</th>
             {showWip ? (
               <>
-                <th className="text-right">WIP Exp</th>
-                <th className="text-right">WIP Billed</th>
+                <th className="text-right hidden xl:table-cell">WIP Exp</th>
+                <th className="text-right hidden xl:table-cell">WIP Billed</th>
               </>
             ) : null}
           </tr>

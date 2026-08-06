@@ -47,6 +47,7 @@ export function ColumnSortHeader({
   sortActive = false,
   sortDir = "asc",
   onSort,
+  className,
 }: {
   label: string;
   sortActive?: boolean;
@@ -54,9 +55,11 @@ export function ColumnSortHeader({
   onSort?: () => void;
   /** @deprecated Headers are always centered. */
   align?: "left" | "right" | "center";
+  /** Extra classes on the `<th>` (e.g. `hidden xl:table-cell`). */
+  className?: string;
 }) {
   return (
-    <th className="align-middle px-1 text-center">
+    <th className={["align-middle px-1 text-center", className].filter(Boolean).join(" ")}>
       <div className="flex justify-center">
         <SortLabel label={label} sortActive={sortActive} sortDir={sortDir} onSort={onSort} />
       </div>
@@ -74,6 +77,7 @@ export function ColumnAutocompleteHeader({
   sortActive = false,
   sortDir = "asc",
   onSort,
+  className,
 }: {
   label: string;
   listId: string;
@@ -86,10 +90,12 @@ export function ColumnAutocompleteHeader({
   onSort?: () => void;
   /** @deprecated Headers are always centered. */
   align?: "left" | "right" | "center";
+  /** Extra classes on the `<th>` (e.g. `hidden xl:table-cell`). */
+  className?: string;
 }) {
   const safeOptions = options ?? [];
   return (
-    <th className="align-top px-1 text-center">
+    <th className={["align-top px-1 text-center", className].filter(Boolean).join(" ")}>
       <div className="flex min-w-0 flex-col items-center gap-1">
         <SortLabel label={label} sortActive={sortActive} sortDir={sortDir} onSort={onSort} />
         <input

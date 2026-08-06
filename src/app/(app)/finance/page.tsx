@@ -347,11 +347,11 @@ export default function FinanceOverviewPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Section</th>
+                <th className="hidden xl:table-cell">Section</th>
                 <th>Name</th>
                 <th>Project</th>
                 <th>Status / Category</th>
-                <th>Detail</th>
+                <th className="hidden xl:table-cell">Detail</th>
                 <th className="text-right">Amount</th>
                 <th>Date</th>
               </tr>
@@ -359,13 +359,17 @@ export default function FinanceOverviewPage() {
             <tbody>
               {allRows.map((row) => (
                 <tr key={`${row.section}-${row.id}`} className="hover:bg-base-200/60">
-                  <td>
+                  <td className="hidden xl:table-cell">
                     <span className="badge badge-ghost badge-sm">
                       {row.section === "costs" ? "Cost" : "Invoice"}
                     </span>
                   </td>
                   <td>
-                    <Link href={row.href} className="link link-primary font-medium">
+                    <Link
+                      href={row.href}
+                      className="link link-primary font-medium"
+                      title={`${row.section === "costs" ? "Cost" : "Invoice"} · ${row.detail}`}
+                    >
                       {row.name}
                     </Link>
                   </td>
@@ -379,7 +383,7 @@ export default function FinanceOverviewPage() {
                       <span className="badge badge-ghost badge-sm">{labelize(row.status)}</span>
                     )}
                   </td>
-                  <td className="max-w-[260px] truncate">{row.detail}</td>
+                  <td className="max-w-[260px] truncate hidden xl:table-cell">{row.detail}</td>
                   <td className="text-right">{money(row.amount)}</td>
                   <td className="whitespace-nowrap">{row.date ? String(row.date).slice(0, 10) : "—"}</td>
                 </tr>

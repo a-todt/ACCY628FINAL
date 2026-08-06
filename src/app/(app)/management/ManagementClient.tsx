@@ -1468,13 +1468,27 @@ export default function ManagementPage() {
               <EmptyState title="No staff yet" message="Create users via auth, then they will appear here." />
             ) : (
               <div className="w-full min-w-0 overflow-hidden">
+                <div className="xl:hidden flex flex-wrap gap-2 p-2 border-b border-base-300">
+                  <input
+                    className="input input-bordered input-xs min-w-[8rem] flex-1"
+                    list="team-filter-employee-id-compact"
+                    value={employeeIdFilter}
+                    onChange={(e) => setEmployeeIdFilter(e.target.value)}
+                    placeholder="Filter employee ID…"
+                  />
+                  <datalist id="team-filter-employee-id-compact">
+                    {employeeIdOptions.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
+                  </datalist>
+                </div>
                 <table className="table table-xs table-fixed w-full text-[11px]">
                   <colgroup>
                     <col className="w-[10%]" />
                     <col className="w-[12%]" />
-                    <col className="w-[7%]" />
-                    <col className="w-[8%]" />
-                    <col className="w-[8%]" />
+                    <col className="w-[7%] hidden xl:table-column" />
+                    <col className="w-[8%] hidden xl:table-column" />
+                    <col className="w-[8%] hidden xl:table-column" />
                     <col className="w-[8%]" />
                     <col className="w-[6%]" />
                     <col className="w-[12%]" />
@@ -1513,18 +1527,21 @@ export default function ManagementPage() {
                         sortActive={teamSortKey === "employee_id"}
                         sortDir={teamSortDir}
                         onSort={() => onTeamSort("employee_id")}
+                        className="hidden xl:table-cell"
                       />
                       <ColumnSortHeader
                         label="Title"
                         sortActive={teamSortKey === "title"}
                         sortDir={teamSortDir}
                         onSort={() => onTeamSort("title")}
+                        className="hidden xl:table-cell"
                       />
                       <ColumnSortHeader
                         label="Phone"
                         sortActive={teamSortKey === "phone"}
                         sortDir={teamSortDir}
                         onSort={() => onTeamSort("phone")}
+                        className="hidden xl:table-cell"
                       />
                       <ColumnSortHeader
                         label="Role"
@@ -1577,11 +1594,18 @@ export default function ManagementPage() {
                         const certSummary = nearestCertSummary(p.id);
                         return (
                           <tr key={p.id} className="hover:bg-base-200/60">
-                            <td className="px-1 font-medium break-words">{p.full_name || "—"}</td>
+                            <td
+                              className="px-1 font-medium break-words"
+                              title={[p.employee_id ? `ID: ${p.employee_id}` : null, p.title, p.phone]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            >
+                              {p.full_name || "—"}
+                            </td>
                             <td className="px-1 break-all">{p.email || "—"}</td>
-                            <td className="px-1 break-words">{p.employee_id || "—"}</td>
-                            <td className="px-1 break-words">{p.title || "—"}</td>
-                            <td className="px-1 break-words">{p.phone || "—"}</td>
+                            <td className="px-1 break-words hidden xl:table-cell">{p.employee_id || "—"}</td>
+                            <td className="px-1 break-words hidden xl:table-cell">{p.title || "—"}</td>
+                            <td className="px-1 break-words hidden xl:table-cell">{p.phone || "—"}</td>
                             <td className="px-1">
                               <span className={`badge badge-xs h-auto whitespace-normal text-center ${roleBadgeClass(p.role)}`}>
                                 {ROLE_LABELS[p.role]}

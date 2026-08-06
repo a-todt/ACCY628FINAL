@@ -704,9 +704,9 @@ export default function InvoicesPage() {
                 <col className="w-[9%]" />
                 <col className="w-[9%]" />
                 <col className="w-[9%]" />
+                <col className="w-[9%] hidden xl:table-column" />
                 <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[8%]" />
+                <col className="w-[8%] hidden xl:table-column" />
                 <col className="w-[9%]" />
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
@@ -761,9 +761,9 @@ export default function InvoicesPage() {
                     sortDir={sortDir}
                     onSort={() => onSort("amount")}
                   />
-                  <ColumnSortHeader label="Retainage" />
+                  <ColumnSortHeader label="Retainage" className="hidden xl:table-cell" />
                   <ColumnSortHeader label="Net Due" />
-                  <ColumnSortHeader label="Paid" />
+                  <ColumnSortHeader label="Paid" className="hidden xl:table-cell" />
                   <ColumnSortHeader
                     label="Status"
                     sortActive={sortKey === "status"}
@@ -824,10 +824,19 @@ export default function InvoicesPage() {
                           {invoice.invoice_date ?? "—"}
                         </td>
                         <td className="whitespace-nowrap px-1 text-center">{invoice.due_date ?? "—"}</td>
-                        <td className="truncate px-1 text-center">{money(invoice.invoice_amount)}</td>
-                        <td className="truncate px-1 text-center">{money(invoice.retainage_amount)}</td>
+                        <td
+                          className="truncate px-1 text-center"
+                          title={`Retainage: ${money(invoice.retainage_amount)} · Paid: ${money(invoice.amount_paid)} · Net: ${money(invoice.net_amount_due)}`}
+                        >
+                          {money(invoice.invoice_amount)}
+                        </td>
+                        <td className="truncate px-1 text-center hidden xl:table-cell">
+                          {money(invoice.retainage_amount)}
+                        </td>
                         <td className="truncate px-1 text-center">{money(invoice.net_amount_due)}</td>
-                        <td className="truncate px-1 text-center">{money(invoice.amount_paid)}</td>
+                        <td className="truncate px-1 text-center hidden xl:table-cell">
+                          {money(invoice.amount_paid)}
+                        </td>
                         <td className="px-1 text-center">
                           <span className={`badge badge-sm ${statusBadgeClass(shownStatus)}`}>
                             {overdue ? "Overdue" : labelize(invoice.status)}
