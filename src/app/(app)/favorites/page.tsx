@@ -23,13 +23,13 @@ export default function FavoritesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Favorites"
-        subtitle="Pin the tabs you use most. Star any page from the secondary nav, or manage them here."
+        subtitle="Pin the tabs you use most. Use the Favorites dropdown in the secondary nav, or manage them here."
       />
 
       {favorites.length === 0 ? (
         <EmptyState
           title="No favorites yet"
-          message="Open any section (Contracts, Costing, Subcontracting…) and click the star next to a tab to pin it here."
+          message="Open any section (Contracts, Costing, Subcontracting…) and use the Favorites dropdown to pin tabs here."
         />
       ) : (
         <SectionCard title="Your pinned tabs">
@@ -99,8 +99,8 @@ export default function FavoritesPage() {
       </SectionCard>
 
       <AlertBanner type="info">
-        Tip: you can also star tabs directly in the secondary nav bar under Contracts, Costing, and
-        other sections.
+        Tip: use the Favorites dropdown at the end of the secondary nav bar under Contracts, Costing,
+        and other sections to pin or unpin tabs quickly.
       </AlertBanner>
     </div>
   );
