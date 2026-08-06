@@ -42,7 +42,15 @@ import { buildAlertsForRole, type AlertItem } from "@/lib/alerts";
 import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
 import { CHART_COLORS } from "@/lib/chartColors";
 import { chartPanelHeight, panesForRole, type DashboardLayoutPrefs } from "@/lib/dashboardLayout";
-import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
+import {
+  computeContractMetrics,
+  computeScheduleStatus,
+  daysPastDue,
+  labelize,
+  money,
+  percent,
+  scheduleBadgeClass,
+} from "@/lib/metrics";
 import {
   canCreateChangeOrders,
   canCreateFieldLogs,
@@ -1158,21 +1166,32 @@ function ClientDashboard({
 }: DashboardPaneProps) {
   const router = useRouter();
   const approvedChangeOrders = changeOrders.filter((co) => co.status === "approved");
-  const perContract = contracts.map((contract) => ({
-    contract,
-    metrics: computeContractMetrics(
+  const perContract = contracts.map((contract) => {
+    const metrics = computeContractMetrics(
       contract,
       changeOrders,
       invoices,
       costEntries,
       milestones,
       payments
-    ),
-  }));
+    );
+    return {
+      contract,
+      metrics,
+      schedule: computeScheduleStatus(contract, metrics.completionPercent),
+    };
+  });
   const totalValue = perContract.reduce((sum, { metrics }) => sum + metrics.revisedValue, 0);
   const totalInvoiced = perContract.reduce((sum, { metrics }) => sum + metrics.totalBilled, 0);
   const totalPaid = perContract.reduce((sum, { metrics }) => sum + metrics.totalCollected, 0);
   const totalOutstanding = perContract.reduce((sum, { metrics }) => sum + metrics.outstanding, 0);
+  const behindCount = perContract.filter((row) => row.schedule.health === "behind").length;
+  const onTrackCount = perContract.filter(
+    (row) =>
+      row.schedule.health === "on_schedule" ||
+      row.schedule.health === "ahead" ||
+      row.schedule.health === "completed"
+  ).length;
 
   const panes: Record<string, ReactNode> = {
     kpi_stats: (
@@ -1210,13 +1229,82 @@ function ClientDashboard({
         />
       </div>
     ),
+    schedule_status: (
+      <SectionCard
+        compact
+        title="Project schedule"
+        actions={
+          <span className="text-xs opacity-60">
+            {onTrackCount} on track · {behindCount} behind
+          </span>
+        }
+      >
+        {perContract.length === 0 ? (
+          <p className="text-sm opacity-60 py-4 text-center">No projects linked to your account yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Status</th>
+                  <th>Planned</th>
+                  <th>Actual</th>
+                  <th>Schedule</th>
+                  <th>How far</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perContract.map(({ contract, metrics, schedule }) => (
+                  <tr key={contract.id} className="hover">
+                    <td>
+                      <Link href={`/contracts/${contract.id}`} className="link link-hover font-medium">
+                        {contract.contract_name}
+                      </Link>
+                      <div className="text-[10px] opacity-55">
+                        {contract.start_date ?? "—"} → {contract.end_date ?? "—"}
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge badge-sm ${statusBadgeClass(contract.status)}`}>
+                        {labelize(contract.status)}
+                      </span>
+                    </td>
+                    <td>{percent(schedule.plannedPercent)}</td>
+                    <td>{percent(metrics.completionPercent)}</td>
+                    <td>
+                      <span className={`badge badge-sm ${scheduleBadgeClass(schedule.health)}`}>
+                        {schedule.label}
+                      </span>
+                    </td>
+                    <td className="text-sm">
+                      {schedule.daysBehind > 0 ? (
+                        <span className="text-error font-medium">
+                          {schedule.daysBehind} day{schedule.daysBehind === 1 ? "" : "s"} behind
+                        </span>
+                      ) : schedule.daysAhead > 0 ? (
+                        <span className="text-success font-medium">
+                          {schedule.daysAhead} day{schedule.daysAhead === 1 ? "" : "s"} ahead
+                        </span>
+                      ) : (
+                        <span className="opacity-60">{schedule.detail}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+    ),
     my_projects: (
       <SectionCard compact title="My Projects">
         {contracts.length === 0 ? (
           <p className="text-sm opacity-60 py-4 text-center">No projects linked to your account yet.</p>
         ) : (
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
-            {perContract.map(({ contract, metrics }) => (
+            {perContract.map(({ contract, metrics, schedule }) => (
               <Link
                 key={contract.id}
                 href={`/contracts/${contract.id}`}
@@ -1224,9 +1312,25 @@ function ClientDashboard({
               >
                 <div className="card-body p-3 gap-1.5">
                   <p className="font-medium truncate text-sm">{contract.contract_name}</p>
-                  <span className={`badge badge-sm w-fit ${statusBadgeClass(contract.status)}`}>
-                    {labelize(contract.status)}
-                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <span className={`badge badge-sm w-fit ${statusBadgeClass(contract.status)}`}>
+                      {labelize(contract.status)}
+                    </span>
+                    <span className={`badge badge-sm w-fit ${scheduleBadgeClass(schedule.health)}`}>
+                      {schedule.label}
+                    </span>
+                  </div>
+                  {schedule.daysBehind > 0 ? (
+                    <p className="text-xs text-error font-medium">
+                      {schedule.daysBehind} day{schedule.daysBehind === 1 ? "" : "s"} behind
+                    </p>
+                  ) : schedule.daysAhead > 0 ? (
+                    <p className="text-xs text-success font-medium">
+                      {schedule.daysAhead} day{schedule.daysAhead === 1 ? "" : "s"} ahead
+                    </p>
+                  ) : (
+                    <p className="text-xs opacity-60">{schedule.detail}</p>
+                  )}
                   <div className="mt-0.5">
                     <div className="flex items-center justify-between text-xs opacity-70 mb-1">
                       <span>Completion</span>
@@ -1237,6 +1341,12 @@ function ClientDashboard({
                       value={Math.round(metrics.completionPercent * 100)}
                       max={100}
                     />
+                    <div className="flex items-center justify-between text-[10px] opacity-50 mt-1">
+                      <span>Planned {percent(schedule.plannedPercent)}</span>
+                      <span>
+                        {contract.start_date ?? "—"} → {contract.end_date ?? "—"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </Link>

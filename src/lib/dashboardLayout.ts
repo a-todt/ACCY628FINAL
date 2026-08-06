@@ -40,6 +40,7 @@ const SUB_PANES: DashboardPaneDef[] = [
 
 const CLIENT_PANES: DashboardPaneDef[] = [
   { id: "kpi_stats", label: "Project KPIs", fullWidth: true },
+  { id: "schedule_status", label: "Project schedule", fullWidth: true },
   { id: "my_projects", label: "My projects" },
   { id: "approved_change_orders", label: "Approved change orders" },
   { id: "invoices", label: "Invoices & payment status" },

@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Building2,
   HardHat,
   LayoutDashboard,
+  LogOut,
   Menu,
   Settings2,
   Star,
@@ -42,15 +43,21 @@ const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
 };
 
 function AppShellInner({ children }: { children: React.ReactNode }) {
-  const { effectiveRole, loading } = useAuth();
+  const { effectiveRole, loading, signOut } = useAuth();
   const access = useAccessStatus();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const search = searchParams.toString();
 
   const primary = primaryNavForRole(effectiveRole);
   const activeCategory = categoryFromPath(pathname);
   const secondary = secondaryNavForCategory(activeCategory, effectiveRole);
+
+  const onLogout = async () => {
+    await signOut();
+    router.replace("/login");
+  };
 
   if (loading || access.loading) {
     return (
@@ -127,6 +134,16 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           {!locked ? <MessagesInboxButton /> : null}
           {!locked ? <AlertsBell /> : null}
           <UserMenu />
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm gap-1.5 text-error"
+            onClick={() => void onLogout()}
+            title="Log out"
+            aria-label="Log out"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Log out</span>
+          </button>
         </div>
         </div>
       </header>
