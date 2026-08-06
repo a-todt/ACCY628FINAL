@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { NailItLogo } from "@/components/NailItLogo";
 import { AlertsBell } from "@/components/AlertsBell";
 import { AccessGate } from "@/components/AccessGate";
+import { GlobalSearch } from "@/components/GlobalSearch";
 import { UserMenu } from "@/components/UserMenu";
 import { ToastProvider } from "@/components/ToastProvider";
 import { useAccessStatus } from "@/hooks/useAccessStatus";
@@ -63,7 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <ToastProvider>
       <div className="min-h-screen bg-base-200">
         <header className="navbar bg-base-100/95 backdrop-blur-sm border-b border-base-300 px-3 sm:px-4 lg:px-6 sticky top-0 z-30 min-h-14 gap-2">
-          <div className="flex-1 gap-2 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
             <div className="dropdown lg:hidden">
               <div tabIndex={0} role="button" className="btn btn-ghost btn-sm btn-square">
                 <Menu className="h-5 w-5" />
@@ -111,7 +112,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
           </div>
-          <div className="flex-none flex items-center gap-1 sm:gap-1.5">
+          {!locked ? <GlobalSearch /> : <div className="flex-1" />}
+          <div className="flex-none flex items-center gap-1 sm:gap-1.5 shrink-0">
             {!locked ? <AlertsBell /> : null}
             <UserMenu />
           </div>
