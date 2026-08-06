@@ -1,7 +1,6 @@
 /** Client-side user preferences persisted in localStorage. */
 
 export type LandingPageOption =
-  | "/home"
   | "/dashboard"
   | "/favorites"
   | "/contracts"
@@ -13,7 +12,6 @@ export type LandingPageOption =
   | "/field-logs";
 
 export const LANDING_PAGE_OPTIONS: Array<{ value: LandingPageOption; label: string }> = [
-  { value: "/home", label: "Start here (Home)" },
   { value: "/dashboard", label: "Dashboard" },
   { value: "/favorites", label: "Favorites" },
   { value: "/contracts/overview", label: "Contracts overview" },
@@ -49,7 +47,7 @@ const STORAGE_KEY = "gcm_user_preferences";
 
 const DEFAULTS: UserPreferences = {
   muteInbox: false,
-  defaultLandingPage: "/home",
+  defaultLandingPage: "/dashboard",
   timezone: "America/Chicago",
   rememberLastFilters: true,
 };
