@@ -1,9 +1,18 @@
 import { daysPastDue, money } from "@/lib/metrics";
+import { canViewFraudAlerts } from "@/lib/roles";
 import { isBadWeather } from "@/lib/weather";
-import type { ChangeOrder, FieldLog, Invoice, UserRole } from "@/lib/types";
+import type {
+  ChangeOrder,
+  Contract,
+  CostEntry,
+  FieldLog,
+  Invoice,
+  Payment,
+  UserRole,
+} from "@/lib/types";
 
 export type AlertSeverity = "critical" | "warning" | "info";
-export type AlertCategory = "invoice" | "weather" | "change_order";
+export type AlertCategory = "invoice" | "weather" | "change_order" | "fraud";
 
 export interface AlertItem {
   id: string;
@@ -21,6 +30,9 @@ export interface AlertSourceData {
   invoices: Invoice[];
   fieldLogs: FieldLog[];
   changeOrders: ChangeOrder[];
+  payments?: Payment[];
+  costEntries?: CostEntry[];
+  contracts?: Contract[];
 }
 
 function canSeeFinancialAlerts(role: UserRole): boolean {
@@ -39,6 +51,141 @@ function canSeeWeatherAlerts(role: UserRole): boolean {
 
 function encodeQuery(value: string): string {
   return encodeURIComponent(value);
+}
+
+const LARGE_CO_THRESHOLD = 50_000;
+const COST_SPIKE_RATIO = 1.15;
+
+/** Rule-based fraud / control exceptions — owner inbox only (no ML scoring). */
+function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
+  const alerts: AlertItem[] = [];
+  const payments = data.payments ?? [];
+  const costs = data.costEntries ?? [];
+  const contracts = data.contracts ?? [];
+  const invoices = data.invoices;
+
+  // 1) Payments awaiting owner dual-approval
+  for (const payment of payments) {
+    if ((payment.approval_status ?? "posted") !== "pending_approval") continue;
+    const invoice = invoices.find((i) => i.id === payment.invoice_id);
+    const number = invoice?.invoice_number?.trim() || "Invoice";
+    const project = invoice?.contracts?.contract_name ?? "Project";
+    alerts.push({
+      id: `fraud-payment-pending-${payment.id}`,
+      severity: "critical",
+      category: "fraud",
+      title: `Payment awaiting approval · ${money(payment.payment_amount)}`,
+      detail: `${number} · ${project}${payment.reference_number ? ` · Ref ${payment.reference_number}` : ""}`,
+      action: "Open invoice to approve or reject this payment (dual approval)",
+      href: `/invoices/${payment.invoice_id}?tab=payments`,
+      createdAt: payment.submitted_at ?? payment.created_at ?? now,
+    });
+  }
+
+  // 2) Overpayment vs net amount due (posted AR)
+  for (const invoice of invoices) {
+    const net = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
+    const paid = Number(invoice.amount_paid ?? 0);
+    if (net <= 0 || paid <= net + 0.01) continue;
+    const over = paid - net;
+    const number = invoice.invoice_number?.trim() || "Invoice";
+    alerts.push({
+      id: `fraud-overpayment-${invoice.id}`,
+      severity: "critical",
+      category: "fraud",
+      title: `${number} overpaid by ${money(over)}`,
+      detail: `${invoice.contracts?.contract_name ?? "Project"} · Paid ${money(paid)} vs net due ${money(net)}`,
+      action: "Review payment history and correct the overpayment",
+      href: `/invoices/${invoice.id}`,
+      createdAt: invoice.created_at ?? now,
+    });
+  }
+
+  // 3) Duplicate invoice numbers across contracts
+  const byNumber = new Map<string, Invoice[]>();
+  for (const invoice of invoices) {
+    const key = (invoice.invoice_number ?? "").trim().toLowerCase();
+    if (!key) continue;
+    const list = byNumber.get(key) ?? [];
+    list.push(invoice);
+    byNumber.set(key, list);
+  }
+  for (const [key, list] of byNumber) {
+    if (list.length < 2) continue;
+    const first = list[0];
+    alerts.push({
+      id: `fraud-dup-invoice-${key}`,
+      severity: "warning",
+      category: "fraud",
+      title: `Duplicate invoice number “${first.invoice_number}”`,
+      detail: `${list.length} invoices share this number — possible duplicate billing`,
+      action: "Open invoices and verify each billing is unique",
+      href: `/invoices`,
+      createdAt: first.created_at ?? now,
+    });
+  }
+
+  // 4) Large pending change orders
+  for (const co of data.changeOrders) {
+    if (co.status !== "pending") continue;
+    const amount = Number(co.amount ?? 0);
+    if (amount < LARGE_CO_THRESHOLD) continue;
+    const number = co.change_order_number?.trim() || "Change order";
+    const q = co.change_order_number?.trim() || co.description?.trim() || "";
+    alerts.push({
+      id: `fraud-large-co-${co.id}`,
+      severity: "warning",
+      category: "fraud",
+      title: `Large pending CO · ${money(amount)}`,
+      detail: `${number} · ${co.contracts?.contract_name ?? "Project"}`,
+      action: "Review and approve/reject before work is billed",
+      href: q ? `/change-orders?q=${encodeQuery(q)}` : "/change-orders",
+      createdAt: co.created_at ?? now,
+    });
+  }
+
+  // 5) Job costs exceeding billed × spike ratio (or revised value if no billings)
+  for (const contract of contracts) {
+    const contractCosts = costs
+      .filter((c) => c.contract_id === contract.id)
+      .reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
+    if (contractCosts <= 0) continue;
+    const billed = invoices
+      .filter((i) => i.contract_id === contract.id)
+      .reduce((sum, i) => sum + Number(i.invoice_amount ?? 0), 0);
+    const baseline = billed > 0 ? billed : Number(contract.original_value ?? 0);
+    if (baseline <= 0) continue;
+    if (contractCosts <= baseline * COST_SPIKE_RATIO) continue;
+    alerts.push({
+      id: `fraud-cost-spike-${contract.id}`,
+      severity: "warning",
+      category: "fraud",
+      title: `Cost spike on ${contract.contract_name}`,
+      detail: `Costs ${money(contractCosts)} exceed ${billed > 0 ? "billings" : "contract value"} ${money(baseline)} by >15%`,
+      action: "Review cost entries and billing status for this job",
+      href: `/contracts/${contract.id}`,
+      createdAt: contract.created_at ?? now,
+    });
+  }
+
+  // 6) Posted payment missing reference number
+  for (const payment of payments) {
+    if ((payment.approval_status ?? "posted") !== "posted") continue;
+    if ((payment.reference_number ?? "").trim()) continue;
+    const invoice = invoices.find((i) => i.id === payment.invoice_id);
+    alerts.push({
+      id: `fraud-payment-noref-${payment.id}`,
+      severity: "info",
+      category: "fraud",
+      title: `Posted payment missing reference #`,
+      detail: `${invoice?.invoice_number ?? "Invoice"} · ${money(payment.payment_amount)}`,
+      action: "Add a check/ACH reference for audit trail completeness",
+      href: `/invoices/${payment.invoice_id}`,
+      createdAt: payment.payment_date ?? payment.created_at ?? now,
+    });
+  }
+
+  return alerts;
 }
 
 export function buildAlertsForRole(role: UserRole, data: AlertSourceData): AlertItem[] {
@@ -119,6 +266,10 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
         createdAt: co.created_at ?? now,
       });
     }
+  }
+
+  if (canViewFraudAlerts(role)) {
+    alerts.push(...buildFraudAlerts(data, now));
   }
 
   return alerts.sort((a, b) => {

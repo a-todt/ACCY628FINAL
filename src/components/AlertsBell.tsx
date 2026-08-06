@@ -27,6 +27,9 @@ export function AlertsBell() {
       invoices: data.invoices,
       fieldLogs: data.fieldLogs,
       changeOrders: data.changeOrders,
+      payments: data.payments,
+      costEntries: data.costEntries,
+      contracts: data.contracts,
     });
   }, [
     effectiveRole,
@@ -34,6 +37,9 @@ export function AlertsBell() {
     data.invoices,
     data.fieldLogs,
     data.changeOrders,
+    data.payments,
+    data.costEntries,
+    data.contracts,
   ]);
 
   useEffect(() => {

@@ -316,11 +316,17 @@ function DashboardAlertsPreview({
   invoices,
   fieldLogs,
   changeOrders,
+  payments,
+  costEntries,
+  contracts,
 }: {
   role: UserRole;
   invoices: Invoice[];
   fieldLogs: FieldLog[];
   changeOrders: ChangeOrder[];
+  payments: Payment[];
+  costEntries: CostEntry[];
+  contracts: Contract[];
 }) {
   const { dismissedSet, pruneAgainstLiveIds } = useDismissedAlerts();
 
@@ -330,8 +336,11 @@ function DashboardAlertsPreview({
         invoices,
         fieldLogs,
         changeOrders,
+        payments,
+        costEntries,
+        contracts,
       }),
-    [role, invoices, fieldLogs, changeOrders]
+    [role, invoices, fieldLogs, changeOrders, payments, costEntries, contracts]
   );
 
   useEffect(() => {
@@ -387,9 +396,11 @@ function DashboardAlertsPreview({
 
 function AlertPreviewRow({ alert }: { alert: AlertItem }) {
   const badgeLabel =
-    alert.category === "invoice" && alert.severity === "critical"
-      ? "Overdue"
-      : labelize(alert.severity);
+    alert.category === "fraud"
+      ? "Fraud"
+      : alert.category === "invoice" && alert.severity === "critical"
+        ? "Overdue"
+        : labelize(alert.severity);
 
   return (
     <li>
@@ -928,6 +939,9 @@ function AdminDashboard({
         invoices={invoices}
         fieldLogs={fieldLogs}
         changeOrders={changeOrders}
+        payments={payments}
+        costEntries={costEntries}
+        contracts={contracts}
       />
     ),
   };
@@ -942,6 +956,7 @@ function FieldSupervisorDashboard({
   fieldLogs,
   costEntries,
   invoices,
+  payments,
   changeOrders,
   userId,
   role,
@@ -1077,6 +1092,9 @@ function FieldSupervisorDashboard({
         invoices={invoices}
         fieldLogs={fieldLogs}
         changeOrders={changeOrders}
+        payments={payments}
+        costEntries={costEntries}
+        contracts={contracts}
       />
     ),
   };
@@ -1087,10 +1105,12 @@ function FieldSupervisorDashboard({
 }
 
 function SubcontractorDashboard({
+  contracts,
   subcontractors,
   fieldLogs,
   costEntries,
   invoices,
+  payments,
   changeOrders,
   userId,
   role,
@@ -1333,6 +1353,9 @@ function SubcontractorDashboard({
         invoices={invoices}
         fieldLogs={fieldLogs}
         changeOrders={changeOrders}
+        payments={payments}
+        costEntries={costEntries}
+        contracts={contracts}
       />
     ),
   };
@@ -1701,6 +1724,9 @@ function ClientDashboard({
         invoices={invoices}
         fieldLogs={fieldLogs}
         changeOrders={changeOrders}
+        payments={payments}
+        costEntries={costEntries}
+        contracts={contracts}
       />
     ),
   };
