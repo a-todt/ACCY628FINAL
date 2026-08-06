@@ -43,7 +43,7 @@ export function truncateChartLabel(name: string | null | undefined, len = CHART_
 }
 
 /** Build chart rows with fullName + unique shortName for the Y-axis. */
-export function toNamedBarRows<T extends Record<string, number>>(
+export function toNamedBarRows<T extends Record<string, number | string>>(
   items: Array<{ fullName: string | null | undefined; values: T }>,
   len = CHART_LABEL_LEN
 ): Array<NamedBarRow & T> {
@@ -63,9 +63,24 @@ export function toNamedBarRows<T extends Record<string, number>>(
   });
 }
 
-function dataExtent(data: NamedBarRow[]): { min: number; max: number } {
+function dataExtent(data: NamedBarRow[], stackKeys?: string[]): { min: number; max: number } {
   let min = 0;
   let max = 0;
+
+  if (stackKeys && stackKeys.length > 0) {
+    for (const row of data) {
+      let sum = 0;
+      for (const key of stackKeys) {
+        const value = row[key];
+        if (typeof value !== "number" || !Number.isFinite(value)) continue;
+        sum += value;
+      }
+      min = Math.min(min, sum);
+      max = Math.max(max, sum);
+    }
+    return { min, max };
+  }
+
   for (const row of data) {
     for (const [key, value] of Object.entries(row)) {
       if (key === "fullName" || key === "shortName") continue;
@@ -81,7 +96,7 @@ function dataExtent(data: NamedBarRow[]): { min: number; max: number } {
 function pickNiceStep(span: number): number {
   const safeSpan = Math.max(span, 1);
   const target = safeSpan / 4;
-  let best = NICE_STEPS[0];
+  let best: number = NICE_STEPS[0];
   let bestScore = Number.POSITIVE_INFINITY;
 
   for (const step of NICE_STEPS) {
@@ -147,7 +162,11 @@ type TooltipPayloadItem = {
   name?: string | number;
   value?: string | number;
   color?: string;
-  payload?: { fullName?: string };
+  payload?: {
+    fullName?: string;
+    /** Optional secondary line (e.g. margin % or collection rate). */
+    tipExtra?: string;
+  };
 };
 
 function FullNameTooltip({
@@ -160,7 +179,9 @@ function FullNameTooltip({
   valueFormatter: (value: number) => string;
 }) {
   if (!active || !payload?.length) return null;
-  const fullName = payload[0]?.payload?.fullName ?? "Untitled";
+  const row = payload[0]?.payload;
+  const fullName = row?.fullName ?? "Untitled";
+  const tipExtra = row?.tipExtra;
 
   return (
     <div className="rounded-box border border-base-300 bg-base-100 px-3 py-2 shadow-md text-sm max-w-xs">
@@ -180,6 +201,9 @@ function FullNameTooltip({
             </span>
           </li>
         ))}
+        {tipExtra ? (
+          <li className="pt-1 mt-0.5 border-t border-base-300 text-xs opacity-75">{tipExtra}</li>
+        ) : null}
       </ul>
     </div>
   );
@@ -285,6 +309,8 @@ type ScrollableBarChartProps = {
   categoryWidth?: number;
   panelHeight?: number;
   rowHeight?: number;
+  /** When set, domain uses the sum of these keys (stacked bars). */
+  stackKeys?: string[];
 };
 
 export function ScrollableBarChart({
@@ -294,6 +320,7 @@ export function ScrollableBarChart({
   categoryWidth = 128,
   panelHeight = CHART_PANEL_HEIGHT,
   rowHeight = CHART_ROW_HEIGHT,
+  stackKeys,
 }: ScrollableBarChartProps) {
   const plotRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
@@ -304,7 +331,7 @@ export function ScrollableBarChart({
   const plotHeight = Math.max(120, panelHeight - AXIS_STRIP_HEIGHT);
   const chartHeight = Math.max(plotHeight, data.length * rowHeight + CHART_TOP_MARGIN + 8);
   const canScroll = chartHeight > plotHeight;
-  const { min, max } = dataExtent(data);
+  const { min, max } = dataExtent(data, stackKeys);
   const { domain, step } = snapDomain(min, max);
 
   const onPayload = useCallback((payload: TooltipPayloadItem[] | null) => {

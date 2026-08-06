@@ -91,6 +91,47 @@ function chartHasValues(
   return rows.some((row) => keys.some((key) => Number(row[key] ?? 0) !== 0));
 }
 
+/** How many project rows fit in a dashboard preview tile without scrolling. */
+const CHART_PREVIEW_ROWS = 6;
+
+function takeChartPreview<T>(rows: T[], mode: "preview" | "full", limit = CHART_PREVIEW_ROWS): T[] {
+  if (mode === "full" || rows.length <= limit) return rows;
+  return rows.slice(0, limit);
+}
+
+function chartMoreCount(total: number, previewShown: number): number {
+  return Math.max(0, total - previewShown);
+}
+
+function DashboardRankedList({
+  height,
+  moreHref,
+  moreCount,
+  moreLabel,
+  children,
+}: {
+  height: number;
+  moreHref: string;
+  moreCount: number;
+  moreLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="overflow-y-auto pr-1" style={{ height }}>
+        <ul className="divide-y divide-base-300">{children}</ul>
+      </div>
+      {moreCount > 0 ? (
+        <div className="flex justify-center pt-0.5">
+          <Link href={moreHref} className="btn btn-primary btn-xs gap-1.5">
+            +{moreCount} {moreLabel}
+          </Link>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { effectiveRole, profile, user } = useAuth();
   const data = useContractData();
@@ -418,21 +459,38 @@ function AdminDashboard({
     (i) => (i.status === "unpaid" || i.status === "partially_paid") && daysPastDue(i.due_date) > 0
   );
 
-  const contractValueData = toNamedBarRows(
-    perContract.map(({ contract, metrics }) => ({
-      fullName: contract.contract_name,
-      values: { Value: Math.round(metrics.revisedValue) },
-    }))
+  // Ranked lists (not charts) — top contracts by value, gross profit losses-first
+  const contractsByValue = [...perContract].sort(
+    (a, b) => b.metrics.revisedValue - a.metrics.revisedValue
+  );
+  const contractsByGrossProfit = [...perContract].sort(
+    (a, b) => a.metrics.grossProfit - b.metrics.grossProfit
   );
 
   const billedVsCollectedData = toNamedBarRows(
-    perContract.map(({ contract, metrics }) => ({
-      fullName: contract.contract_name,
-      values: {
-        Billed: Math.round(metrics.totalBilled),
-        Collected: Math.round(metrics.totalCollected),
-      },
-    }))
+    [...perContract]
+      .filter(({ metrics }) => metrics.totalBilled > 0)
+      .sort((a, b) => {
+        const rateA =
+          a.metrics.totalBilled > 0 ? a.metrics.totalCollected / a.metrics.totalBilled : 1;
+        const rateB =
+          b.metrics.totalBilled > 0 ? b.metrics.totalCollected / b.metrics.totalBilled : 1;
+        return rateA - rateB;
+      })
+      .map(({ contract, metrics }) => {
+        const collected = Math.round(metrics.totalCollected);
+        const outstanding = Math.max(0, Math.round(metrics.outstanding));
+        const rate =
+          metrics.totalBilled > 0 ? metrics.totalCollected / metrics.totalBilled : 0;
+        return {
+          fullName: contract.contract_name,
+          values: {
+            Collected: collected,
+            Outstanding: outstanding,
+            tipExtra: `Collection rate ${percent(rate)}`,
+          } as Record<string, number | string>,
+        };
+      })
   );
 
   const costsByCategory = costEntries.reduce<Record<string, number>>((acc, cost) => {
@@ -440,23 +498,39 @@ function AdminDashboard({
     acc[key] = (acc[key] ?? 0) + Number(cost.amount ?? 0);
     return acc;
   }, {});
-  const costsByCategoryData = Object.entries(costsByCategory).map(([category, value]) => ({
-    name: labelize(category),
-    value: Math.round(value),
-  }));
+  const costsByCategoryData = Object.entries(costsByCategory)
+    .sort((a, b) => b[1] - a[1])
+    .map(([category, value]) => ({
+      name: labelize(category),
+      value: Math.round(value),
+    }));
 
   const changeOrderValueData = toNamedBarRows(
-    perContract.map(({ contract, metrics }) => ({
-      fullName: contract.contract_name,
-      values: { Approved: Math.round(metrics.approvedChangeOrders) },
-    }))
-  );
-
-  const grossProfitData = toNamedBarRows(
-    perContract.map(({ contract, metrics }) => ({
-      fullName: contract.contract_name,
-      values: { "Gross Profit": Math.round(metrics.grossProfit) },
-    }))
+    [...perContract]
+      .filter(({ metrics }) => metrics.approvedChangeOrders > 0)
+      .sort((a, b) => {
+        const origA = Number(a.contract.original_value ?? 0);
+        const origB = Number(b.contract.original_value ?? 0);
+        const pctA = origA > 0 ? a.metrics.approvedChangeOrders / origA : 0;
+        const pctB = origB > 0 ? b.metrics.approvedChangeOrders / origB : 0;
+        return pctB - pctA;
+      })
+      .map(({ contract, metrics }) => {
+        const original = Math.round(Number(contract.original_value ?? 0));
+        const approved = Math.round(metrics.approvedChangeOrders);
+        const tipExtra =
+          original > 0
+            ? `COs ${percent(approved / original)} of original`
+            : undefined;
+        return {
+          fullName: contract.contract_name,
+          values: {
+            Original: original,
+            "Approved COs": approved,
+            ...(tipExtra ? { tipExtra } : {}),
+          } as Record<string, number | string>,
+        };
+      })
   );
 
   const catalog = panesForRole(role);
@@ -562,33 +636,57 @@ function AdminDashboard({
     chart_contract_value: (
       <SectionCard
         compact
-        title="Contract Value by Project"
+        title="Top contracts by value"
         actions={
           <Link href="/contracts" className="btn btn-primary btn-xs">
             View contracts
           </Link>
         }
       >
-        <ExpandableChart
-          title="Contract Value by Project"
-          previewHeight={chartHeight}
-          hasData={chartHasValues(contractValueData, ["Value"])}
-          empty={
-            <p className="text-sm opacity-60 py-8 text-center">No contract values to chart yet.</p>
-          }
-        >
-          {(height) => (
-            <ScrollableBarChart data={contractValueData} panelHeight={height}>
-              <Bar dataKey="Value" fill={CHART_COLORS[0]} radius={[0, 5, 5, 0]} />
-            </ScrollableBarChart>
-          )}
-        </ExpandableChart>
+        {contractsByValue.length === 0 ? (
+          <p className="text-sm opacity-60 py-8 text-center">No contracts to list yet.</p>
+        ) : (
+          <DashboardRankedList
+            height={chartHeight}
+            moreHref="/contracts"
+            moreCount={chartMoreCount(
+              contractsByValue.length,
+              Math.min(contractsByValue.length, CHART_PREVIEW_ROWS)
+            )}
+            moreLabel="more in Contracts"
+          >
+            {takeChartPreview(contractsByValue, "preview").map(({ contract, metrics }, index) => (
+              <li key={contract.id}>
+                <Link
+                  href={`/contracts/${contract.id}`}
+                  className="flex items-center gap-3 py-2.5 hover:bg-base-200/60 px-1 rounded-lg transition-colors"
+                >
+                  <span className="text-xs tabular-nums opacity-50 w-4 shrink-0 text-right">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium leading-tight text-sm truncate">
+                      {contract.contract_name}
+                    </p>
+                    <span className={`badge badge-sm mt-1 ${statusBadgeClass(contract.status)}`}>
+                      {labelize(contract.status)}
+                    </span>
+                  </div>
+                  <span className="text-sm font-semibold tabular-nums shrink-0">
+                    {money(metrics.revisedValue)}
+                  </span>
+                  <ChevronRight className="h-4 w-4 opacity-40 shrink-0" />
+                </Link>
+              </li>
+            ))}
+          </DashboardRankedList>
+        )}
       </SectionCard>
     ),
     chart_billed_vs_collected: (
       <SectionCard
         compact
-        title="Billed vs. Collected"
+        title="Lowest collection rates"
         actions={
           <Link href="/invoices" className="btn btn-primary btn-xs">
             View invoices
@@ -596,28 +694,49 @@ function AdminDashboard({
         }
       >
         <ExpandableChart
-          title="Billed vs. Collected"
+          title="Collections by Project"
           previewHeight={chartHeight}
           heightBoost={28}
-          hasData={chartHasValues(billedVsCollectedData, ["Billed", "Collected"])}
+          moreCount={chartMoreCount(
+            billedVsCollectedData.length,
+            Math.min(billedVsCollectedData.length, CHART_PREVIEW_ROWS)
+          )}
+          hasData={chartHasValues(billedVsCollectedData, ["Collected", "Outstanding"])}
           empty={
             <p className="text-sm opacity-60 py-8 text-center">No billing activity to chart yet.</p>
           }
         >
-          {(height) => (
-            <ScrollableBarChart data={billedVsCollectedData} panelHeight={height}>
-              <Legend verticalAlign="top" height={28} />
-              <Bar dataKey="Billed" fill={CHART_COLORS[1]} radius={[0, 5, 5, 0]} />
-              <Bar dataKey="Collected" fill={CHART_COLORS[3]} radius={[0, 5, 5, 0]} />
-            </ScrollableBarChart>
-          )}
+          {(height, mode) => {
+            const rows = takeChartPreview(billedVsCollectedData, mode);
+            return (
+              <ScrollableBarChart
+                data={rows}
+                panelHeight={height}
+                stackKeys={["Collected", "Outstanding"]}
+              >
+                <Legend verticalAlign="top" height={28} />
+                <Bar
+                  dataKey="Collected"
+                  stackId="billing"
+                  fill={CHART_COLORS[3]}
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar
+                  dataKey="Outstanding"
+                  stackId="billing"
+                  fill={CHART_COLORS[1]}
+                  radius={[0, 5, 5, 0]}
+                />
+              </ScrollableBarChart>
+            );
+          }}
         </ExpandableChart>
       </SectionCard>
     ),
     chart_costs_by_category: (
       <SectionCard
         compact
-        title="Costs by Category"
+        title="Costs by category"
         actions={
           <Link href="/costs" className="btn btn-primary btn-xs">
             View costs
@@ -648,7 +767,9 @@ function AdminDashboard({
                       cx="50%"
                       cy="50%"
                       outerRadius={radius}
-                      label={({ name, percent: p }) => `${name} ${((p ?? 0) * 100).toFixed(0)}%`}
+                      label={({ name, percent: p }) =>
+                        `${name} ${((p ?? 0) * 100).toFixed(0)}%`
+                      }
                     >
                       {costsByCategoryData.map((entry, index) => (
                         <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
@@ -666,7 +787,7 @@ function AdminDashboard({
     chart_change_order_value: (
       <SectionCard
         compact
-        title="Approved Change Order Value"
+        title="Jobs with approved COs"
         actions={
           <Link href="/change-orders" className="btn btn-primary btn-xs">
             View change orders
@@ -674,54 +795,104 @@ function AdminDashboard({
         }
       >
         <ExpandableChart
-          title="Approved Change Order Value"
+          title="Original vs Approved Change Orders"
           previewHeight={chartHeight}
-          hasData={chartHasValues(changeOrderValueData, ["Approved"])}
+          heightBoost={28}
+          moreCount={chartMoreCount(
+            changeOrderValueData.length,
+            Math.min(changeOrderValueData.length, CHART_PREVIEW_ROWS)
+          )}
+          hasData={chartHasValues(changeOrderValueData, ["Original", "Approved COs"])}
           empty={
             <p className="text-sm opacity-60 py-8 text-center">
               No approved change order value yet.
             </p>
           }
         >
-          {(height) => (
-            <ScrollableBarChart data={changeOrderValueData} panelHeight={height}>
-              <Bar dataKey="Approved" fill={CHART_COLORS[2]} radius={[0, 5, 5, 0]} />
-            </ScrollableBarChart>
-          )}
+          {(height, mode) => {
+            const rows = takeChartPreview(changeOrderValueData, mode);
+            return (
+              <ScrollableBarChart
+                data={rows}
+                panelHeight={height}
+                stackKeys={["Original", "Approved COs"]}
+              >
+                <Legend verticalAlign="top" height={28} />
+                <Bar
+                  dataKey="Original"
+                  stackId="contract"
+                  fill={CHART_COLORS[0]}
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar
+                  dataKey="Approved COs"
+                  stackId="contract"
+                  fill={CHART_COLORS[2]}
+                  radius={[0, 5, 5, 0]}
+                />
+              </ScrollableBarChart>
+            );
+          }}
         </ExpandableChart>
       </SectionCard>
     ),
     chart_gross_profit: (
       <SectionCard
         compact
-        title="Gross Profit by Project"
+        title="Lowest gross profit"
         actions={
           <Link href="/finance" className="btn btn-primary btn-xs">
             View finance
           </Link>
         }
       >
-        <ExpandableChart
-          title="Gross Profit by Project"
-          previewHeight={chartHeight}
-          hasData={chartHasValues(grossProfitData, ["Gross Profit"])}
-          empty={
-            <p className="text-sm opacity-60 py-8 text-center">No gross profit data to chart yet.</p>
-          }
-        >
-          {(height) => (
-            <ScrollableBarChart data={grossProfitData} panelHeight={height}>
-              <Bar dataKey="Gross Profit" radius={[0, 5, 5, 0]}>
-                {grossProfitData.map((entry) => (
-                  <Cell
-                    key={entry.fullName}
-                    fill={entry["Gross Profit"] >= 0 ? CHART_COLORS[3] : CHART_COLORS[4]}
-                  />
-                ))}
-              </Bar>
-            </ScrollableBarChart>
-          )}
-        </ExpandableChart>
+        {contractsByGrossProfit.length === 0 ? (
+          <p className="text-sm opacity-60 py-8 text-center">No gross profit data yet.</p>
+        ) : (
+          <DashboardRankedList
+            height={chartHeight}
+            moreHref="/finance"
+            moreCount={chartMoreCount(
+              contractsByGrossProfit.length,
+              Math.min(contractsByGrossProfit.length, CHART_PREVIEW_ROWS)
+            )}
+            moreLabel="more in Finance"
+          >
+            {takeChartPreview(contractsByGrossProfit, "preview").map(
+              ({ contract, metrics }, index) => {
+                const loss = metrics.grossProfit < 0;
+                return (
+                  <li key={contract.id}>
+                    <Link
+                      href={`/contracts/${contract.id}`}
+                      className="flex items-center gap-3 py-2.5 hover:bg-base-200/60 px-1 rounded-lg transition-colors"
+                    >
+                      <span className="text-xs tabular-nums opacity-50 w-4 shrink-0 text-right">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium leading-tight text-sm truncate">
+                          {contract.contract_name}
+                        </p>
+                        <p className="text-xs opacity-60 mt-0.5">
+                          Margin {percent(metrics.grossMargin)}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-sm font-semibold tabular-nums shrink-0 ${
+                          loss ? "text-error" : "text-success"
+                        }`}
+                      >
+                        {money(metrics.grossProfit)}
+                      </span>
+                      <ChevronRight className="h-4 w-4 opacity-40 shrink-0" />
+                    </Link>
+                  </li>
+                );
+              }
+            )}
+          </DashboardRankedList>
+        )}
       </SectionCard>
     ),
     alerts: (

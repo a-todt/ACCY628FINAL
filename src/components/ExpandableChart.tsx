@@ -14,6 +14,8 @@ export function ExpandableChart({
   empty,
   /** Extra vertical room for in-chart legends, etc. */
   heightBoost = 0,
+  /** Rows hidden in preview (shown only in the full-graph modal). */
+  moreCount = 0,
   children,
 }: {
   title: string;
@@ -21,6 +23,7 @@ export function ExpandableChart({
   hasData: boolean;
   empty: ReactNode;
   heightBoost?: number;
+  moreCount?: number;
   children: (height: number, mode: "preview" | "full") => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -34,7 +37,10 @@ export function ExpandableChart({
     <>
       <div className="space-y-2">
         {children(plotHeight, "preview")}
-        <div className="flex justify-center pt-0.5">
+        <div className="flex flex-col items-center gap-1 pt-0.5">
+          {moreCount > 0 ? (
+            <p className="text-[11px] opacity-60">+{moreCount} more in full view</p>
+          ) : null}
           <button
             type="button"
             className="btn btn-primary btn-xs gap-1.5"
