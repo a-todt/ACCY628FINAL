@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Pencil, Plus, Users, ClipboardList, Building2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminData } from "@/hooks/useAdminData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { StarRating } from "@/components/StarRating";
 import { AuditLogPanel } from "@/components/AuditLogPanel";
 import {
   ColumnAutocompleteHeader,
@@ -29,6 +30,7 @@ import { createClient } from "@/lib/supabase/client";
 import type {
   ContractAssignment,
   Customer,
+  EmployeeCertification,
   Subcontractor,
   UserProfile,
   UserRole,
@@ -85,6 +87,7 @@ export default function ManagementPage() {
   const { effectiveRole, user } = useAuth();
   const searchParams = useSearchParams();
   const activeTab = tabFromParam(searchParams.get("tab"));
+  const staffParam = searchParams.get("staff");
   const admin = useAdminData();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +97,7 @@ export default function ManagementPage() {
   const [editingAssignments, setEditingAssignments] = useState(false);
   const [editingStaff, setEditingStaff] = useState<UserProfile | null>(null);
   const [addingStaff, setAddingStaff] = useState(false);
+  const [viewingCertsFor, setViewingCertsFor] = useState<UserProfile | null>(null);
   const [nameFilter, setNameFilter] = useState("");
   const [emailFilter, setEmailFilter] = useState("");
   const [employeeIdFilter, setEmployeeIdFilter] = useState("");
@@ -123,6 +127,14 @@ export default function ManagementPage() {
     [admin.profiles]
   );
 
+  useEffect(() => {
+    if (!staffParam || activeTab !== "team") return;
+    const profile = staffProfiles.find((p) => p.id === staffParam);
+    if (!profile) return;
+    const label = profile.full_name?.trim() || profile.email?.trim() || "";
+    if (label) setNameFilter(label);
+  }, [staffParam, activeTab, staffProfiles]);
+
   const assignmentCountByUser = useMemo(() => {
     const counts = new Map<string, number>();
     for (const a of admin.assignments) {
@@ -142,6 +154,35 @@ export default function ManagementPage() {
     }
     return map;
   }, [admin.assignments]);
+
+  const certsByUser = useMemo(() => {
+    const map = new Map<string, EmployeeCertification[]>();
+    for (const c of admin.certifications) {
+      const list = map.get(c.user_id) ?? [];
+      list.push(c);
+      map.set(c.user_id, list);
+    }
+    for (const [id, list] of map) {
+      list.sort((a, b) => {
+        const ae = a.expiration_date ?? "9999-12-31";
+        const be = b.expiration_date ?? "9999-12-31";
+        return ae.localeCompare(be);
+      });
+      map.set(id, list);
+    }
+    return map;
+  }, [admin.certifications]);
+
+  const nearestCertSummary = (userId: string) => {
+    const certs = certsByUser.get(userId) ?? [];
+    if (certs.length === 0) return null;
+    const nearest = certs[0];
+    return {
+      count: certs.length,
+      nearest,
+      level: complianceFromExpiration(nearest.expiration_date),
+    };
+  };
 
   const filteredStaff = useMemo(() => {
     const next = staffProfiles.filter((p) => {
@@ -577,6 +618,60 @@ export default function ManagementPage() {
 
   const closeStaffEdit = () => setEditingStaff(null);
 
+  const onAddCertification = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!viewingCertsFor) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    const form = new FormData(e.currentTarget);
+    try {
+      const name = String(form.get("certification_name") || "").trim();
+      if (!name) throw new Error("Certification / license name is required.");
+      const supabase = createClient();
+      const { error: insertError } = await supabase.from("employee_certifications").insert({
+        user_id: viewingCertsFor.id,
+        certification_name: name,
+        certification_number: String(form.get("certification_number") || "").trim() || null,
+        issuing_body: String(form.get("issuing_body") || "").trim() || null,
+        issued_date: String(form.get("issued_date") || "") || null,
+        expiration_date: String(form.get("expiration_date") || "") || null,
+        notes: String(form.get("notes") || "").trim() || null,
+      });
+      if (insertError) throw insertError;
+      await logAction("employee_cert_added", "employee_certifications", viewingCertsFor.id, {
+        certification_name: name,
+      });
+      setMessage("Certification / license added.");
+      e.currentTarget.reset();
+      await admin.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add certification.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDeleteCertification = async (certId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { error: deleteError } = await supabase
+        .from("employee_certifications")
+        .delete()
+        .eq("id", certId);
+      if (deleteError) throw deleteError;
+      await logAction("employee_cert_deleted", "employee_certifications", certId);
+      setMessage("Certification removed.");
+      await admin.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete certification.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onSaveStaff = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editingStaff) return;
@@ -842,6 +937,11 @@ export default function ManagementPage() {
           license_number: String(form.get("license_number") || "").trim() || null,
           license_state: String(form.get("license_state") || "").trim() || null,
           license_expiration: String(form.get("license_expiration") || "") || null,
+          business_notes: String(form.get("business_notes") || "").trim() || null,
+          rating: (() => {
+            const raw = String(form.get("rating") || "").trim();
+            return raw ? Number(raw) : null;
+          })(),
           status: "active",
         })
         .select("id")
@@ -907,6 +1007,11 @@ export default function ManagementPage() {
           license_number: String(form.get("license_number") || "").trim() || null,
           license_state: String(form.get("license_state") || "").trim() || null,
           license_expiration: String(form.get("license_expiration") || "") || null,
+          business_notes: String(form.get("business_notes") || "").trim() || null,
+          rating: (() => {
+            const raw = String(form.get("rating") || "").trim();
+            return raw ? Number(raw) : null;
+          })(),
         })
         .eq("id", editingSubcontractor.id);
       if (updateError) throw updateError;
@@ -1372,18 +1477,33 @@ export default function ManagementPage() {
               <EmptyState title="No staff yet" message="Create users via auth, then they will appear here." />
             ) : (
               <div className="w-full min-w-0 overflow-hidden">
+                <div className="xl:hidden flex flex-wrap gap-2 p-2 border-b border-base-300">
+                  <input
+                    className="input input-bordered input-xs min-w-[8rem] flex-1"
+                    list="team-filter-employee-id-compact"
+                    value={employeeIdFilter}
+                    onChange={(e) => setEmployeeIdFilter(e.target.value)}
+                    placeholder="Filter employee ID…"
+                  />
+                  <datalist id="team-filter-employee-id-compact">
+                    {employeeIdOptions.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
+                  </datalist>
+                </div>
                 <table className="table table-xs table-fixed w-full text-[11px]">
                   <colgroup>
-                    <col className="w-[11%]" />
-                    <col className="w-[14%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[7%] hidden xl:table-column" />
+                    <col className="w-[8%] hidden xl:table-column" />
+                    <col className="w-[8%] hidden xl:table-column" />
                     <col className="w-[8%]" />
-                    <col className="w-[9%]" />
-                    <col className="w-[9%]" />
-                    <col className="w-[9%]" />
                     <col className="w-[6%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[10%]" />
                     <col className="w-[11%]" />
-                    <col className="w-[14%]" />
-                    <col className="w-[9%]" />
+                    <col className="w-[8%]" />
                   </colgroup>
                   <thead>
                     <tr className="bg-base-200/80">
@@ -1416,18 +1536,21 @@ export default function ManagementPage() {
                         sortActive={teamSortKey === "employee_id"}
                         sortDir={teamSortDir}
                         onSort={() => onTeamSort("employee_id")}
+                        className="hidden xl:table-cell"
                       />
                       <ColumnSortHeader
                         label="Title"
                         sortActive={teamSortKey === "title"}
                         sortDir={teamSortDir}
                         onSort={() => onTeamSort("title")}
+                        className="hidden xl:table-cell"
                       />
                       <ColumnSortHeader
                         label="Phone"
                         sortActive={teamSortKey === "phone"}
                         sortDir={teamSortDir}
                         onSort={() => onTeamSort("phone")}
+                        className="hidden xl:table-cell"
                       />
                       <ColumnSortHeader
                         label="Role"
@@ -1441,6 +1564,7 @@ export default function ManagementPage() {
                         sortDir={teamSortDir}
                         onSort={() => onTeamSort("status")}
                       />
+                      <th className="px-1 text-center align-middle">Certs / Licenses</th>
                       <ColumnAutocompleteHeader
                         label="Assigned Contracts"
                         listId="team-filter-contracts"
@@ -1464,7 +1588,7 @@ export default function ManagementPage() {
                   <tbody>
                     {filteredStaff.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="py-10 text-center opacity-60">
+                        <td colSpan={11} className="py-10 text-center opacity-60">
                           No employees match the column filters.
                         </td>
                       </tr>
@@ -1476,13 +1600,26 @@ export default function ManagementPage() {
                           (c) => !assignedContractIds.has(c.id)
                         );
                         const listId = `assign-contract-${p.id}`;
+                        const certSummary = nearestCertSummary(p.id);
                         return (
-                          <tr key={p.id} className="hover:bg-base-200/60">
-                            <td className="px-1 font-medium break-words">{p.full_name || "—"}</td>
+                          <tr
+                            key={p.id}
+                            className={`hover:bg-base-200/60 ${
+                              staffParam === p.id ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : ""
+                            }`}
+                          >
+                            <td
+                              className="px-1 font-medium break-words"
+                              title={[p.employee_id ? `ID: ${p.employee_id}` : null, p.title, p.phone]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            >
+                              {p.full_name || "—"}
+                            </td>
                             <td className="px-1 break-all">{p.email || "—"}</td>
-                            <td className="px-1 break-words">{p.employee_id || "—"}</td>
-                            <td className="px-1 break-words">{p.title || "—"}</td>
-                            <td className="px-1 break-words">{p.phone || "—"}</td>
+                            <td className="px-1 break-words hidden xl:table-cell">{p.employee_id || "—"}</td>
+                            <td className="px-1 break-words hidden xl:table-cell">{p.title || "—"}</td>
+                            <td className="px-1 break-words hidden xl:table-cell">{p.phone || "—"}</td>
                             <td className="px-1">
                               <span className={`badge badge-xs h-auto whitespace-normal text-center ${roleBadgeClass(p.role)}`}>
                                 {ROLE_LABELS[p.role]}
@@ -1496,6 +1633,32 @@ export default function ManagementPage() {
                               >
                                 {p.is_active === false ? "Inactive" : "Active"}
                               </span>
+                            </td>
+                            <td className="px-1 text-center">
+                              {certSummary ? (
+                                <div className="space-y-1">
+                                  <div className="text-[10px] leading-tight">
+                                    {certSummary.count} on file
+                                  </div>
+                                  <div className="text-[10px] opacity-70 leading-tight">
+                                    Next: {certSummary.nearest.expiration_date || "—"}
+                                  </div>
+                                  <span
+                                    className={`badge badge-xs ${complianceBadgeClass(certSummary.level)}`}
+                                  >
+                                    {complianceLabel(certSummary.level)}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] opacity-50">None</span>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs mt-1 h-auto min-h-6 px-1"
+                                onClick={() => setViewingCertsFor(p)}
+                              >
+                                Manage
+                              </button>
                             </td>
                             <td className="px-1 text-center">
                               <button
@@ -1734,6 +1897,138 @@ export default function ManagementPage() {
                 className="modal-backdrop"
                 aria-label="Close"
                 onClick={closeStaffEdit}
+              />
+            </div>
+          ) : null}
+
+          {viewingCertsFor ? (
+            <div className="modal modal-open">
+              <div className="modal-box max-w-3xl">
+                <h3 className="text-lg font-semibold">
+                  Certifications &amp; Licenses ·{" "}
+                  {viewingCertsFor.full_name || viewingCertsFor.email || "Employee"}
+                </h3>
+                <p className="text-sm opacity-60 mt-1 mb-4">
+                  Ownership can track employee credentials and expiration dates here.
+                </p>
+
+                {(certsByUser.get(viewingCertsFor.id) ?? []).length === 0 ? (
+                  <p className="text-sm opacity-60 mb-4">No certifications or licenses on file yet.</p>
+                ) : (
+                  <div className="overflow-x-auto mb-4">
+                    <table className="table table-sm">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Number</th>
+                          <th>Issuer</th>
+                          <th>Expires</th>
+                          <th>Status</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(certsByUser.get(viewingCertsFor.id) ?? []).map((c) => {
+                          const level = complianceFromExpiration(c.expiration_date);
+                          return (
+                            <tr key={c.id}>
+                              <td className="font-medium">{c.certification_name}</td>
+                              <td>{c.certification_number || "—"}</td>
+                              <td>{c.issuing_body || "—"}</td>
+                              <td>{c.expiration_date || "—"}</td>
+                              <td>
+                                <span className={`badge badge-sm ${complianceBadgeClass(level)}`}>
+                                  {complianceLabel(level)}
+                                </span>
+                              </td>
+                              <td className="text-right">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs text-error"
+                                  disabled={busy}
+                                  onClick={() => onDeleteCertification(c.id)}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <form
+                  onSubmit={onAddCertification}
+                  className="grid gap-3 rounded-lg border border-base-300 bg-base-200/40 p-3 sm:grid-cols-2"
+                >
+                  <h4 className="sm:col-span-2 font-medium text-sm">Add certification or license</h4>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Name</span>
+                    <input
+                      name="certification_name"
+                      className="input input-bordered input-sm w-full"
+                      placeholder="e.g. PMP, OSHA 30, Electrical license"
+                      required
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Number</span>
+                    <input
+                      name="certification_number"
+                      className="input input-bordered input-sm w-full"
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Issuing body</span>
+                    <input
+                      name="issuing_body"
+                      className="input input-bordered input-sm w-full"
+                      placeholder="e.g. State of Illinois"
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Issued date</span>
+                    <input
+                      type="date"
+                      name="issued_date"
+                      className="input input-bordered input-sm w-full"
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Expiration date</span>
+                    <input
+                      type="date"
+                      name="expiration_date"
+                      className="input input-bordered input-sm w-full"
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Notes</span>
+                    <input name="notes" className="input input-bordered input-sm w-full" />
+                  </label>
+                  <div className="sm:col-span-2 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      disabled={busy}
+                      onClick={() => setViewingCertsFor(null)}
+                    >
+                      Close
+                    </button>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+                      {busy ? <span className="loading loading-spinner loading-xs" /> : null}
+                      Add credential
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <button
+                type="button"
+                className="modal-backdrop"
+                aria-label="Close"
+                onClick={() => setViewingCertsFor(null)}
               />
             </div>
           ) : null}
@@ -2093,6 +2388,9 @@ export default function ManagementPage() {
                         <tr key={sub.id} className="hover:bg-base-200/60">
                           <td className="px-1 break-words">
                             <div className="font-medium">{sub.company_name}</div>
+                            <div className="mt-0.5">
+                              <StarRating value={sub.rating} size="xs" />
+                            </div>
                             <div className="opacity-60">{sub.contact_name || "—"}</div>
                             <div className="break-all opacity-60">{sub.contact_email || "—"}</div>
                           </td>
@@ -2359,6 +2657,30 @@ export default function ManagementPage() {
                     <span className="label-text mb-1 text-sm font-medium">License Expiration</span>
                     <input type="date" name="license_expiration" className="input input-bordered w-full" />
                   </label>
+                  <label className="form-control md:col-span-2">
+                    <span className="label-text mb-1 text-sm font-medium">Business notes</span>
+                    <textarea
+                      name="business_notes"
+                      className="textarea textarea-bordered w-full"
+                      rows={3}
+                      placeholder="On-time? Easy to reach? Professional?"
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Star rating</span>
+                    <select name="rating" className="select select-bordered w-full" defaultValue="">
+                      <option value="">Not rated</option>
+                      <option value="5">5.0</option>
+                      <option value="4.5">4.5</option>
+                      <option value="4">4.0</option>
+                      <option value="3.5">3.5</option>
+                      <option value="3">3.0</option>
+                      <option value="2.5">2.5</option>
+                      <option value="2">2.0</option>
+                      <option value="1.5">1.5</option>
+                      <option value="1">1.0</option>
+                    </select>
+                  </label>
                   <div className="modal-action mb-0 md:col-span-2">
                     <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setAddingSubcontractor(false)}>
                       Cancel
@@ -2415,6 +2737,39 @@ export default function ManagementPage() {
                     <span className="label-text mb-1 text-sm font-medium">License Expiration</span>
                     <input type="date" name="license_expiration" className="input input-bordered w-full" defaultValue={editingSubcontractor.license_expiration ?? ""} />
                   </label>
+                  <label className="form-control md:col-span-2">
+                    <span className="label-text mb-1 text-sm font-medium">Business notes</span>
+                    <textarea
+                      name="business_notes"
+                      className="textarea textarea-bordered w-full"
+                      rows={3}
+                      placeholder="On-time? Easy to reach? Professional?"
+                      defaultValue={editingSubcontractor.business_notes ?? ""}
+                    />
+                  </label>
+                  <label className="form-control">
+                    <span className="label-text mb-1 text-sm font-medium">Star rating</span>
+                    <select
+                      name="rating"
+                      className="select select-bordered w-full"
+                      defaultValue={
+                        editingSubcontractor.rating != null
+                          ? String(Number(editingSubcontractor.rating))
+                          : ""
+                      }
+                    >
+                      <option value="">Not rated</option>
+                      <option value="5">5.0</option>
+                      <option value="4.5">4.5</option>
+                      <option value="4">4.0</option>
+                      <option value="3.5">3.5</option>
+                      <option value="3">3.0</option>
+                      <option value="2.5">2.5</option>
+                      <option value="2">2.0</option>
+                      <option value="1.5">1.5</option>
+                      <option value="1">1.0</option>
+                    </select>
+                  </label>
                   <div className="modal-action mb-0 md:col-span-2">
                     <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setEditingSubcontractor(null)}>
                       Cancel
@@ -2462,25 +2817,98 @@ export default function ManagementPage() {
 
           <SectionCard title="Staff Certification Alerts">
             {admin.certifications.length === 0 ? (
-              <EmptyState title="No certifications" message="Add certifications from the Team tab." />
+              <EmptyState
+                title="No certifications"
+                message="Open Management → Team, then Manage under Certs / Licenses for an employee."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="table table-sm">
                   <thead>
-                    <tr><th>Person</th><th>Certification</th><th>Expires</th><th>Status</th></tr>
+                    <tr>
+                      <th>Person</th>
+                      <th>Certification / License</th>
+                      <th>Number</th>
+                      <th>Issuer</th>
+                      <th>Expires</th>
+                      <th>Status</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {admin.certifications.map((c) => {
-                      const level = complianceFromExpiration(c.expiration_date);
-                      return (
-                        <tr key={c.id}>
-                          <td>{c.user_profiles?.full_name || c.user_profiles?.email || c.user_id}</td>
-                          <td>{c.certification_name}</td>
-                          <td>{c.expiration_date || "—"}</td>
-                          <td><span className={`badge badge-sm ${complianceBadgeClass(level)}`}>{complianceLabel(level)}</span></td>
-                        </tr>
-                      );
-                    })}
+                    {[...admin.certifications]
+                      .sort((a, b) =>
+                        (a.expiration_date ?? "9999-12-31").localeCompare(
+                          b.expiration_date ?? "9999-12-31"
+                        )
+                      )
+                      .map((c) => {
+                        const level = complianceFromExpiration(c.expiration_date);
+                        return (
+                          <tr key={c.id}>
+                            <td>{c.user_profiles?.full_name || c.user_profiles?.email || c.user_id}</td>
+                            <td>{c.certification_name}</td>
+                            <td>{c.certification_number || "—"}</td>
+                            <td>{c.issuing_body || "—"}</td>
+                            <td>{c.expiration_date || "—"}</td>
+                            <td>
+                              <span className={`badge badge-sm ${complianceBadgeClass(level)}`}>
+                                {complianceLabel(level)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Subcontractor License Expirations">
+            {admin.subcontractors.filter((s) => s.license_number || s.license_expiration).length ===
+            0 ? (
+              <EmptyState
+                title="No subcontractor licenses"
+                message="License numbers and expirations appear when recorded on subcontractors or bids."
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Company</th>
+                      <th>Trade</th>
+                      <th>License</th>
+                      <th>State</th>
+                      <th>Expires</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...admin.subcontractors]
+                      .filter((s) => s.license_number || s.license_expiration)
+                      .sort((a, b) =>
+                        (a.license_expiration ?? "9999-12-31").localeCompare(
+                          b.license_expiration ?? "9999-12-31"
+                        )
+                      )
+                      .map((s) => {
+                        const level = complianceFromExpiration(s.license_expiration);
+                        return (
+                          <tr key={s.id}>
+                            <td className="font-medium">{s.company_name}</td>
+                            <td>{s.trade || "—"}</td>
+                            <td>{s.license_number || "—"}</td>
+                            <td>{s.license_state || "—"}</td>
+                            <td>{s.license_expiration || "—"}</td>
+                            <td>
+                              <span className={`badge badge-sm ${complianceBadgeClass(level)}`}>
+                                {complianceLabel(level)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>

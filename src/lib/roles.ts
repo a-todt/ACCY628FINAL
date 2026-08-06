@@ -248,15 +248,29 @@ export function canViewSubcontractors(role: UserRole): boolean {
   return hasPermission(role, "viewSubcontractors");
 }
 
+export function canManageBidPackages(role: UserRole): boolean {
+  return role === "admin" || role === "owner" || role === "project_manager";
+}
+
+export function canViewBidding(role: UserRole): boolean {
+  return (
+    role === "admin" ||
+    role === "owner" ||
+    role === "project_manager" ||
+    role === "field_supervisor" ||
+    role === "subcontractor"
+  );
+}
+
 export function canViewFieldLogs(role: UserRole): boolean {
   return hasPermission(role, "viewFieldLogs");
 }
 
 export type NavCategoryId =
   | "dashboard"
-  | "alerts"
   | "reports"
   | "contracts"
+  | "subcontracting"
   | "finance"
   | "management";
 
@@ -266,10 +280,10 @@ export interface NavItem {
 }
 
 export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCategoryId }> {
+  const showSubcontracting = canViewSubcontractors(role) || canViewBidding(role);
   return (
     [
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
-      { id: "alerts" as const, href: "/alerts", label: "Alerts", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
       {
         id: "contracts" as const,
@@ -282,6 +296,12 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
         href: "/finance",
         label: "Costing and Invoicing",
         show: canViewFinance(role),
+      },
+      {
+        id: "subcontracting" as const,
+        href: canViewSubcontractors(role) ? "/subcontractors" : "/bidding",
+        label: "Subcontracting",
+        show: showSubcontracting,
       },
       {
         id: "management" as const,
@@ -315,11 +335,6 @@ export function secondaryNavForCategory(
           show: canViewChangeOrders(role),
         },
         {
-          href: "/subcontractors",
-          label: "Subcontractors",
-          show: canViewSubcontractors(role),
-        },
-        {
           href: "/field-logs",
           label: "Field Logs",
           show: canViewFieldLogs(role),
@@ -330,8 +345,23 @@ export function secondaryNavForCategory(
       .map(({ href, label }) => ({ href, label }));
   }
 
-  if (category === "alerts") {
-    return [{ href: "/alerts", label: "All Alerts" }];
+  if (category === "subcontracting") {
+    return (
+      [
+        {
+          href: "/subcontractors",
+          label: "Subcontractors",
+          show: canViewSubcontractors(role),
+        },
+        {
+          href: "/bidding",
+          label: "Bidding",
+          show: canViewBidding(role),
+        },
+      ] as Array<NavItem & { show: boolean }>
+    )
+      .filter((item) => item.show)
+      .map(({ href, label }) => ({ href, label }));
   }
 
   if (category === "finance") {
@@ -364,14 +394,15 @@ export function secondaryNavForCategory(
 
 export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (pathname.startsWith("/dashboard")) return "dashboard";
-  if (pathname.startsWith("/alerts")) return "alerts";
   if (pathname.startsWith("/reports")) return "reports";
   if (pathname.startsWith("/admin")) return "reports";
   if (pathname.startsWith("/audit-log") || pathname.startsWith("/management")) return "management";
+  if (pathname.startsWith("/subcontractors") || pathname.startsWith("/bidding")) {
+    return "subcontracting";
+  }
   if (
     pathname.startsWith("/contracts") ||
     pathname.startsWith("/change-orders") ||
-    pathname.startsWith("/subcontractors") ||
     pathname.startsWith("/field-logs")
   ) {
     return "contracts";
@@ -439,16 +470,23 @@ export function statusBadgeClass(status: string): string {
     case "paid":
     case "completed":
     case "complete":
+    case "accepted":
+    case "awarded":
+    case "open":
       return "badge-success";
     case "pending":
     case "partially_paid":
     case "in_progress":
     case "on_hold":
+    case "submitted":
+    case "draft":
       return "badge-warning";
     case "overdue":
     case "rejected":
     case "canceled":
     case "terminated":
+    case "withdrawn":
+    case "closed":
       return "badge-error";
     case "unpaid":
       return "badge-ghost";

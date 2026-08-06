@@ -11,6 +11,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { WeatherBadge } from "@/components/WeatherBadge";
 import { writeAuditLog } from "@/lib/audit";
 import {
@@ -33,13 +35,7 @@ const STATUS_OPTIONS: ContractStatus[] = ["active", "on_hold", "completed", "can
 
 export default function ContractDetailPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="grid place-items-center py-24">
-          <span className="loading loading-spinner loading-lg text-primary" />
-        </div>
-      }
-    >
+    <Suspense fallback={<PageSkeleton rows={5} />}>
       <ContractDetailContent />
     </Suspense>
   );
@@ -224,6 +220,12 @@ function ContractDetailContent() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: "Contracts", href: "/contracts" },
+          { label: contract.contract_name },
+        ]}
+      />
       <PageHeader
         title={contract.contract_name}
         subtitle={contract.client_name ?? undefined}

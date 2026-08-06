@@ -25,7 +25,7 @@ export function NailItLogo({
   if (variant === "mark") {
     return (
       <span
-        className={`inline-flex items-center justify-center ${dim.radius} bg-primary text-primary-content shadow-sm ${className}`}
+        className={`inline-flex items-center justify-center ${dim.radius} bg-primary text-primary-content shadow-md ring-1 ring-primary/20 ${className}`}
         style={{ width: dim.height, height: dim.height }}
         aria-label="Nail It"
       >
@@ -36,7 +36,7 @@ export function NailItLogo({
 
   return (
     <span
-      className={`inline-flex items-center ${dim.gap} ${dim.radius} bg-primary ${dim.pad} text-primary-content shadow-sm ${className}`}
+      className={`inline-flex items-center ${dim.gap} ${dim.radius} bg-primary ${dim.pad} text-primary-content shadow-md ring-1 ring-primary/20 ${className}`}
       style={{ minHeight: dim.height }}
       role="img"
       aria-label="Nail It"
@@ -44,7 +44,7 @@ export function NailItLogo({
       <HardHat style={{ width: dim.icon, height: dim.icon }} aria-hidden className="shrink-0" />
       <span
         className={`font-black tracking-wide uppercase leading-none ${dim.text}`}
-        style={{ letterSpacing: "0.06em" }}
+        style={{ letterSpacing: "0.08em" }}
       >
         Nail It
       </span>

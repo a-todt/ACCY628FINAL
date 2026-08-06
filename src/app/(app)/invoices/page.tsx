@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Building2, ChevronDown, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
+import { Building2, ChevronDown, FileText, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import {
   ColumnAutocompleteHeader,
   ColumnSortHeader,
@@ -13,7 +13,11 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { compareValues } from "@/components/FilterSortBar";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { StatusFilterChips } from "@/components/StatusFilterChips";
+import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
+import { useToast } from "@/components/ToastProvider";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { canCreateInvoices, statusBadgeClass } from "@/lib/roles";
@@ -90,11 +94,14 @@ export default function InvoicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [statusChip, setStatusChip] = useState("all");
+  const { toast } = useToast();
 
   const filtered = useMemo(() => {
     const next = invoices.filter((invoice) => {
       if (!matchesColumnFilter(invoice.invoice_number, numberFilter)) return false;
       if (!matchesColumnFilter(invoice.contracts?.contract_name, projectFilter)) return false;
+      if (statusChip !== "all" && displayStatus(invoice) !== statusChip) return false;
       return true;
     });
 
@@ -113,7 +120,7 @@ export default function InvoicesPage() {
       }
       return compareValues(invoiceBalance(a), invoiceBalance(b), sortDir);
     });
-  }, [invoices, numberFilter, projectFilter, sortKey, sortDir]);
+  }, [invoices, numberFilter, projectFilter, statusChip, sortKey, sortDir]);
 
   const numberOptions = useMemo(
     () => uniqueSorted(invoices.map((invoice) => invoice.invoice_number)),
@@ -412,11 +419,7 @@ export default function InvoicesPage() {
   };
 
   if (loading) {
-    return (
-      <div className="grid place-items-center py-24">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+    return <PageSkeleton rows={8} />;
   }
 
   if (error) {
@@ -432,43 +435,6 @@ export default function InvoicesPage() {
         subtitle="Billing and payment status across all projects."
         actions={
           <div className="flex flex-wrap gap-2 items-center">
-            {canMutate && selectedIds.size > 0 ? (
-              <div className="dropdown dropdown-end">
-                <div
-                  tabIndex={0}
-                  role="button"
-                  className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}
-                >
-                  Bulk actions ({selectedIds.size})
-                  <ChevronDown className="h-4 w-4" />
-                </div>
-                <ul
-                  tabIndex={0}
-                  className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300"
-                >
-                  <li className="menu-title px-3 pt-1">
-                    <span>Change status</span>
-                  </li>
-                  {STATUS_OPTIONS.map((status) => (
-                    <li key={status}>
-                      <button type="button" disabled={busy} onClick={() => void runBulk(status)}>
-                        Set {labelize(status)}
-                      </button>
-                    </li>
-                  ))}
-                  <li>
-                    <button
-                      type="button"
-                      className="text-error"
-                      disabled={busy}
-                      onClick={() => void runBulk("delete")}
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete selected
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            ) : null}
             {canManage ? (
               <>
                 <button
@@ -489,6 +455,61 @@ export default function InvoicesPage() {
         }
       />
 
+      <StickyToolbar>
+        <StatusFilterChips
+          options={STATUS_OPTIONS}
+          value={statusChip}
+          onChange={setStatusChip}
+          allLabel="All statuses"
+        />
+        <p className="text-xs opacity-55 tabular-nums">
+          {filtered.length} shown
+          {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+        </p>
+      </StickyToolbar>
+
+      <BulkActionBar count={canMutate ? selectedIds.size : 0} onClear={clearSelection}>
+        <div className="dropdown dropdown-top dropdown-end">
+          <div tabIndex={0} role="button" className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}>
+            Bulk actions
+            <ChevronDown className="h-4 w-4" />
+          </div>
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300 mb-2"
+          >
+            <li className="menu-title px-3 pt-1">
+              <span>Change status</span>
+            </li>
+            {STATUS_OPTIONS.map((status) => (
+              <li key={status}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void runBulk(status).then(() => toast(`Updated ${selectedIds.size} invoice(s)`, "success"))
+                  }
+                >
+                  Set {labelize(status)}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                type="button"
+                className="text-error"
+                disabled={busy}
+                onClick={() =>
+                  void runBulk("delete").then(() => toast("Deleted selected invoices", "success"))
+                }
+              >
+                <Trash2 className="h-4 w-4" /> Delete selected
+              </button>
+            </li>
+          </ul>
+        </div>
+      </BulkActionBar>
+
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
       {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
 
@@ -496,103 +517,110 @@ export default function InvoicesPage() {
         <SectionCard title="New Invoice">
           {invoiceError ? <AlertBanner type="error">{invoiceError}</AlertBanner> : null}
           {invoiceSuccess ? <AlertBanner type="success">{invoiceSuccess}</AlertBanner> : null}
-          <form onSubmit={onSubmitInvoice} className="space-y-4 mt-4">
-            <FormField label="Contract">
-              <select
-                className="select select-bordered"
-                value={invoiceForm.contract_id}
-                onChange={(e) => onContractChange(e.target.value)}
-                required
-              >
-                <option value="">Select a contract…</option>
-                {contracts.map((contract) => (
-                  <option key={contract.id} value={contract.id}>
-                    {contract.contract_name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Invoice Number">
-              <input
-                className="input input-bordered"
-                value={invoiceForm.invoice_number}
-                onChange={(e) => updateInvoiceField("invoice_number", e.target.value)}
-                placeholder="e.g. INV-1007"
-              />
-            </FormField>
-            <FormField label="Invoice Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={invoiceForm.invoice_date}
-                onChange={(e) => updateInvoiceField("invoice_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Due Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={invoiceForm.due_date}
-                onChange={(e) => updateInvoiceField("due_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Description">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={2}
-                value={invoiceForm.description}
-                onChange={(e) => updateInvoiceField("description", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Invoice Amount">
-              <label className="input input-bordered flex items-center gap-2">
-                $
+          <form onSubmit={onSubmitInvoice} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField stacked label="Contract">
+                <select
+                  className="select select-bordered w-full"
+                  value={invoiceForm.contract_id}
+                  onChange={(e) => onContractChange(e.target.value)}
+                  required
+                >
+                  <option value="">Select a contract…</option>
+                  {contracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.contract_name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Invoice Number">
+                <input
+                  className="input input-bordered w-full"
+                  value={invoiceForm.invoice_number}
+                  onChange={(e) => updateInvoiceField("invoice_number", e.target.value)}
+                  placeholder="e.g. INV-1007"
+                />
+              </FormField>
+              <FormField stacked label="Invoice Date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={invoiceForm.invoice_date}
+                  onChange={(e) => updateInvoiceField("invoice_date", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Due Date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={invoiceForm.due_date}
+                  onChange={(e) => updateInvoiceField("due_date", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Invoice Amount">
+                <label className="input input-bordered flex items-center gap-2 w-full">
+                  $
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="grow"
+                    value={invoiceForm.invoice_amount}
+                    onChange={(e) => updateInvoiceField("invoice_amount", e.target.value)}
+                    required
+                  />
+                </label>
+              </FormField>
+              <FormField stacked label="Retainage %">
                 <input
                   type="number"
-                  step="0.01"
-                  className="grow"
-                  value={invoiceForm.invoice_amount}
-                  onChange={(e) => updateInvoiceField("invoice_amount", e.target.value)}
-                  required
+                  step="0.1"
+                  className="input input-bordered w-full"
+                  value={invoiceForm.retainage_percent}
+                  onChange={(e) => updateInvoiceField("retainage_percent", e.target.value)}
                 />
-              </label>
-            </FormField>
-            <FormField label="Retainage %">
-              <input
-                type="number"
-                step="0.1"
-                className="input input-bordered"
-                value={invoiceForm.retainage_percent}
-                onChange={(e) => updateInvoiceField("retainage_percent", e.target.value)}
-              />
-            </FormField>
-            <FormField
-              label="Retainage Amount"
-              hint="Calculated automatically from invoice amount × retainage %."
-            >
-              <input
-                className="input input-bordered"
-                value={money(computedRetainageAmount)}
-                disabled
-                readOnly
-              />
-            </FormField>
-            <FormField label="Net Amount Due" hint="Invoice amount less retainage withheld.">
-              <input
-                className="input input-bordered font-medium"
-                value={money(computedNetAmountDue)}
-                disabled
-                readOnly
-              />
-            </FormField>
-            <FormField label="Notes">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={2}
-                value={invoiceForm.notes}
-                onChange={(e) => updateInvoiceField("notes", e.target.value)}
-              />
-            </FormField>
+              </FormField>
+              <FormField
+                stacked
+                label="Retainage Amount"
+                hint="Calculated automatically from invoice amount × retainage %."
+              >
+                <input
+                  className="input input-bordered w-full"
+                  value={money(computedRetainageAmount)}
+                  disabled
+                  readOnly
+                />
+              </FormField>
+              <FormField stacked label="Net Amount Due" hint="Invoice amount less retainage withheld.">
+                <input
+                  className="input input-bordered font-medium w-full"
+                  value={money(computedNetAmountDue)}
+                  disabled
+                  readOnly
+                />
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Description">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={2}
+                    value={invoiceForm.description}
+                    onChange={(e) => updateInvoiceField("description", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Notes">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={2}
+                    value={invoiceForm.notes}
+                    onChange={(e) => updateInvoiceField("notes", e.target.value)}
+                  />
+                </FormField>
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <button type="submit" className="btn btn-primary" disabled={savingInvoice}>
                 {savingInvoice ? <span className="loading loading-spinner loading-sm" /> : null}
@@ -692,22 +720,32 @@ export default function InvoicesPage() {
       ) : null}
 
       {invoices.length === 0 ? (
-        <EmptyState title="No invoices" message="No invoices have been issued yet." />
+        <EmptyState
+          title="No invoices"
+          message="No invoices have been issued yet."
+          icon={FileText}
+          action={
+            canManage ? (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowInvoiceForm(true)}>
+                <Plus className="h-4 w-4" /> Create Invoice
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="rounded-box border border-base-300 bg-base-100">
-          <div className="overflow-x-auto">
+        <TableShell freezeFirst>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
-                <col className="w-[11%]" />
-                <col className="w-[14%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
+                <col className="w-[8%]" />
                 <col className="w-[8%]" />
                 <col className="w-[9%]" />
+                <col className="w-[9%] hidden xl:table-column" />
+                <col className="w-[9%]" />
+                <col className="w-[8%] hidden xl:table-column" />
+                <col className="w-[12%]" />
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
               <thead>
@@ -761,9 +799,9 @@ export default function InvoicesPage() {
                     sortDir={sortDir}
                     onSort={() => onSort("amount")}
                   />
-                  <ColumnSortHeader label="Retainage" />
+                  <ColumnSortHeader label="Retainage" className="hidden xl:table-cell" />
                   <ColumnSortHeader label="Net Due" />
-                  <ColumnSortHeader label="Paid" />
+                  <ColumnSortHeader label="Paid" className="hidden xl:table-cell" />
                   <ColumnSortHeader
                     label="Status"
                     sortActive={sortKey === "status"}
@@ -824,11 +862,20 @@ export default function InvoicesPage() {
                           {invoice.invoice_date ?? "—"}
                         </td>
                         <td className="whitespace-nowrap px-1 text-center">{invoice.due_date ?? "—"}</td>
-                        <td className="truncate px-1 text-center">{money(invoice.invoice_amount)}</td>
-                        <td className="truncate px-1 text-center">{money(invoice.retainage_amount)}</td>
+                        <td
+                          className="truncate px-1 text-center"
+                          title={`Retainage: ${money(invoice.retainage_amount)} · Paid: ${money(invoice.amount_paid)} · Net: ${money(invoice.net_amount_due)}`}
+                        >
+                          {money(invoice.invoice_amount)}
+                        </td>
+                        <td className="truncate px-1 text-center hidden xl:table-cell">
+                          {money(invoice.retainage_amount)}
+                        </td>
                         <td className="truncate px-1 text-center">{money(invoice.net_amount_due)}</td>
-                        <td className="truncate px-1 text-center">{money(invoice.amount_paid)}</td>
-                        <td className="px-1 text-center">
+                        <td className="truncate px-1 text-center hidden xl:table-cell">
+                          {money(invoice.amount_paid)}
+                        </td>
+                        <td className="px-1 text-center overflow-visible">
                           <span className={`badge badge-sm ${statusBadgeClass(shownStatus)}`}>
                             {overdue ? "Overdue" : labelize(invoice.status)}
                           </span>
@@ -924,12 +971,7 @@ export default function InvoicesPage() {
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="px-4 py-2 text-xs opacity-60 border-t border-base-300">
-            Showing {filtered.length} of {invoices.length} invoices
-            {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
-          </div>
-        </div>
+        </TableShell>
       )}
     </div>
   );

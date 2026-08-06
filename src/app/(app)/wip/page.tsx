@@ -292,22 +292,22 @@ export default function WIPSchedulePage() {
         />
       ) : (
         <div className="overflow-x-auto rounded-box border border-base-300 bg-base-100">
-          <table className="table table-sm min-w-[1100px]">
+          <table className="table table-sm">
             <thead>
               <tr>
                 <th>Health</th>
                 <th>Project Name</th>
                 <th className="text-right">Contract Value</th>
-                <th className="text-right">Est. Total Cost</th>
+                <th className="text-right hidden xl:table-cell">Est. Total Cost</th>
                 <th className="text-right">Costs to Date</th>
                 <th className="min-w-[140px]">Completion %</th>
                 <th className="text-right">Revenue Earned</th>
                 <th className="text-right">Billed to Date</th>
-                <th className="text-right">Overbilling</th>
-                <th className="text-right">Underbilling</th>
-                <th className="text-right">Retainage Held</th>
+                <th className="text-right hidden xl:table-cell">Overbilling</th>
+                <th className="text-right hidden xl:table-cell">Underbilling</th>
+                <th className="text-right hidden xl:table-cell">Retainage Held</th>
                 <th className="text-right">Projected Profit</th>
-                <th className="text-right">Projected Margin %</th>
+                <th className="text-right hidden xl:table-cell">Projected Margin %</th>
               </tr>
             </thead>
             <tbody>
@@ -318,7 +318,7 @@ export default function WIPSchedulePage() {
                   <td className="text-right whitespace-nowrap">
                     {moneyExact(colNum(project, P.contractValue))}
                   </td>
-                  <td className="text-right whitespace-nowrap">
+                  <td className="text-right whitespace-nowrap hidden xl:table-cell">
                     {moneyExact(colNum(project, P.estimatedCost))}
                   </td>
                   <td className="text-right whitespace-nowrap">
@@ -337,31 +337,39 @@ export default function WIPSchedulePage() {
                     </div>
                   </td>
                   <td className="text-right whitespace-nowrap">{moneyExact(calcs.revenueEarned)}</td>
-                  <td className="text-right whitespace-nowrap">{moneyExact(calcs.billedToDate)}</td>
                   <td
-                    className={`text-right whitespace-nowrap ${
+                    className="text-right whitespace-nowrap"
+                    title={`Over: ${calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"} · Under: ${calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"} · Retainage: ${moneyExact(calcs.retainageHeld)}`}
+                  >
+                    {moneyExact(calcs.billedToDate)}
+                  </td>
+                  <td
+                    className={`text-right whitespace-nowrap hidden xl:table-cell ${
                       calcs.overbilling > 0 ? "text-error font-semibold" : ""
                     }`}
                   >
                     {calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"}
                   </td>
                   <td
-                    className={`text-right whitespace-nowrap ${
+                    className={`text-right whitespace-nowrap hidden xl:table-cell ${
                       calcs.underbilling > 0 ? "text-success font-semibold" : ""
                     }`}
                   >
                     {calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"}
                   </td>
-                  <td className="text-right whitespace-nowrap">{moneyExact(calcs.retainageHeld)}</td>
+                  <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                    {moneyExact(calcs.retainageHeld)}
+                  </td>
                   <td
                     className={`text-right whitespace-nowrap ${
                       calcs.projectedProfit < 0 ? "text-error" : ""
                     }`}
+                    title={`Margin: ${percent(calcs.projectedMargin / 100)} · Est. cost: ${moneyExact(colNum(project, P.estimatedCost))}`}
                   >
                     {moneyExact(calcs.projectedProfit)}
                   </td>
                   <td
-                    className={`text-right whitespace-nowrap ${
+                    className={`text-right whitespace-nowrap hidden xl:table-cell ${
                       calcs.projectedMargin < 0
                         ? "text-error"
                         : calcs.projectedMargin <= 10
@@ -379,7 +387,9 @@ export default function WIPSchedulePage() {
                 <td />
                 <td>TOTALS</td>
                 <td className="text-right whitespace-nowrap">{moneyExact(totals.contractValue)}</td>
-                <td className="text-right whitespace-nowrap">{moneyExact(totals.estimatedCost)}</td>
+                <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                  {moneyExact(totals.estimatedCost)}
+                </td>
                 <td className="text-right whitespace-nowrap">{moneyExact(totals.costsToDate)}</td>
                 <td>
                   <div className="flex items-center gap-2 min-w-[120px]">
@@ -396,20 +406,22 @@ export default function WIPSchedulePage() {
                 <td className="text-right whitespace-nowrap">{moneyExact(totals.revenueEarned)}</td>
                 <td className="text-right whitespace-nowrap">{moneyExact(totals.billedToDate)}</td>
                 <td
-                  className={`text-right whitespace-nowrap ${
+                  className={`text-right whitespace-nowrap hidden xl:table-cell ${
                     totalsOverbilling > 0 ? "text-error" : ""
                   }`}
                 >
                   {totalsOverbilling > 0 ? moneyExact(totalsOverbilling) : "—"}
                 </td>
                 <td
-                  className={`text-right whitespace-nowrap ${
+                  className={`text-right whitespace-nowrap hidden xl:table-cell ${
                     totalsUnderbilling > 0 ? "text-success" : ""
                   }`}
                 >
                   {totalsUnderbilling > 0 ? moneyExact(totalsUnderbilling) : "—"}
                 </td>
-                <td className="text-right whitespace-nowrap">{moneyExact(totals.retainageHeld)}</td>
+                <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                  {moneyExact(totals.retainageHeld)}
+                </td>
                 <td
                   className={`text-right whitespace-nowrap ${
                     totalsProjectedProfit < 0 ? "text-error" : ""
@@ -417,7 +429,9 @@ export default function WIPSchedulePage() {
                 >
                   {moneyExact(totalsProjectedProfit)}
                 </td>
-                <td className="text-right whitespace-nowrap">{percent(totalsMarginPct)}</td>
+                <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                  {percent(totalsMarginPct)}
+                </td>
               </tr>
             </tfoot>
           </table>

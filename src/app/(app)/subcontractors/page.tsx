@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { Building2, ChevronDown, Pencil, Plus, Trash2, TriangleAlert } from "lucide-react";
+import { Building2, ChevronDown, HardHat, Pencil, Plus, Trash2, TriangleAlert } from "lucide-react";
 import {
   ColumnAutocompleteHeader,
   ColumnSortHeader,
@@ -13,10 +13,16 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { compareValues } from "@/components/FilterSortBar";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { StatusFilterChips } from "@/components/StatusFilterChips";
+import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
+import { useToast } from "@/components/ToastProvider";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
+import { StarRating } from "@/components/StarRating";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize, money } from "@/lib/metrics";
 import { canManageSubcontractors, statusBadgeClass } from "@/lib/roles";
+import { resolveSubcontractorScopeUserId } from "@/lib/subScope";
 import { createClient } from "@/lib/supabase/client";
 import type { SubStatus, Subcontractor } from "@/lib/types";
 
@@ -36,6 +42,8 @@ const EMPTY_FORM = {
   end_date: "",
   status: "active" as SubStatus,
   scope_of_work: "",
+  business_notes: "",
+  rating: "",
   user_id: "",
 };
 
@@ -51,6 +59,8 @@ type EditForm = {
   subcontract_value: string;
   amount_paid: string;
   status: SubStatus;
+  business_notes: string;
+  rating: string;
 };
 
 function editFormFromSub(sub: Subcontractor): EditForm {
@@ -64,6 +74,8 @@ function editFormFromSub(sub: Subcontractor): EditForm {
     subcontract_value: sub.subcontract_value != null ? String(sub.subcontract_value) : "",
     amount_paid: sub.amount_paid != null ? String(sub.amount_paid) : "0",
     status: sub.status,
+    business_notes: sub.business_notes ?? "",
+    rating: sub.rating != null ? String(Number(sub.rating)) : "",
   };
 }
 
@@ -72,11 +84,22 @@ function contactLabel(sub: Subcontractor) {
 }
 
 export default function SubcontractorsPage() {
-  const { effectiveRole, user } = useAuth();
+  const { effectiveRole, user, profile } = useAuth();
   const { contracts, subcontractors, userProfiles, loading, error, refresh } = useContractData();
   const canManage = canManageSubcontractors(effectiveRole);
   const canMutate = canManage;
   const isSubcontractor = effectiveRole === "subcontractor";
+
+  const scopeUserId = useMemo(
+    () =>
+      resolveSubcontractorScopeUserId(
+        effectiveRole,
+        profile?.role,
+        user?.id,
+        userProfiles
+      ),
+    [effectiveRole, profile?.role, user?.id, userProfiles]
+  );
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -88,6 +111,8 @@ export default function SubcontractorsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("company");
   const [sortDir, setSortDir] = useState<ColumnSortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [statusChip, setStatusChip] = useState("all");
+  const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -101,14 +126,18 @@ export default function SubcontractorsPage() {
   const subLogins = useMemo(() => userProfiles.filter((p) => p.role === "subcontractor"), [userProfiles]);
 
   const baseList = useMemo(
-    () => (isSubcontractor ? subcontractors.filter((s) => s.user_id === user?.id) : subcontractors),
-    [subcontractors, isSubcontractor, user?.id]
+    () =>
+      isSubcontractor
+        ? subcontractors.filter((s) => !scopeUserId || s.user_id === scopeUserId)
+        : subcontractors,
+    [subcontractors, isSubcontractor, scopeUserId]
   );
 
   const filtered = useMemo(() => {
     const next = baseList.filter((sub) => {
       if (!matchesColumnFilter(sub.company_name, companyFilter)) return false;
       if (!matchesColumnFilter(sub.contracts?.contract_name, projectFilter)) return false;
+      if (statusChip !== "all" && sub.status !== statusChip) return false;
       return true;
     });
 
@@ -120,7 +149,7 @@ export default function SubcontractorsPage() {
       if (sortKey === "paid") return compareValues(Number(a.amount_paid ?? 0), Number(b.amount_paid ?? 0), sortDir);
       return compareValues(a.status, b.status, sortDir);
     });
-  }, [baseList, companyFilter, projectFilter, sortKey, sortDir]);
+  }, [baseList, companyFilter, projectFilter, statusChip, sortKey, sortDir]);
 
   const companyOptions = useMemo(
     () => uniqueSorted(baseList.map((sub) => sub.company_name)),
@@ -329,6 +358,8 @@ export default function SubcontractorsPage() {
           end_date: form.end_date || null,
           status: form.status,
           scope_of_work: form.scope_of_work.trim() || null,
+          business_notes: form.business_notes.trim() || null,
+          rating: form.rating ? Number(form.rating) : null,
           user_id: form.user_id || null,
         })
         .select("id")
@@ -376,6 +407,8 @@ export default function SubcontractorsPage() {
           subcontract_value: editForm.subcontract_value ? Number(editForm.subcontract_value) : null,
           amount_paid: editForm.amount_paid ? Number(editForm.amount_paid) : 0,
           status: editForm.status,
+          business_notes: editForm.business_notes.trim() || null,
+          rating: editForm.rating ? Number(editForm.rating) : null,
         })
         .eq("id", editing.id);
       if (updateError) throw updateError;
@@ -398,11 +431,7 @@ export default function SubcontractorsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="grid place-items-center py-24">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+    return <PageSkeleton rows={8} />;
   }
 
   if (error) {
@@ -427,52 +456,63 @@ export default function SubcontractorsPage() {
             : "Manage subcontractor engagements across all projects."
         }
         actions={
-          <div className="flex flex-wrap gap-2 items-center">
-            {canMutate && selectedIds.size > 0 ? (
-              <div className="dropdown dropdown-end">
-                <div
-                  tabIndex={0}
-                  role="button"
-                  className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}
-                >
-                  Bulk actions ({selectedIds.size})
-                  <ChevronDown className="h-4 w-4" />
-                </div>
-                <ul
-                  tabIndex={0}
-                  className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300"
-                >
-                  <li className="menu-title px-3 pt-1">
-                    <span>Change status</span>
-                  </li>
-                  {STATUS_OPTIONS.map((status) => (
-                    <li key={status}>
-                      <button type="button" disabled={busy} onClick={() => void runBulk(status)}>
-                        Set {labelize(status)}
-                      </button>
-                    </li>
-                  ))}
-                  <li>
-                    <button
-                      type="button"
-                      className="text-error"
-                      disabled={busy}
-                      onClick={() => void runBulk("delete")}
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete selected
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            ) : null}
-            {canManage ? (
-              <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
-                <Plus className="h-4 w-4" /> {showForm ? "Close Form" : "Add Subcontractor"}
-              </button>
-            ) : null}
-          </div>
+          canMutate ? (
+            <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
+              <Plus className="h-4 w-4" /> {showForm ? "Close" : "Add Subcontractor"}
+            </button>
+          ) : null
         }
       />
+
+      <StickyToolbar>
+        <StatusFilterChips
+          options={STATUS_OPTIONS}
+          value={statusChip}
+          onChange={setStatusChip}
+          allLabel="All statuses"
+        />
+        <p className="text-xs opacity-55 tabular-nums">
+          {filtered.length} shown
+          {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+        </p>
+      </StickyToolbar>
+
+      <BulkActionBar count={canMutate ? selectedIds.size : 0} onClear={clearSelection}>
+        <div className="dropdown dropdown-top dropdown-end">
+          <div tabIndex={0} role="button" className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}>
+            Bulk actions
+            <ChevronDown className="h-4 w-4" />
+          </div>
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300 mb-2"
+          >
+            {STATUS_OPTIONS.map((status) => (
+              <li key={status}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void runBulk(status).then(() => toast(`Updated ${selectedIds.size} subcontractor(s)`, "success"))
+                  }
+                >
+                  Set {labelize(status)}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                type="button"
+                className="text-error"
+                disabled={busy}
+                onClick={() => void runBulk("delete").then(() => toast("Deleted selected", "success"))}
+              >
+                <Trash2 className="h-4 w-4" /> Delete selected
+              </button>
+            </li>
+          </ul>
+        </div>
+      </BulkActionBar>
 
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
       {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
@@ -481,144 +521,183 @@ export default function SubcontractorsPage() {
         <SectionCard title="New Subcontractor">
           {formError ? <AlertBanner type="error">{formError}</AlertBanner> : null}
           {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
-          <form onSubmit={onSubmit} className="space-y-4 mt-4">
-            <FormField label="Contract">
-              <select
-                className="select select-bordered"
-                value={form.contract_id}
-                onChange={(e) => updateField("contract_id", e.target.value)}
-                required
-              >
-                <option value="">Select a contract…</option>
-                {contracts.map((contract) => (
-                  <option key={contract.id} value={contract.id}>
-                    {contract.contract_name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Company Name">
-              <input
-                className="input input-bordered"
-                value={form.company_name}
-                onChange={(e) => updateField("company_name", e.target.value)}
-                required
-              />
-            </FormField>
-            <FormField label="Trade">
-              <input
-                className="input input-bordered"
-                value={form.trade}
-                onChange={(e) => updateField("trade", e.target.value)}
-                placeholder="e.g. Electrical"
-              />
-            </FormField>
-            <FormField label="Contact Name">
-              <input
-                className="input input-bordered"
-                value={form.contact_name}
-                onChange={(e) => updateField("contact_name", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Contact Email">
-              <input
-                type="email"
-                className="input input-bordered"
-                value={form.contact_email}
-                onChange={(e) => updateField("contact_email", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Contact Phone">
-              <input
-                className="input input-bordered"
-                value={form.contact_phone}
-                onChange={(e) => updateField("contact_phone", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Linked Subcontractor User" hint="Optional — grants that login visibility into this record.">
-              <select
-                className="select select-bordered"
-                value={form.user_id}
-                onChange={(e) => updateField("user_id", e.target.value)}
-              >
-                <option value="">None</option>
-                {subLogins.map((sub) => (
-                  <option key={sub.id} value={sub.id}>
-                    {sub.full_name || sub.email}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Subcontract Value">
-              <label className="input input-bordered flex items-center gap-2">
-                $
+          <form onSubmit={onSubmit} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField stacked label="Contract">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.contract_id}
+                  onChange={(e) => updateField("contract_id", e.target.value)}
+                  required
+                >
+                  <option value="">Select a contract…</option>
+                  {contracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.contract_name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Company Name">
+                <input
+                  className="input input-bordered w-full"
+                  value={form.company_name}
+                  onChange={(e) => updateField("company_name", e.target.value)}
+                  required
+                />
+              </FormField>
+              <FormField stacked label="Trade">
+                <input
+                  className="input input-bordered w-full"
+                  value={form.trade}
+                  onChange={(e) => updateField("trade", e.target.value)}
+                  placeholder="e.g. Electrical"
+                />
+              </FormField>
+              <FormField stacked label="Contact Name">
+                <input
+                  className="input input-bordered w-full"
+                  value={form.contact_name}
+                  onChange={(e) => updateField("contact_name", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Contact Email">
+                <input
+                  type="email"
+                  className="input input-bordered w-full"
+                  value={form.contact_email}
+                  onChange={(e) => updateField("contact_email", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Contact Phone">
+                <input
+                  className="input input-bordered w-full"
+                  value={form.contact_phone}
+                  onChange={(e) => updateField("contact_phone", e.target.value)}
+                />
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField
+                  stacked
+                  label="Linked Subcontractor User"
+                  hint="Optional — grants that login visibility into this record."
+                >
+                  <select
+                    className="select select-bordered w-full"
+                    value={form.user_id}
+                    onChange={(e) => updateField("user_id", e.target.value)}
+                  >
+                    <option value="">None</option>
+                    {subLogins.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.full_name || sub.email}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+              <FormField stacked label="Subcontract Value">
+                <label className="input input-bordered flex items-center gap-2 w-full">
+                  $
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="grow"
+                    value={form.subcontract_value}
+                    onChange={(e) => updateField("subcontract_value", e.target.value)}
+                  />
+                </label>
+              </FormField>
+              <FormField stacked label="Amount Paid">
+                <label className="input input-bordered flex items-center gap-2 w-full">
+                  $
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="grow"
+                    value={form.amount_paid}
+                    onChange={(e) => updateField("amount_paid", e.target.value)}
+                  />
+                </label>
+              </FormField>
+              <FormField stacked label="Retainage %">
                 <input
                   type="number"
-                  step="0.01"
-                  className="grow"
-                  value={form.subcontract_value}
-                  onChange={(e) => updateField("subcontract_value", e.target.value)}
+                  step="0.1"
+                  className="input input-bordered w-full"
+                  value={form.retainage_percent}
+                  onChange={(e) => updateField("retainage_percent", e.target.value)}
                 />
-              </label>
-            </FormField>
-            <FormField label="Amount Paid">
-              <label className="input input-bordered flex items-center gap-2">
-                $
+              </FormField>
+              <FormField stacked label="Status">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.status}
+                  onChange={(e) => updateField("status", e.target.value as SubStatus)}
+                >
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {labelize(status)}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Start Date">
                 <input
-                  type="number"
-                  step="0.01"
-                  className="grow"
-                  value={form.amount_paid}
-                  onChange={(e) => updateField("amount_paid", e.target.value)}
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={form.start_date}
+                  onChange={(e) => updateField("start_date", e.target.value)}
                 />
-              </label>
-            </FormField>
-            <FormField label="Retainage %">
-              <input
-                type="number"
-                step="0.1"
-                className="input input-bordered"
-                value={form.retainage_percent}
-                onChange={(e) => updateField("retainage_percent", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Start Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={form.start_date}
-                onChange={(e) => updateField("start_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="End Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={form.end_date}
-                onChange={(e) => updateField("end_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Status">
-              <select
-                className="select select-bordered"
-                value={form.status}
-                onChange={(e) => updateField("status", e.target.value as SubStatus)}
-              >
-                {STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
-                    {labelize(status)}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Scope of Work">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={3}
-                value={form.scope_of_work}
-                onChange={(e) => updateField("scope_of_work", e.target.value)}
-              />
-            </FormField>
+              </FormField>
+              <FormField stacked label="End Date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={form.end_date}
+                  onChange={(e) => updateField("end_date", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Star rating">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.rating}
+                  onChange={(e) => updateField("rating", e.target.value)}
+                >
+                  <option value="">Not rated</option>
+                  <option value="5">5.0 ★★★★★</option>
+                  <option value="4.5">4.5 ★★★★½</option>
+                  <option value="4">4.0 ★★★★</option>
+                  <option value="3.5">3.5 ★★★½</option>
+                  <option value="3">3.0 ★★★</option>
+                  <option value="2.5">2.5 ★★½</option>
+                  <option value="2">2.0 ★★</option>
+                  <option value="1.5">1.5 ★½</option>
+                  <option value="1">1.0 ★</option>
+                </select>
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Scope of Work">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={3}
+                    value={form.scope_of_work}
+                    onChange={(e) => updateField("scope_of_work", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Business notes">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={3}
+                    placeholder="e.g. Completes on time, easy to reach, professional crews…"
+                    value={form.business_notes}
+                    onChange={(e) => updateField("business_notes", e.target.value)}
+                  />
+                </FormField>
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? <span className="loading loading-spinner loading-sm" /> : null}
@@ -630,20 +709,30 @@ export default function SubcontractorsPage() {
       ) : null}
 
       {baseList.length === 0 ? (
-        <EmptyState title="No subcontractors" message="No subcontractors have been added yet." />
+        <EmptyState
+          title="No subcontractors"
+          message="No subcontractors have been added yet."
+          icon={HardHat}
+          action={
+            canMutate ? (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4" /> Add Subcontractor
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="rounded-box border border-base-300 bg-base-100">
-          <div className="overflow-x-auto">
+        <TableShell freezeFirst>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
                 <col className="w-[16%]" />
                 <col className="w-[16%]" />
                 <col className="w-[10%]" />
-                <col className="w-[14%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
-                <col className="w-[10%]" />
+                <col className="w-[14%] hidden xl:table-column" />
+                <col className="w-[9%]" />
+                <col className="w-[10%] hidden xl:table-column" />
+                <col className="w-[12%]" />
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
               <thead>
@@ -685,7 +774,7 @@ export default function SubcontractorsPage() {
                     sortDir={sortDir}
                     onSort={() => onSort("trade")}
                   />
-                  <ColumnSortHeader label="Contact" />
+                  <ColumnSortHeader label="Contact" className="hidden xl:table-cell" />
                   <ColumnSortHeader
                     label="Value"
                     sortActive={sortKey === "value"}
@@ -697,6 +786,7 @@ export default function SubcontractorsPage() {
                     sortActive={sortKey === "paid"}
                     sortDir={sortDir}
                     onSort={() => onSort("paid")}
+                    className="hidden xl:table-cell"
                   />
                   <ColumnSortHeader
                     label="Status"
@@ -739,6 +829,9 @@ export default function SubcontractorsPage() {
                           >
                             {sub.company_name}
                           </button>
+                          <div className="mt-0.5">
+                            <StarRating value={sub.rating} size="xs" />
+                          </div>
                         </td>
                         <td className="min-w-0 px-1 text-left">
                           <Link
@@ -755,12 +848,22 @@ export default function SubcontractorsPage() {
                         <td className="truncate px-1 text-center" title={sub.trade ?? "—"}>
                           {sub.trade ?? "—"}
                         </td>
-                        <td className="truncate px-1 text-left" title={contactLabel(sub)}>
+                        <td
+                          className="truncate px-1 text-left hidden xl:table-cell"
+                          title={contactLabel(sub)}
+                        >
                           {contactLabel(sub)}
                         </td>
-                        <td className="truncate px-1 text-center">{money(sub.subcontract_value)}</td>
-                        <td className="truncate px-1 text-center">{money(sub.amount_paid)}</td>
-                        <td className="px-1 text-center">
+                        <td
+                          className="truncate px-1 text-center"
+                          title={`Paid: ${money(sub.amount_paid)} · Contact: ${contactLabel(sub)}`}
+                        >
+                          {money(sub.subcontract_value)}
+                        </td>
+                        <td className="truncate px-1 text-center hidden xl:table-cell">
+                          {money(sub.amount_paid)}
+                        </td>
+                        <td className="px-1 text-center overflow-visible">
                           <div className="inline-flex flex-wrap items-center justify-center gap-1">
                             <span className={`badge badge-sm ${statusBadgeClass(sub.status)}`}>
                               {labelize(sub.status)}
@@ -857,12 +960,7 @@ export default function SubcontractorsPage() {
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="px-4 py-2 text-xs opacity-60 border-t border-base-300">
-            Showing {filtered.length} of {baseList.length} subcontractors
-            {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
-          </div>
-        </div>
+        </TableShell>
       )}
 
       {viewing ? (
@@ -902,6 +1000,14 @@ export default function SubcontractorsPage() {
               <DetailField label="License Expiration">{viewing.license_expiration ?? "—"}</DetailField>
               <div className="sm:col-span-2">
                 <DetailField label="Scope of Work">{viewing.scope_of_work ?? "—"}</DetailField>
+              </div>
+              <div className="sm:col-span-2">
+                <DetailField label="Business notes">{viewing.business_notes ?? "—"}</DetailField>
+              </div>
+              <div className="sm:col-span-2">
+                <DetailField label="Star rating">
+                  <StarRating value={viewing.rating} size="md" />
+                </DetailField>
               </div>
             </div>
             <div className="modal-action">
@@ -1013,6 +1119,33 @@ export default function SubcontractorsPage() {
                       {labelize(status)}
                     </option>
                   ))}
+                </select>
+              </FormField>
+              <FormField label="Business notes">
+                <textarea
+                  className="textarea textarea-bordered textarea-sm w-full"
+                  rows={3}
+                  placeholder="On-time? Easy to reach? Professional?"
+                  value={editForm.business_notes}
+                  onChange={(e) => updateEditField("business_notes", e.target.value)}
+                />
+              </FormField>
+              <FormField label="Star rating">
+                <select
+                  className="select select-bordered select-sm w-full"
+                  value={editForm.rating}
+                  onChange={(e) => updateEditField("rating", e.target.value)}
+                >
+                  <option value="">Not rated</option>
+                  <option value="5">5.0</option>
+                  <option value="4.5">4.5</option>
+                  <option value="4">4.0</option>
+                  <option value="3.5">3.5</option>
+                  <option value="3">3.0</option>
+                  <option value="2.5">2.5</option>
+                  <option value="2">2.0</option>
+                  <option value="1.5">1.5</option>
+                  <option value="1">1.0</option>
                 </select>
               </FormField>
               <div className="modal-action">

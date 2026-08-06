@@ -1,27 +1,24 @@
 -- ============================================================================
--- GC Contract Manager - Demo Seed Data
+-- GC Contract Manager - Full Demo Reseed (40 contracts)
 -- ============================================================================
--- Creates 5 demo logins (all password: Demo123!) and a realistic set of
--- contracts, change orders, subcontractors, cost entries, invoices,
--- payments, field logs, and milestones.
+-- Safe to re-run. Wipes all prior operational demo data, ensures demo staff
+-- logins, and seeds 40 contracts with daily-ops child data.
 --
--- Demo logins:
---   admin@gcmanager.demo  - admin              (11111111-1111-1111-1111-111111111111)
---   pm@gcmanager.demo     - project_manager    (22222222-2222-2222-2222-222222222222)
---   client@gcmanager.demo - client             (33333333-3333-3333-3333-333333333333)
---   field@gcmanager.demo  - field_supervisor   (44444444-4444-4444-4444-444444444444)
---   sub@gcmanager.demo    - subcontractor      (55555555-5555-5555-5555-555555555555)
+-- Staffing (reasonable for 40 jobs):
+--   5 project managers  (~8 contracts each)
+--   6 field supervisors (~6–7 contracts each)
 --
--- This file is safe to re-run: auth users / profiles are upserted, and the
--- 8 demo contracts (fixed ids) are deleted and recreated, which cascades to
--- remove all their change orders, subcontractors, cost entries, invoices,
--- payments, field logs, milestones, and assignments before reinserting.
+-- Demo logins (password: Demo123!):
+--   admin@gcmanager.demo
+--   pm@ … pm5@gcmanager.demo
+--   field@ … field6@gcmanager.demo
+--   client@ / sub@ / sub2@gcmanager.demo
 -- ============================================================================
 
 create extension if not exists pgcrypto;
 
 -- ----------------------------------------------------------------------------
--- 1. Demo auth users
+-- 0. Ensure expanded demo staff auth users exist
 -- ----------------------------------------------------------------------------
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password,
@@ -29,476 +26,535 @@ insert into auth.users (
   created_at, updated_at, confirmation_token, recovery_token,
   email_change_token_new, email_change, is_sso_user, is_anonymous
 )
-values
-  ('00000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111111', 'authenticated', 'authenticated',
-   'admin@gcmanager.demo', crypt('Demo123!', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}', '{"full_name":"Demo Admin"}',
-   now(), now(), '', '', '', '', false, false),
-
-  ('00000000-0000-0000-0000-000000000000', '22222222-2222-2222-2222-222222222222', 'authenticated', 'authenticated',
-   'pm@gcmanager.demo', crypt('Demo123!', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}', '{"full_name":"Demo Project Manager"}',
-   now(), now(), '', '', '', '', false, false),
-
-  ('00000000-0000-0000-0000-000000000000', '33333333-3333-3333-3333-333333333333', 'authenticated', 'authenticated',
-   'client@gcmanager.demo', crypt('Demo123!', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}', '{"full_name":"Demo Client"}',
-   now(), now(), '', '', '', '', false, false),
-
-  ('00000000-0000-0000-0000-000000000000', '44444444-4444-4444-4444-444444444444', 'authenticated', 'authenticated',
-   'field@gcmanager.demo', crypt('Demo123!', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}', '{"full_name":"Demo Field Supervisor"}',
-   now(), now(), '', '', '', '', false, false),
-
-  ('00000000-0000-0000-0000-000000000000', '55555555-5555-5555-5555-555555555555', 'authenticated', 'authenticated',
-   'sub@gcmanager.demo', crypt('Demo123!', gen_salt('bf')), now(),
-   '{"provider":"email","providers":["email"]}', '{"full_name":"Demo Subcontractor"}',
-   now(), now(), '', '', '', '', false, false)
-on conflict (id) do nothing;
+select
+  '00000000-0000-0000-0000-000000000000', v.id, 'authenticated', 'authenticated', v.email,
+  coalesce(
+    (select encrypted_password from auth.users where email = 'admin@gcmanager.demo' limit 1),
+    crypt('Demo123!', gen_salt('bf'))
+  ),
+  now(), '{"provider":"email","providers":["email"]}', jsonb_build_object('full_name', v.full_name),
+  now(), now(), '', '', '', '', false, false
+from (values
+  ('66666666-6666-6666-6666-666666666671'::uuid, 'pm3@gcmanager.demo', 'Morgan Ellis'),
+  ('66666666-6666-6666-6666-666666666672'::uuid, 'pm4@gcmanager.demo', 'Priya Nair'),
+  ('66666666-6666-6666-6666-666666666673'::uuid, 'pm5@gcmanager.demo', 'Chris Delgado'),
+  ('66666666-6666-6666-6666-666666666681'::uuid, 'field3@gcmanager.demo', 'Devon Walsh'),
+  ('66666666-6666-6666-6666-666666666682'::uuid, 'field4@gcmanager.demo', 'Harper Lee'),
+  ('66666666-6666-6666-6666-666666666683'::uuid, 'field5@gcmanager.demo', 'Quinn Brooks'),
+  ('66666666-6666-6666-6666-666666666684'::uuid, 'field6@gcmanager.demo', 'Jamie Soto')
+) as v(id, email, full_name)
+where not exists (select 1 from auth.users u where u.id = v.id)
+  and not exists (select 1 from auth.users u where lower(u.email) = lower(v.email));
 
 insert into auth.identities (
   id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
 )
-values
-  (gen_random_uuid(), '11111111-1111-1111-1111-111111111111',
-   jsonb_build_object('sub', '11111111-1111-1111-1111-111111111111', 'email', 'admin@gcmanager.demo'),
-   'email', '11111111-1111-1111-1111-111111111111', now(), now(), now()),
+select gen_random_uuid(), u.id,
+       jsonb_build_object('sub', u.id::text, 'email', u.email),
+       'email', u.id::text, now(), now(), now()
+from auth.users u
+where lower(u.email) in (
+  'pm3@gcmanager.demo','pm4@gcmanager.demo','pm5@gcmanager.demo',
+  'field3@gcmanager.demo','field4@gcmanager.demo','field5@gcmanager.demo','field6@gcmanager.demo'
+)
+and not exists (
+  select 1 from auth.identities i where i.provider = 'email' and i.provider_id = u.id::text
+);
 
-  (gen_random_uuid(), '22222222-2222-2222-2222-222222222222',
-   jsonb_build_object('sub', '22222222-2222-2222-2222-222222222222', 'email', 'pm@gcmanager.demo'),
-   'email', '22222222-2222-2222-2222-222222222222', now(), now(), now()),
+update auth.users u
+set encrypted_password = w.encrypted_password,
+    email_confirmed_at = coalesce(u.email_confirmed_at, now()),
+    updated_at = now()
+from auth.users w
+where w.email = 'admin@gcmanager.demo'
+  and lower(u.email) in (
+    'pm3@gcmanager.demo','pm4@gcmanager.demo','pm5@gcmanager.demo',
+    'field3@gcmanager.demo','field4@gcmanager.demo','field5@gcmanager.demo','field6@gcmanager.demo',
+    'pm@gcmanager.demo','pm2@gcmanager.demo','field@gcmanager.demo','field2@gcmanager.demo',
+    'client@gcmanager.demo','sub@gcmanager.demo','sub2@gcmanager.demo'
+  );
 
-  (gen_random_uuid(), '33333333-3333-3333-3333-333333333333',
-   jsonb_build_object('sub', '33333333-3333-3333-3333-333333333333', 'email', 'client@gcmanager.demo'),
-   'email', '33333333-3333-3333-3333-333333333333', now(), now(), now()),
-
-  (gen_random_uuid(), '44444444-4444-4444-4444-444444444444',
-   jsonb_build_object('sub', '44444444-4444-4444-4444-444444444444', 'email', 'field@gcmanager.demo'),
-   'email', '44444444-4444-4444-4444-444444444444', now(), now(), now()),
-
-  (gen_random_uuid(), '55555555-5555-5555-5555-555555555555',
-   jsonb_build_object('sub', '55555555-5555-5555-5555-555555555555', 'email', 'sub@gcmanager.demo'),
-   'email', '55555555-5555-5555-5555-555555555555', now(), now(), now())
-on conflict (provider, provider_id) do nothing;
-
--- The on_auth_user_created trigger (see migration) already created a
--- user_profiles row with role = field_supervisor for each user above; fix
--- up roles / names here so this file is idempotent regardless of trigger state.
-insert into public.user_profiles (id, email, full_name, role)
-values
-  ('11111111-1111-1111-1111-111111111111', 'admin@gcmanager.demo', 'Demo Admin', 'admin'),
-  ('22222222-2222-2222-2222-222222222222', 'pm@gcmanager.demo', 'Demo Project Manager', 'project_manager'),
-  ('33333333-3333-3333-3333-333333333333', 'client@gcmanager.demo', 'Demo Client', 'client'),
-  ('44444444-4444-4444-4444-444444444444', 'field@gcmanager.demo', 'Demo Field Supervisor', 'field_supervisor'),
-  ('55555555-5555-5555-5555-555555555555', 'sub@gcmanager.demo', 'Demo Subcontractor', 'subcontractor')
+-- ----------------------------------------------------------------------------
+-- 1. Sync profiles to existing auth users (by email)
+-- ----------------------------------------------------------------------------
+insert into public.user_profiles (
+  id, email, full_name, role, employee_id, title, phone, is_active, onboarding_complete
+)
+select u.id, u.email, v.full_name, v.role, v.employee_id, v.title, v.phone, true, true
+from auth.users u
+join (values
+  ('admin@gcmanager.demo', 'Demo Admin', 'admin', 'EMP-001', 'Company Administrator', '312-555-0100'),
+  ('pm@gcmanager.demo', 'Jordan Blake', 'project_manager', 'EMP-101', 'Senior Project Manager', '312-555-0101'),
+  ('pm2@gcmanager.demo', 'Alex Chen', 'project_manager', 'EMP-102', 'Project Manager', '312-555-0102'),
+  ('pm3@gcmanager.demo', 'Morgan Ellis', 'project_manager', 'EMP-103', 'Project Manager', '312-555-0103'),
+  ('pm4@gcmanager.demo', 'Priya Nair', 'project_manager', 'EMP-104', 'Project Manager', '312-555-0104'),
+  ('pm5@gcmanager.demo', 'Chris Delgado', 'project_manager', 'EMP-105', 'Project Manager', '312-555-0105'),
+  ('field@gcmanager.demo', 'Sam Rivera', 'field_supervisor', 'EMP-201', 'Field Supervisor', '312-555-0201'),
+  ('field2@gcmanager.demo', 'Casey Morgan', 'field_supervisor', 'EMP-202', 'Field Supervisor', '312-555-0202'),
+  ('field3@gcmanager.demo', 'Devon Walsh', 'field_supervisor', 'EMP-203', 'Field Supervisor', '312-555-0203'),
+  ('field4@gcmanager.demo', 'Harper Lee', 'field_supervisor', 'EMP-204', 'Field Supervisor', '312-555-0204'),
+  ('field5@gcmanager.demo', 'Quinn Brooks', 'field_supervisor', 'EMP-205', 'Field Supervisor', '312-555-0205'),
+  ('field6@gcmanager.demo', 'Jamie Soto', 'field_supervisor', 'EMP-206', 'Field Supervisor', '312-555-0206'),
+  ('client@gcmanager.demo', 'Riley Client', 'client', null, null, '312-555-0199'),
+  ('sub@gcmanager.demo', 'Apex Contact', 'subcontractor', null, 'Subcontractor Contact', '312-555-0301'),
+  ('sub2@gcmanager.demo', 'Taylor Quinn', 'subcontractor', null, 'Subcontractor Contact', '312-555-0302')
+) as v(email, full_name, role, employee_id, title, phone)
+  on lower(u.email) = lower(v.email)
 on conflict (id) do update
   set email = excluded.email,
       full_name = excluded.full_name,
-      role = excluded.role;
+      role = excluded.role,
+      employee_id = excluded.employee_id,
+      title = excluded.title,
+      phone = excluded.phone,
+      is_active = true,
+      onboarding_complete = true;
+
+update public.company_settings
+set company_name = 'Midwest Building Group',
+    gc_license_number = 'IL-GC-44821',
+    gc_license_state = 'IL',
+    gc_license_expiration = (current_date + interval '400 days')::date,
+    address_line1 = '200 W Madison St',
+    city = 'Chicago',
+    state = 'IL',
+    postal_code = '60606',
+    default_retainage_percent = 10,
+    default_payment_terms = 'Net 30',
+    updated_by = (select id from auth.users where email = 'admin@gcmanager.demo' limit 1),
+    updated_at = now();
 
 -- ----------------------------------------------------------------------------
--- 2. Clean slate for demo business data (cascades to all child tables)
+-- 2. Wipe previous operational data
 -- ----------------------------------------------------------------------------
-delete from public.contracts
-where id in (
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa8'
-);
-
--- ----------------------------------------------------------------------------
--- 3. Contracts (8)
--- ----------------------------------------------------------------------------
--- a1 Downtown Office Tower Renovation   - active,    fixed_price      - linked client login
--- a2 Riverside Medical Center Expansion - active,    cost_plus        - linked client login
--- a3 Lakeside Apartments Phase 2        - completed, fixed_price      - linked client login, multiple approved COs
--- a4 Westside Retail Plaza              - active,    time_and_materials
--- a5 Northgate Warehouse Build-Out      - on_hold,   fixed_price
--- a6 Harbor View Condominiums           - active,    fixed_price      - UNPROFITABLE (costs > value)
--- a7 Cedar Grove Elementary Addition    - active,    cost_plus        - nearing end date, unpaid balance
--- a8 Metro Parking Structure            - canceled,  fixed_price
-insert into public.contracts (
-  id, user_id, contract_name, client_name, client_email, client_phone,
-  project_address, city, state, contract_type, original_value, retainage_percent,
-  start_date, end_date, status, scope_description, special_terms, client_user_id, created_at
-)
-values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '22222222-2222-2222-2222-222222222222',
-   'Downtown Office Tower Renovation', 'Meridian Holdings LLC', 'client@gcmanager.demo', '312-555-0101',
-   '400 W Wacker Dr', 'Chicago', 'IL', 'fixed_price', 850000.00, 10,
-   (current_date - interval '150 days')::date, (current_date + interval '60 days')::date, 'active',
-   'Full interior renovation of floors 12-18 including MEP upgrades, new curtain wall sections, and lobby remodel.',
-   'Liquidated damages of $1,500/day beyond substantial completion. Client supplies finish allowances separately.',
-   '33333333-3333-3333-3333-333333333333', now() - interval '150 days'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '22222222-2222-2222-2222-222222222222',
-   'Riverside Medical Center Expansion', 'Riverside Health Partners', 'client@gcmanager.demo', '217-555-0177',
-   '1200 Riverside Pkwy', 'Springfield', 'IL', 'cost_plus', 1250000.00, 5,
-   (current_date - interval '200 days')::date, (current_date + interval '120 days')::date, 'active',
-   'New 2-story outpatient wing addition with imaging suite and shell/core buildout for future tenant.',
-   'Cost-plus 12% fee. Monthly open-book cost reporting required per contract.',
-   '33333333-3333-3333-3333-333333333333', now() - interval '200 days'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', '22222222-2222-2222-2222-222222222222',
-   'Lakeside Apartments Phase 2', 'Lakeside Development Group', 'client@gcmanager.demo', '630-555-0142',
-   '88 Lakeside Dr', 'Naperville', 'IL', 'fixed_price', 640000.00, 10,
-   (current_date - interval '365 days')::date, (current_date - interval '30 days')::date, 'completed',
-   'Construction of 24-unit apartment building, phase 2 of a 3-phase master development.',
-   'Retainage released upon final punch-list sign-off and certificate of occupancy.',
-   '33333333-3333-3333-3333-333333333333', now() - interval '365 days'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', '22222222-2222-2222-2222-222222222222',
-   'Westside Retail Plaza', 'Westside Retail Partners LLC', 'facilities@westsideretail.com', '630-555-0199',
-   '2200 Ogden Ave', 'Aurora', 'IL', 'time_and_materials', 425000.00, 10,
-   (current_date - interval '90 days')::date, (current_date + interval '90 days')::date, 'active',
-   'Tenant improvement build-out of 4 retail suites plus shared common-area upgrades.',
-   'Billed T&M monthly with GC markup of 15% on labor and 10% on materials.',
-   null, now() - interval '90 days'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', '22222222-2222-2222-2222-222222222222',
-   'Northgate Warehouse Build-Out', 'Northgate Logistics Inc', 'ops@northgatelogistics.com', '815-555-0163',
-   '5500 Northgate Rd', 'Rockford', 'IL', 'fixed_price', 980000.00, 10,
-   (current_date - interval '45 days')::date, (current_date + interval '150 days')::date, 'on_hold',
-   'New 60,000 sq ft distribution warehouse with racking infrastructure and dock upgrades.',
-   'Project placed on hold pending client financing confirmation; remobilization TBD.',
-   null, now() - interval '45 days'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', '22222222-2222-2222-2222-222222222222',
-   'Harbor View Condominiums', 'Harbor View Condo Association', 'board@harborviewcondos.org', '847-555-0128',
-   '77 Harbor View Ln', 'Evanston', 'IL', 'fixed_price', 720000.00, 10,
-   (current_date - interval '220 days')::date, (current_date + interval '20 days')::date, 'active',
-   'Exterior envelope restoration and balcony waterproofing across 3 condominium towers.',
-   'Fixed price bid; unforeseen structural remediation has driven costs above original scope.',
-   null, now() - interval '220 days'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', '22222222-2222-2222-2222-222222222222',
-   'Cedar Grove Elementary Addition', 'Cedar Grove School District 47', 'purchasing@cgsd47.org', '847-555-0155',
-   '900 Cedar Grove Rd', 'Elgin', 'IL', 'cost_plus', 1100000.00, 5,
-   (current_date - interval '300 days')::date, (current_date + interval '12 days')::date, 'active',
-   'New 6-classroom addition with ADA-compliant ramp and connector corridor to main building.',
-   'Cost-plus 10% fee. Substantial completion required before start of fall semester.',
-   null, now() - interval '300 days'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa8', '22222222-2222-2222-2222-222222222222',
-   'Metro Parking Structure', 'Metro Transit Authority', 'contracts@metrotransit.gov', '312-555-0187',
-   '150 Transit Plaza', 'Joliet', 'IL', 'fixed_price', 300000.00, 10,
-   (current_date - interval '400 days')::date, (current_date - interval '200 days')::date, 'canceled',
-   'Precast parking structure repair and restriping for downtown transit hub, levels 2-4.',
-   'Contract canceled by owner after funding was reallocated; final closeout invoice outstanding.',
-   null, now() - interval '400 days')
-on conflict (id) do nothing;
+delete from public.bids;
+delete from public.bid_packages;
+delete from public.payments;
+delete from public.invoices;
+delete from public.field_logs;
+delete from public.cost_entries;
+delete from public.change_orders;
+delete from public.milestones;
+delete from public.subcontractor_invites where true;
+delete from public.insurance_policies where true;
+delete from public.contract_insurance_requirements where true;
+delete from public.subcontractors;
+delete from public.contract_assignments;
+delete from public.attachments where true;
+delete from public.access_audit_log where true;
+delete from public.customers;
+delete from public.project_change_orders;
+delete from public.project_costs;
+delete from public.billings;
+delete from public.projects;
+delete from public.employee_certifications;
+delete from public.contracts;
 
 -- ----------------------------------------------------------------------------
--- 4. Contract assignments - field supervisor on several active contracts
+-- 3. Seed 40 contracts + daily-ops children
 -- ----------------------------------------------------------------------------
-insert into public.contract_assignments (contract_id, user_id)
-values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '44444444-4444-4444-4444-444444444444'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '44444444-4444-4444-4444-444444444444'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', '44444444-4444-4444-4444-444444444444'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', '44444444-4444-4444-4444-444444444444'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', '44444444-4444-4444-4444-444444444444')
-on conflict (contract_id, user_id) do nothing;
+do $$
+declare
+  admin_id uuid;
+  pm_ids uuid[];
+  field_ids uuid[];
+  n_pm int;
+  n_field int;
+  client_id uuid;
+  sub1_id uuid;
+  sub2_id uuid;
 
--- ----------------------------------------------------------------------------
--- 5. Subcontractors (10) - demo subcontractor login linked to "Apex Electrical LLC"
---    across 3 contracts; row #9 is an overpayment scenario (amount_paid > value).
--- ----------------------------------------------------------------------------
-insert into public.subcontractors (
-  contract_id, company_name, contact_name, contact_email, contact_phone, trade,
-  subcontract_value, amount_paid, retainage_percent, start_date, end_date, status,
-  scope_of_work, user_id
-)
-values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Apex Electrical LLC', 'Marco Diaz', 'marco@apexelectrical.demo', '312-555-0210',
-   'Electrical', 95000.00, 95000.00, 10, (current_date - interval '140 days')::date, (current_date - interval '20 days')::date,
-   'complete', 'Full electrical rough-in and finish for floors 12-18.', '55555555-5555-5555-5555-555555555555'),
+  names text[] := array[
+    'Lakeshore Office Tower Fit-Out','River North Mixed-Use Core','Oak Park Civic Center Renovation',
+    'Naperville Logistics Hub','Evanston Research Lab Expansion','Aurora Retail Pavilion',
+    'Schaumburg Data Hall Shell','Wicker Park Multifamily Phase 1','Midway Airport Support Building',
+    'Peoria Medical Pavilion','Champaign Student Housing Block B','Rockford Industrial Retrofit',
+    'Joliet Transit Plaza Upgrade','Elgin Water Treatment Annex','Bloomington Hotel Interior Package',
+    'Decatur Food Plant Expansion','Springfield Capitol Annex Remodel','Carbondale Arena Seating Refresh',
+    'Moline Riverfront Condos','Quincy Courthouse Accessibility','Skokie Tech Campus Building C',
+    'Des Plaines Warehouse Mezzanine','Orland Park Community Pool House','Tinley Park Fire Station 3',
+    'Bolingbrook Cold Storage Shell','Wheaton Library Addition','Downers Grove Bank Branch TI',
+    'Glenview Senior Living Wing','Highland Park Yacht Club Dock','Arlington Heights Parking Deck',
+    'Palatine Middle School STEM Wing','Buffalo Grove Corporate HQ Lobby','Vernon Hills Distribution Crossdock',
+    'Mundelein Packaging Line Buildout','Gurnee Outlet Court Renovation','Waukegan Harbor Warehouse',
+    'Crystal Lake Rec Center Expansion','McHenry County Garage Rebuild','St. Charles Riverwalk Cafe Shell',
+    'Geneva Biotech Cleanroom Suite'
+  ];
+  clients text[] := array[
+    'Meridian Holdings LLC','Riverside Health Partners','Lakeside Development Group',
+    'Northgate Logistics Inc','Prairie Capital Partners','Westside Retail Partners LLC',
+    'Harbor View Condo Association','Cedar Grove School District 47','Metro Transit Authority',
+    'Heartland Food Systems','Illinois Civic Facilities Board','Midwest Research Institutes',
+    'Fox Valley Hospitality Co','Great Lakes Industrial REIT','Summit Multifamily Partners',
+    'Cornerstone Banking Group','Prairie Fire Protection Dist','North Shore Senior Living',
+    'Illinois Yacht Clubs Assoc','Municipal Parking Authority','STEM Education Foundation',
+    'Buffalo Grove Corp Campus','Regional Distribution Trust','PackRight Manufacturing',
+    'Outlet Court Holdings','Waukegan Port District','Crystal Lake Park District',
+    'McHenry County Facilities','Riverwalk Hospitality LLC','Geneva Biotech Labs Inc',
+    'Oak Park Civic Trust','Naperville Industrial Partners','Evanston Innovation Hub',
+    'Aurora Retail Collective','Schaumburg Data Partners','Wicker Park Living LLC',
+    'Midway Support Services','Peoria Medical Group','Champaign Housing Partners',
+    'Rockford Works Coalition'
+  ];
+  cities text[] := array[
+    'Chicago','Chicago','Oak Park','Naperville','Evanston','Aurora','Schaumburg','Chicago',
+    'Chicago','Peoria','Champaign','Rockford','Joliet','Elgin','Bloomington','Decatur',
+    'Springfield','Carbondale','Moline','Quincy','Skokie','Des Plaines','Orland Park','Tinley Park',
+    'Bolingbrook','Wheaton','Downers Grove','Glenview','Highland Park','Arlington Heights',
+    'Palatine','Buffalo Grove','Vernon Hills','Mundelein','Gurnee','Waukegan',
+    'Crystal Lake','McHenry','St. Charles','Geneva'
+  ];
+  addresses text[] := array[
+    '400 W Wacker Dr','1200 N Wells St','123 Madison St','5500 Diehl Rd','1801 Orrington Ave',
+    '2200 Ogden Ave','1500 Woodfield Rd','1620 N Milwaukee Ave','5700 S Cicero Ave','901 NE Glen Oak',
+    '505 S Sixth St','4401 S Main St','150 Transit Plaza','900 Water Works Rd','201 E Washington St',
+    '3300 Packaging Way','401 S Spring St','1400 Arena Dr','77 River Dr','100 N 5th St',
+    '3500 Gross Point Rd','950 Touhy Ave','14700 Ravinia Ave','17355 Oak Park Ave','501 Remington Blvd',
+    '225 N Cross St','3450 Lacey Rd','2601 Willow Rd','10 Harbor St','201 N Vail Ave',
+    '700 E Wood St','1650 Lake Cook Rd','700 N Milwaukee Ave','1200 Lake St','6170 W Grand Ave',
+    '1 Pershing Rd','1 N Main St','2200 N Seminary Ave','5 N 2nd St','1100 Fabyan Pkwy'
+  ];
+  trades text[] := array['Electrical','Plumbing','HVAC','Concrete','Drywall','Roofing','Fire Protection','Sitework'];
+  weather text[] := array['Clear','Cloudy','Rain','Wind','Snow','Extreme Heat','Fog'];
+  categories text[] := array['labor','materials','subcontractor','equipment','permits','other'];
+  work_items text[] := array[
+    'Framed interior partitions on level 2','Set rooftop RTU and curb adapters',
+    'Poured elevated slab section B','Installed feeder conduits in electrical room',
+    'Hung drywall and taped corridors','Rough-in plumbing wet walls floors 3-4',
+    'Set curtain wall anchors at podium','Site grading and storm structures',
+    'Fire sprinkler mains and drops','Roof membrane patch and flashings'
+  ];
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Summit Plumbing Co', 'Rachel Kim', 'rachel@summitplumbing.demo', '312-555-0219',
-   'Plumbing', 78000.00, 60000.00, 10, (current_date - interval '130 days')::date, (current_date + interval '10 days')::date,
-   'active', 'Restroom core relocation and domestic water riser upgrades.', null),
+  i int; cid uuid; pm_id uuid; field_id uuid; owner_id uuid;
+  cname text; client_name text; city text; addr text; ctype text; cstatus text;
+  oval numeric; retain numeric; start_d date; end_d date; link_client boolean;
+  inv_id uuid; pkg_id uuid; inv_amt numeric; paid_amt numeric; inv_status text; co_status text;
+  cat text; n_costs int; n_logs int; n_inv int; n_cos int; j int;
+  sub_company text; sub_user uuid; cost_total numeric; approved_co numeric;
+  project_id_admin uuid; project_id_owner uuid;
+begin
+  select id into admin_id from auth.users where email = 'admin@gcmanager.demo';
+  select id into client_id from auth.users where email = 'client@gcmanager.demo';
+  select id into sub1_id from auth.users where email = 'sub@gcmanager.demo';
+  select id into sub2_id from auth.users where email = 'sub2@gcmanager.demo';
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'Apex Electrical LLC', 'Marco Diaz', 'marco@apexelectrical.demo', '312-555-0210',
-   'Electrical', 145000.00, 100000.00, 5, (current_date - interval '180 days')::date, (current_date + interval '30 days')::date,
-   'active', 'Imaging suite shielding electrical and emergency power tie-ins.', '55555555-5555-5555-5555-555555555555'),
+  select array_agg(id order by email) into pm_ids
+  from public.user_profiles
+  where role = 'project_manager' and coalesce(is_active, true)
+    and email like '%@gcmanager.demo';
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'BlueSky Mechanical HVAC', 'Tom Reyes', 'tom@blueskymech.demo', '217-555-0233',
-   'HVAC', 210000.00, 180000.00, 5, (current_date - interval '170 days')::date, (current_date + interval '40 days')::date,
-   'active', 'Air handling units, ductwork, and controls for new outpatient wing.', null),
+  select array_agg(id order by email) into field_ids
+  from public.user_profiles
+  where role = 'field_supervisor' and coalesce(is_active, true)
+    and email like '%@gcmanager.demo';
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'Apex Electrical LLC', 'Marco Diaz', 'marco@apexelectrical.demo', '312-555-0210',
-   'Electrical', 68000.00, 68000.00, 10, (current_date - interval '350 days')::date, (current_date - interval '60 days')::date,
-   'complete', 'Unit electrical rough-in and panel installs for 24-unit building.', '55555555-5555-5555-5555-555555555555'),
+  n_pm := coalesce(array_length(pm_ids, 1), 0);
+  n_field := coalesce(array_length(field_ids, 1), 0);
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'Granite Concrete Works', 'Nina Alvarez', 'nina@graniteconcrete.demo', '630-555-0244',
-   'Concrete', 92000.00, 92000.00, 10, (current_date - interval '360 days')::date, (current_date - interval '80 days')::date,
-   'complete', 'Foundation, slab-on-grade, and balcony concrete work.', null),
+  if admin_id is null or n_pm < 2 or n_field < 2 then
+    raise exception 'Missing required demo staff (admin / PMs / field). PMs=%, field=%', n_pm, n_field;
+  end if;
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'Precision Framing Inc', 'Deacon Wells', 'deacon@precisionframing.demo', '630-555-0256',
-   'Framing', 110000.00, 70000.00, 10, (current_date - interval '85 days')::date, (current_date + interval '30 days')::date,
-   'active', 'Metal stud framing and drywall substrate for 4 retail suites.', null),
+  for i in 1..40 loop
+    cname := names[i];
+    client_name := clients[i];
+    city := cities[i];
+    addr := addresses[i];
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'TopLine Roofing Co', 'Sam Patterson', 'sam@toplineroofing.demo', '815-555-0267',
-   'Roofing', 130000.00, 40000.00, 10, (current_date - interval '40 days')::date, (current_date + interval '60 days')::date,
-   'active', 'TPO roof membrane replacement and dock canopy structures.', null),
+    pm_id := pm_ids[((i - 1) % n_pm) + 1];
+    field_id := field_ids[((i - 1) % n_field) + 1];
+    owner_id := pm_id;
+    link_client := (i % 4) = 1;
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'Coastal Drywall & Paint', 'Elena Cho', 'elena@coastaldp.demo', '847-555-0278',
-   'Drywall/Paint', 85000.00, 92000.00, 10, (current_date - interval '200 days')::date, (current_date + interval '5 days')::date,
-   'active', 'Interior corridor drywall repair and full exterior painting, all 3 towers.', null),
+    ctype := case (i % 5) when 0 then 'cost_plus' when 1 then 'time_and_materials' else 'fixed_price' end;
+    cstatus := case
+      when i in (8, 19, 31) then 'completed'
+      when i in (12, 24) then 'on_hold'
+      when i in (16, 36) then 'canceled'
+      else 'active'
+    end;
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'Reliable Landscaping LLC', 'Owen Park', 'owen@reliablelandscaping.demo', '847-555-0289',
-   'Landscaping', 45000.00, 20000.00, 5, (current_date - interval '60 days')::date, (current_date + interval '30 days')::date,
-   'active', 'Site restoration, sod, and plantings around new classroom addition.', null);
+    oval := round((250000 + (i * 47350) + ((i % 7) * 18000))::numeric, 2);
+    retain := case when ctype = 'cost_plus' then 5 else 10 end;
+    start_d := (current_date - ((40 + i * 7) || ' days')::interval)::date;
+    end_d := case cstatus
+      when 'completed' then (current_date - ((5 + (i % 20)) || ' days')::interval)::date
+      when 'canceled' then (current_date - ((30 + (i % 40)) || ' days')::interval)::date
+      else (current_date + ((60 + i * 3) || ' days')::interval)::date
+    end;
 
--- ----------------------------------------------------------------------------
--- 6. Change orders (15) - mix of pending / approved / rejected
---    a3 has 3 approved COs that increase the effective contract value.
--- ----------------------------------------------------------------------------
-insert into public.change_orders (
-  contract_id, change_order_number, description, reason, amount, status,
-  date_submitted, date_resolved, notes
-)
-values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'CO-1001', 'Additional electrical panel upgrade, floor 15', 'Existing panel capacity insufficient for new tenant load.',
-   25000.00, 'approved', (current_date - interval '60 days')::date, (current_date - interval '50 days')::date, 'Approved by client PM via email.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'CO-1002', 'Add glass partition walls, floor 16 conference suite', 'Client requested design change after walkthrough.',
-   10000.00, 'pending', (current_date - interval '10 days')::date, null, 'Awaiting client sign-off.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'CO-1014', 'Upgrade lobby flooring to premium marble', 'Client-requested finish upgrade.',
-   5000.00, 'rejected', (current_date - interval '80 days')::date, (current_date - interval '70 days')::date, 'Rejected; over allowance budget, client opted to keep standard finish.'),
+    cid := ('a0000000-0000-4000-8000-' || lpad(i::text, 12, '0'))::uuid;
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'CO-1003', 'Expand MRI suite shielding and electrical capacity', 'Equipment vendor spec changed after design was finalized.',
-   60000.00, 'approved', (current_date - interval '90 days')::date, (current_date - interval '80 days')::date, 'Approved; billed cost-plus per contract terms.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'CO-1004', 'Add rooftop generator enclosure', 'Owner-requested scope addition.',
-   15000.00, 'rejected', (current_date - interval '40 days')::date, (current_date - interval '30 days')::date, 'Owner deferred to future phase.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'CO-1015', 'Additional nurse call system wiring', 'Added device count requested by clinical staff.',
-   9000.00, 'pending', (current_date - interval '5 days')::date, null, 'Under review by facilities director.'),
+    insert into public.contracts (
+      id, user_id, contract_name, client_name, client_email, client_phone,
+      project_address, city, state, contract_type, original_value, retainage_percent,
+      start_date, end_date, status, scope_description, special_terms, client_user_id, created_at
+    ) values (
+      cid, owner_id, cname, client_name,
+      case when link_client then 'client@gcmanager.demo'
+           else lower(replace(split_part(client_name, ' ', 1), '.', '')) || '@example.com' end,
+      '312-555-' || lpad((1000 + i)::text, 4, '0'),
+      addr, city, 'IL', ctype, oval, retain, start_d, end_d, cstatus,
+      'Seeded project scope for ' || cname || ' including architectural, MEP, and finishes packages coordinated under GC management.',
+      'Standard AIA-style terms. Retainage ' || retain::text || '%. Liquidated damages $1,000/day after substantial completion.',
+      case when link_client then client_id else null end,
+      now() - ((40 + i * 7) || ' days')::interval
+    );
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'CO-1005', 'Add balconies to units 201-210', 'Client requested added amenity mid-construction.',
-   45000.00, 'approved', (current_date - interval '300 days')::date, (current_date - interval '290 days')::date, 'Approved and incorporated into final invoice.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'CO-1006', 'Upgrade unit finishes package B', 'Client upgraded finish selections after model unit walkthrough.',
-   30000.00, 'approved', (current_date - interval '250 days')::date, (current_date - interval '240 days')::date, 'Approved and incorporated into final invoice.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'CO-1007', 'Add covered parking canopy', 'Owner requested added amenity for phase 2 marketing.',
-   18000.00, 'approved', (current_date - interval '200 days')::date, (current_date - interval '190 days')::date, 'Approved; final value now exceeds original contract value.'),
+    insert into public.contract_assignments (contract_id, user_id, assignment_role)
+    values (cid, pm_id, 'project_manager'), (cid, field_id, 'field_supervisor');
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'CO-1008', 'Add exterior signage package', 'New tenant requested additional monument signage.',
-   8000.00, 'pending', (current_date - interval '8 days')::date, null, 'Pending tenant landlord approval.'),
+    insert into public.customers (
+      company_name, contact_name, contact_email, contact_phone,
+      billing_address, city, state, postal_code, user_id, notes, is_active, contract_id, client_id
+    ) values (
+      client_name, split_part(client_name, ' ', 1) || ' Contact',
+      case when link_client then 'client@gcmanager.demo'
+           else lower(replace(split_part(client_name, ' ', 1), '.', '')) || '@example.com' end,
+      '312-555-' || lpad((1000 + i)::text, 4, '0'),
+      addr, city, 'IL', lpad((60000 + i)::text, 5, '0'),
+      case when link_client then client_id else null end,
+      'Seeded customer linked to contract ' || cname, true, cid, 'C' || lpad(i::text, 3, '0')
+    );
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'CO-1009', 'Add mezzanine storage level', 'Client explored added storage capacity during hold.',
-   20000.00, 'rejected', (current_date - interval '25 days')::date, (current_date - interval '15 days')::date, 'Rejected pending remobilization decision.'),
+    insert into public.milestones (contract_id, milestone_name, milestone_value, due_date, status) values
+      (cid, 'Mobilization & Site Setup', round(oval * 0.10, 2), start_d + 20,
+        case when cstatus = 'canceled' then 'pending' else 'completed' end),
+      (cid, 'Structure / Shell', round(oval * 0.35, 2), start_d + 90,
+        case when cstatus = 'completed' then 'completed' when cstatus = 'canceled' then 'pending'
+             when i % 4 = 0 then 'in_progress' else 'completed' end),
+      (cid, 'MEP Rough-In', round(oval * 0.25, 2), start_d + 150,
+        case when cstatus = 'completed' then 'completed' when cstatus in ('canceled','on_hold') then 'pending'
+             else 'in_progress' end),
+      (cid, 'Finishes & Closeout', round(oval * 0.30, 2), end_d,
+        case when cstatus = 'completed' then 'completed' else 'pending' end);
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'CO-1010', 'Balcony waterproofing remediation, towers B and C', 'Unforeseen structural deterioration discovered during demo.',
-   35000.00, 'approved', (current_date - interval '100 days')::date, (current_date - interval '90 days')::date, 'Approved; major driver of cost overrun on this contract.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'CO-1011', 'Upgrade to corrosion-resistant HVAC condenser units', 'Coastal exposure required upgraded equipment spec.',
-   18000.00, 'pending', (current_date - interval '15 days')::date, null, 'Awaiting condo board vote.'),
+    n_cos := 1 + (i % 3);
+    approved_co := 0;
+    for j in 1..n_cos loop
+      co_status := case
+        when cstatus = 'canceled' then 'rejected'
+        when j = n_cos and (i % 5) = 0 then 'pending'
+        when j = 1 then 'approved'
+        when (i + j) % 4 = 0 then 'rejected'
+        else 'approved'
+      end;
+      insert into public.change_orders (
+        contract_id, change_order_number, description, reason, amount, status, date_submitted, date_resolved, notes
+      ) values (
+        cid, 'CO-' || lpad(i::text, 2, '0') || '-' || j::text,
+        'Scope adjustment #' || j || ' on ' || cname,
+        case (j % 3) when 1 then 'Owner request' when 2 then 'Unforeseen condition' else 'Design coordination' end,
+        round((8000 + j * 4500 + (i % 9) * 1200)::numeric, 2), co_status,
+        start_d + (20 * j), case when co_status = 'pending' then null else start_d + (25 * j) end,
+        'Seeded change order'
+      );
+      if co_status = 'approved' then
+        approved_co := approved_co + round((8000 + j * 4500 + (i % 9) * 1200)::numeric, 2);
+      end if;
+    end loop;
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'CO-1012', 'ADA ramp reconfiguration', 'Site survey revealed grade issue not in original design.',
-   22000.00, 'approved', (current_date - interval '60 days')::date, (current_date - interval '50 days')::date, 'Approved; required for occupancy permit.'),
+    n_costs := 4 + (i % 4);
+    cost_total := 0;
+    for j in 1..n_costs loop
+      cat := categories[1 + ((i + j) % array_length(categories, 1))];
+      insert into public.cost_entries (
+        contract_id, user_id, category, description, amount, date_incurred, notes
+      ) values (
+        cid, case when (i + j) % 2 = 0 then field_id else pm_id end, cat,
+        initcap(cat) || ' cost entry ' || j || ' — ' || cname,
+        round((3500 + j * 2750 + (i % 11) * 900)::numeric * case when i in (6, 22, 34) then 1.35 else 1.0 end, 2),
+        start_d + (10 * j), 'Seeded cost'
+      );
+      cost_total := cost_total + round((3500 + j * 2750 + (i % 11) * 900)::numeric *
+        case when i in (6, 22, 34) then 1.35 else 1.0 end, 2);
+    end loop;
 
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa8', 'CO-1013', 'Add security booth at level 2 entrance', 'Owner requested added security presence.',
-   10000.00, 'rejected', (current_date - interval '350 days')::date, (current_date - interval '340 days')::date, 'Rejected prior to contract cancellation.');
+    if cstatus <> 'canceled' then
+      n_logs := 3 + (i % 3);
+      for j in 1..n_logs loop
+        insert into public.field_logs (
+          contract_id, user_id, log_date, work_performed, hours_worked, workers_on_site,
+          weather_conditions, equipment_used, materials_used, issues_or_delays, notes
+        ) values (
+          cid, field_id, least(current_date, start_d + (7 * j)),
+          work_items[1 + ((i + j) % array_length(work_items, 1))],
+          6 + ((i + j) % 5), 4 + ((i + j) % 12),
+          weather[1 + ((i + j) % array_length(weather, 1))],
+          'Excavator / scissors / lifts as needed', 'Rebar, conduit, drywall, fasteners',
+          case when (i + j) % 5 = 0 then 'Material delivery delay 1/2 day' else null end,
+          'Seeded field log'
+        );
+      end loop;
+    end if;
 
--- ----------------------------------------------------------------------------
--- 7. Cost entries (30) - a6 intentionally exceeds its contract value.
--- ----------------------------------------------------------------------------
-insert into public.cost_entries (contract_id, category, description, amount, date_incurred, notes)
-values
-  -- a1 (value 850,000)
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'labor', 'Framing and drywall crew, floors 12-14', 84000.00, (current_date - interval '100 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'materials', 'Curtain wall glazing units and hardware', 112000.00, (current_date - interval '80 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'subcontractor', 'Apex Electrical LLC - progress billing', 95000.00, (current_date - interval '60 days')::date, 'Matches subcontractor payment.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'equipment', 'Scissor lift and scaffolding rental', 18000.00, (current_date - interval '40 days')::date, null),
+    n_inv := case when cstatus = 'canceled' then 1 else 2 + (i % 2) end;
+    for j in 1..n_inv loop
+      inv_amt := round((oval + approved_co) * (0.12 + j * 0.08), 2);
+      inv_status := case
+        when cstatus = 'completed' and j < n_inv then 'paid'
+        when cstatus = 'canceled' then 'overdue'
+        when j = 1 then 'paid'
+        when j = n_inv and (i % 6) = 0 then 'overdue'
+        when j = n_inv and (i % 3) = 0 then 'partially_paid'
+        when j = n_inv then 'unpaid'
+        else 'paid'
+      end;
+      paid_amt := case inv_status
+        when 'paid' then inv_amt * (1 - retain / 100.0)
+        when 'partially_paid' then round(inv_amt * 0.4, 2)
+        else 0 end;
 
-  -- a2 (value 1,250,000)
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'labor', 'MEP coordination and general labor', 130000.00, (current_date - interval '160 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'materials', 'Structural steel and imaging suite shielding materials', 165000.00, (current_date - interval '130 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'subcontractor', 'BlueSky Mechanical HVAC - progress billing', 145000.00, (current_date - interval '90 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'permits', 'Building and mechanical permit fees', 22000.00, (current_date - interval '190 days')::date, null),
+      inv_id := gen_random_uuid();
+      insert into public.invoices (
+        id, contract_id, invoice_number, invoice_date, due_date, description,
+        invoice_amount, retainage_percent, retainage_amount, net_amount_due, amount_paid, status, notes
+      ) values (
+        inv_id, cid, 'INV-' || lpad(i::text, 2, '0') || '-' || j::text,
+        start_d + (30 * j), start_d + (30 * j) + 30,
+        'Progress billing #' || j || ' — ' || cname,
+        inv_amt, retain, round(inv_amt * retain / 100.0, 2),
+        round(inv_amt * (1 - retain / 100.0), 2), paid_amt, inv_status, 'Seeded invoice'
+      );
 
-  -- a3 (value 640,000, completed)
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'labor', 'General labor, all trades, full project', 95000.00, (current_date - interval '320 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'materials', 'Lumber, roofing, and finish materials', 140000.00, (current_date - interval '280 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'subcontractor', 'Concrete and electrical subcontractor billings', 160000.00, (current_date - interval '150 days')::date, 'Combined Apex Electrical + Granite Concrete billings.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'other', 'Final punch-list and cleanup costs', 25000.00, (current_date - interval '35 days')::date, null),
+      if paid_amt > 0 then
+        insert into public.payments (invoice_id, payment_amount, payment_date, payment_method, reference_number, notes)
+        values (inv_id, paid_amt, start_d + (30 * j) + 10,
+          case when (i + j) % 2 = 0 then 'ACH' else 'Check' end,
+          'PMT-' || lpad(i::text, 2, '0') || j::text, 'Seeded payment');
+      end if;
+    end loop;
 
-  -- a4 (value 425,000, time_and_materials)
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'labor', 'Carpentry crew, retail suite build-out', 40000.00, (current_date - interval '70 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'materials', 'Drywall, ceiling grid, and storefront materials', 55000.00, (current_date - interval '55 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'subcontractor', 'Precision Framing Inc - progress billing', 70000.00, (current_date - interval '40 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'equipment', 'Dumpster service and small tool rental', 9000.00, (current_date - interval '30 days')::date, null),
+    for j in 1..(1 + (i % 2)) loop
+      sub_company := trades[1 + ((i + j) % array_length(trades, 1))] || ' Pros #' || ((i + j) % 9 + 1)::text;
+      sub_user := case
+        when j = 1 and (i % 5) = 1 then sub1_id
+        when j = 2 and (i % 7) = 2 then sub2_id
+        else null end;
+      insert into public.subcontractors (
+        contract_id, company_name, contact_name, contact_email, contact_phone, trade,
+        subcontract_value, amount_paid, retainage_percent, start_date, end_date, status,
+        scope_of_work, user_id, license_number, license_state, license_expiration, business_notes, rating
+      ) values (
+        cid,
+        case when sub_user = sub1_id then 'Apex Electrical LLC'
+             when sub_user = sub2_id then 'Flow Plumbing Inc' else sub_company end,
+        case when sub_user = sub1_id then 'Apex Contact'
+             when sub_user = sub2_id then 'Taylor Quinn' else 'Sub Contact ' || j end,
+        case when sub_user = sub1_id then 'sub@gcmanager.demo'
+             when sub_user = sub2_id then 'sub2@gcmanager.demo'
+             else 'sub' || i::text || j::text || '@example.com' end,
+        '708-555-' || lpad((2000 + i * 2 + j)::text, 4, '0'),
+        trades[1 + ((i + j) % array_length(trades, 1))],
+        round(oval * (0.08 + j * 0.04), 2),
+        round(oval * (0.08 + j * 0.04) * case when cstatus = 'completed' then 0.9 else 0.35 end, 2),
+        10, start_d + 15, end_d,
+        case when cstatus = 'completed' then 'complete' when cstatus = 'canceled' then 'terminated' else 'active' end,
+        trades[1 + ((i + j) % array_length(trades, 1))] || ' package for ' || cname,
+        sub_user, 'IL-SUB-' || lpad((1000 + i * 10 + j)::text, 4, '0'), 'IL',
+        (current_date + ((120 + i * 3) || ' days')::interval)::date, 'Seeded subcontractor',
+        (3 + ((i + j) % 3))::numeric
+      );
+    end loop;
 
-  -- a5 (value 980,000, on_hold)
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'labor', 'Site prep and mobilization labor', 30000.00, (current_date - interval '44 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'materials', 'Structural steel deposit', 48000.00, (current_date - interval '43 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'subcontractor', 'TopLine Roofing Co - mobilization billing', 40000.00, (current_date - interval '38 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'permits', 'Warehouse building permit', 6000.00, (current_date - interval '44 days')::date, null),
+    if cstatus = 'active' and (i % 3) = 0 then
+      pkg_id := gen_random_uuid();
+      insert into public.bid_packages (
+        id, contract_id, title, trade, status, project_name, project_address, project_city, project_state,
+        client_name, contract_type, project_start_date, project_end_date, estimated_package_value,
+        scope_of_work, bid_instructions, bids_due_at, contact_name, contact_email, contact_phone, created_by
+      ) values (
+        pkg_id, cid,
+        trades[1 + (i % array_length(trades, 1))] || ' Bid Package — ' || cname,
+        trades[1 + (i % array_length(trades, 1))],
+        case when (i % 6) = 0 then 'awarded' else 'open' end,
+        cname, addr, city, 'IL', client_name, ctype, start_d, end_d, round(oval * 0.12, 2),
+        'Provide complete ' || trades[1 + (i % array_length(trades, 1))] || ' scope including materials, labor, and coordination.',
+        'Submit lump-sum bid with schedule and exclusions.', (current_date + 21)::date,
+        'Jordan Blake', 'pm@gcmanager.demo', '312-555-0101', pm_id
+      );
 
-  -- a6 (value 720,000) - UNPROFITABLE: total costs = 742,000 > original_value
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'labor', 'Structural remediation labor, towers A-C', 220000.00, (current_date - interval '190 days')::date, 'Scope grew significantly after demo exposed rot/corrosion.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'materials', 'Waterproofing membrane, sealants, and replacement precast', 300000.00, (current_date - interval '150 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'subcontractor', 'Coastal Drywall & Paint - progress billing', 92000.00, (current_date - interval '100 days')::date, 'Subcontractor overpaid relative to contract value; see subcontractors table.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'equipment', 'Swing stage and suspended scaffold rental, 3 towers', 50000.00, (current_date - interval '80 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'permits', 'Facade work permits and inspections', 20000.00, (current_date - interval '210 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'other', 'Engineering assessment and remediation design changes', 60000.00, (current_date - interval '170 days')::date, 'Unbudgeted structural engineering fees.'),
+      insert into public.bids (
+        bid_package_id, user_id, company_name, amount, days_to_complete, proposal_notes,
+        exclusions, license_number, license_state, license_expiration, status, gc_rating, gc_review
+      ) values
+      (pkg_id, sub1_id, 'Apex Electrical LLC', round(oval * 0.11, 2), 45,
+        'Includes premium gear and overtime allowance.', 'Owner-furnished equipment excluded.',
+        'IL-SUB-9001', 'IL', (current_date + 200)::date,
+        case when (i % 6) = 0 then 'accepted' else 'submitted' end, 4.5, 'Competitive and complete.'),
+      (pkg_id, sub2_id, 'Flow Plumbing Inc', round(oval * 0.125, 2), 50,
+        'Standard package with 2-week float.', 'Hazardous abatement excluded.',
+        'IL-SUB-9002', 'IL', (current_date + 180)::date,
+        case when (i % 6) = 0 then 'rejected' else 'submitted' end, 3.5, null);
+    end if;
 
-  -- a7 (value 1,100,000)
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'labor', 'Classroom addition framing and finish labor', 110000.00, (current_date - interval '200 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'materials', 'Structural steel, masonry, and roofing materials', 150000.00, (current_date - interval '160 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'subcontractor', 'Reliable Landscaping LLC - progress billing', 20000.00, (current_date - interval '50 days')::date, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'other', 'Temporary fencing and site safety measures', 15000.00, (current_date - interval '280 days')::date, null);
+    insert into public.projects (
+      user_id, project_name, client_name, original_contract_value, revised_contract_value,
+      estimated_total_cost, start_date, end_date, status
+    ) values (
+      admin_id, cname, client_name, oval, oval + approved_co,
+      greatest(cost_total, oval * 0.85), start_d, end_d,
+      case cstatus when 'completed' then 'completed' when 'on_hold' then 'on_hold' when 'canceled' then 'on_hold' else 'active' end
+    ) returning id into project_id_admin;
 
--- ----------------------------------------------------------------------------
--- 8. Invoices (12) - fixed ids so payments can reference them.
---    b08 is overdue by more than 60 days; b11 is an unpaid balance on a
---    contract nearing its end date (a7).
--- ----------------------------------------------------------------------------
-insert into public.invoices (
-  id, contract_id, invoice_number, invoice_date, due_date, description,
-  invoice_amount, retainage_percent, retainage_amount, net_amount_due,
-  amount_paid, status, notes
-)
-values
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'INV-1001',
-   (current_date - interval '100 days')::date, (current_date - interval '70 days')::date, 'Progress billing #1 - floors 12-14',
-   300000.00, 10, 30000.00, 270000.00, 270000.00, 'paid', 'Paid in two installments.'),
+    if owner_id <> admin_id then
+      insert into public.projects (
+        user_id, project_name, client_name, original_contract_value, revised_contract_value,
+        estimated_total_cost, start_date, end_date, status
+      ) values (
+        owner_id, cname, client_name, oval, oval + approved_co,
+        greatest(cost_total, oval * 0.85), start_d, end_d,
+        case cstatus when 'completed' then 'completed' when 'on_hold' then 'on_hold' when 'canceled' then 'on_hold' else 'active' end
+      ) returning id into project_id_owner;
+    else
+      project_id_owner := project_id_admin;
+    end if;
 
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'INV-1002',
-   (current_date - interval '40 days')::date, (current_date - interval '10 days')::date, 'Progress billing #2 - floors 15-16',
-   250000.00, 10, 25000.00, 225000.00, 120000.00, 'partially_paid', 'Balance pending client review of CO-1002.'),
+    insert into public.project_costs (project_id, user_id, cost_date, cost_category, description, amount)
+    select project_id_admin, admin_id, ce.date_incurred, ce.category, ce.description, ce.amount
+    from public.cost_entries ce where ce.contract_id = cid limit 4;
 
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb003', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'INV-1003',
-   (current_date - interval '150 days')::date, (current_date - interval '120 days')::date, 'Progress billing #1 - sitework and foundations',
-   400000.00, 5, 20000.00, 380000.00, 380000.00, 'paid', null),
+    insert into public.billings (
+      project_id, user_id, billing_number, billing_date, amount_billed, retainage_held, net_amount, status
+    )
+    select project_id_admin, admin_id, inv.invoice_number, inv.invoice_date,
+      inv.invoice_amount, inv.retainage_amount, inv.net_amount_due,
+      case when inv.status = 'paid' then 'paid' else 'submitted' end
+    from public.invoices inv where inv.contract_id = cid;
 
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb004', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'INV-1004',
-   (current_date - interval '60 days')::date, (current_date - interval '30 days')::date, 'Progress billing #2 - structural steel and MEP rough-in',
-   350000.00, 5, 17500.00, 332500.00, 200000.00, 'partially_paid', null),
+    insert into public.project_change_orders (
+      project_id, user_id, change_order_number, description, amount, status, approved_date
+    )
+    select project_id_admin, admin_id, co.change_order_number, co.description, co.amount, co.status, co.date_resolved
+    from public.change_orders co where co.contract_id = cid;
+  end loop;
 
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb005', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'INV-1005',
-   (current_date - interval '300 days')::date, (current_date - interval '270 days')::date, 'Progress billing #1 - foundations and framing',
-   350000.00, 10, 35000.00, 315000.00, 315000.00, 'paid', null),
+  insert into public.employee_certifications (
+    user_id, certification_name, certification_number, issuing_body, issued_date, expiration_date, notes
+  )
+  select p.id, v.cert_name, v.cert_no, v.body, current_date - v.issued_ago, current_date + v.expires_in, 'Seeded'
+  from public.user_profiles p
+  join (values
+    ('pm@gcmanager.demo', 'OSHA 30', 'OSHA-30-1001', 'OSHA', 400, 300),
+    ('pm@gcmanager.demo', 'PMP', 'PMP-88421', 'PMI', 800, 120),
+    ('pm2@gcmanager.demo', 'OSHA 30', 'OSHA-30-1002', 'OSHA', 200, 500),
+    ('pm3@gcmanager.demo', 'OSHA 30', 'OSHA-30-1003', 'OSHA', 180, 400),
+    ('pm4@gcmanager.demo', 'OSHA 30', 'OSHA-30-1004', 'OSHA', 220, 450),
+    ('pm5@gcmanager.demo', 'PMP', 'PMP-91002', 'PMI', 500, 200),
+    ('field@gcmanager.demo', 'OSHA 30', 'OSHA-30-2001', 'OSHA', 150, 40),
+    ('field@gcmanager.demo', 'First Aid / CPR', 'FA-2210', 'Red Cross', 100, 250),
+    ('field2@gcmanager.demo', 'OSHA 30', 'OSHA-30-2002', 'OSHA', 90, 600),
+    ('field2@gcmanager.demo', 'Scaffold Competent Person', 'SCP-778', 'Scaffold Education', 50, 15),
+    ('field3@gcmanager.demo', 'OSHA 30', 'OSHA-30-2003', 'OSHA', 100, 500),
+    ('field4@gcmanager.demo', 'First Aid / CPR', 'FA-3301', 'Red Cross', 80, 280),
+    ('field5@gcmanager.demo', 'OSHA 30', 'OSHA-30-2005', 'OSHA', 60, 30),
+    ('field6@gcmanager.demo', 'Scaffold Competent Person', 'SCP-801', 'Scaffold Education', 40, 320)
+  ) as v(email, cert_name, cert_no, body, issued_ago, expires_in)
+    on lower(p.email) = lower(v.email);
 
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb006', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'INV-1006',
-   (current_date - interval '60 days')::date, (current_date - interval '30 days')::date, 'Final billing including approved change orders CO-1005/1006/1007',
-   133000.00, 0, 0.00, 133000.00, 133000.00, 'paid', 'Retainage released on final invoice after certificate of occupancy.'),
-
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb007', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'INV-1007',
-   (current_date - interval '20 days')::date, (current_date + interval '10 days')::date, 'T&M billing - month 3',
-   120000.00, 10, 12000.00, 108000.00, 0.00, 'unpaid', null),
-
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb008', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'INV-1008',
-   (current_date - interval '100 days')::date, (current_date - interval '75 days')::date, 'T&M billing - month 1',
-   95000.00, 10, 9500.00, 85500.00, 0.00, 'overdue', 'Over 60 days past due; client accounts payable unresponsive.'),
-
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb009', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'INV-1009',
-   (current_date - interval '30 days')::date, current_date, 'Progress billing #1 - mobilization and site prep',
-   150000.00, 10, 15000.00, 135000.00, 0.00, 'unpaid', 'On hold pending client financing; billing paused.'),
-
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb010', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'INV-1010',
-   (current_date - interval '90 days')::date, (current_date - interval '60 days')::date, 'Progress billing #2 - remediation and waterproofing',
-   280000.00, 10, 28000.00, 252000.00, 150000.00, 'partially_paid', 'Condo association disputing part of remediation scope.'),
-
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb011', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'INV-1011',
-   (current_date - interval '15 days')::date, (current_date + interval '5 days')::date, 'Progress billing #3 - final classroom finishes',
-   200000.00, 5, 10000.00, 190000.00, 0.00, 'unpaid', 'Contract nears end date with a significant unpaid balance.'),
-
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb012', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa8', 'INV-1012',
-   (current_date - interval '190 days')::date, (current_date - interval '160 days')::date, 'Closeout billing prior to cancellation',
-   80000.00, 10, 8000.00, 72000.00, 0.00, 'unpaid', 'Outstanding closeout invoice after owner canceled contract.')
-on conflict (id) do nothing;
-
--- ----------------------------------------------------------------------------
--- 9. Payments (8)
--- ----------------------------------------------------------------------------
-insert into public.payments (invoice_id, payment_amount, payment_date, payment_method, reference_number, notes)
-values
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb001', 150000.00, (current_date - interval '95 days')::date, 'ACH', 'PMT-1001', 'First installment.'),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb001', 120000.00, (current_date - interval '55 days')::date, 'Check', 'PMT-1002', 'Final installment, paid in full.'),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb002', 120000.00, (current_date - interval '20 days')::date, 'ACH', 'PMT-1003', 'Partial payment; balance held pending CO approval.'),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb003', 380000.00, (current_date - interval '140 days')::date, 'Wire', 'PMT-1004', null),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb004', 200000.00, (current_date - interval '25 days')::date, 'ACH', 'PMT-1005', 'Partial payment.'),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb005', 315000.00, (current_date - interval '290 days')::date, 'Wire', 'PMT-1006', null),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb006', 133000.00, (current_date - interval '50 days')::date, 'Check', 'PMT-1007', 'Final payment including retainage release.'),
-  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbb010', 150000.00, (current_date - interval '70 days')::date, 'ACH', 'PMT-1008', 'Partial payment while scope dispute is resolved.');
-
--- ----------------------------------------------------------------------------
--- 10. Field logs (15)
--- ----------------------------------------------------------------------------
-insert into public.field_logs (
-  contract_id, user_id, log_date, work_performed, hours_worked, workers_on_site,
-  weather_conditions, equipment_used, materials_used, issues_or_delays, notes
-)
-values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '44444444-4444-4444-4444-444444444444', (current_date - interval '95 days')::date,
-   'Continued electrical rough-in on floor 15, began drywall hang on floor 14.', 9.5, 12, 'Clear, 68F', 'Scissor lifts (2), material hoist', 'Metal studs, drywall sheets, conduit', null, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '55555555-5555-5555-5555-555555555555', (current_date - interval '75 days')::date,
-   'Electrical panel install and circuit testing, floor 15.', 8.0, 4, 'Clear, 70F', 'Hand tools, panel lift', 'Breaker panels, wire', null, 'Panel upgrade tied to CO-1001.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '44444444-4444-4444-4444-444444444444', (current_date - interval '30 days')::date,
-   'Curtain wall glazing install, floors 16-17.', 10.0, 10, 'Windy, 55F', 'Boom lift, glazing rig', 'Glazing units, sealant', 'High winds halted work for 2 hours.', null),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '44444444-4444-4444-4444-444444444444', (current_date - interval '120 days')::date,
-   'Structural steel erection for new outpatient wing.', 10.0, 14, 'Clear, 60F', 'Crane, welding rigs', 'Structural steel, welding rod', null, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '44444444-4444-4444-4444-444444444444', (current_date - interval '85 days')::date,
-   'MEP rough-in continues; imaging suite shielding install begins.', 9.0, 11, 'Rain, 58F', 'Material hoist', 'Lead shielding panels, conduit', 'Minor delay due to material delivery.', null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '55555555-5555-5555-5555-555555555555', (current_date - interval '55 days')::date,
-   'Electrical tie-ins for emergency power system.', 8.5, 5, 'Clear, 64F', 'Hand tools', 'Conduit, wire, transfer switch parts', null, null),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', '44444444-4444-4444-4444-444444444444', (current_date - interval '250 days')::date,
-   'Framing complete on units 201-210, balcony additions per CO-1005 underway.', 9.0, 13, 'Clear, 72F', 'Nail guns, saws', 'Framing lumber, hardware', null, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', '44444444-4444-4444-4444-444444444444', (current_date - interval '45 days')::date,
-   'Final punch-list walkthrough with client and inspector.', 6.0, 4, 'Clear, 66F', null, 'Touch-up paint, hardware', null, 'Certificate of occupancy issued same week.'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', '44444444-4444-4444-4444-444444444444', (current_date - interval '65 days')::date,
-   'Framing and drywall substrate install, suites A and B.', 8.0, 7, 'Clear, 71F', 'Hand tools', 'Metal studs, drywall', null, null),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', '44444444-4444-4444-4444-444444444444', (current_date - interval '25 days')::date,
-   'Storefront glazing and signage rough-in.', 8.0, 6, 'Overcast, 62F', 'Boom lift', 'Storefront glazing, conduit', null, 'Signage scope pending CO-1008 approval.'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', '44444444-4444-4444-4444-444444444444', (current_date - interval '44 days')::date,
-   'Site mobilization and erosion control installed.', 8.0, 6, 'Clear, 75F', 'Excavator, compactor', 'Silt fence, gravel', null, 'Project placed on hold shortly after this log.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', '44444444-4444-4444-4444-444444444444', (current_date - interval '38 days')::date,
-   'Roofing subcontractor mobilized, materials staged on site.', 5.0, 3, 'Clear, 73F', 'Forklift', 'Roofing membrane rolls', 'Work paused pending owner remobilization notice.', null),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', '44444444-4444-4444-4444-444444444444', (current_date - interval '180 days')::date,
-   'Demo of deteriorated balcony sections, tower A.', 9.0, 10, 'Clear, 58F', 'Jackhammers, debris chute', 'N/A', 'Discovered extensive rebar corrosion beyond original scope.', 'Led to CO-1010 for remediation.'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', '55555555-5555-5555-5555-555555555555', (current_date - interval '90 days')::date,
-   'Drywall repair and priming, interior corridors towers B and C.', 8.0, 8, 'Clear, 61F', 'Scaffolding', 'Drywall compound, primer', null, null),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', '44444444-4444-4444-4444-444444444444', (current_date - interval '20 days')::date,
-   'Interior finishes and casework install in new classrooms.', 9.0, 9, 'Clear, 70F', 'Hand tools', 'Casework, flooring, paint', null, 'On track for substantial completion before school year.');
-
--- ----------------------------------------------------------------------------
--- 11. Milestones (20)
--- ----------------------------------------------------------------------------
-insert into public.milestones (contract_id, milestone_name, milestone_value, due_date, status)
-values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Demo and abatement complete', 85000.00, (current_date - interval '110 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'MEP rough-in complete, floors 12-16', 220000.00, (current_date - interval '30 days')::date, 'in_progress'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Substantial completion', 850000.00, (current_date + interval '60 days')::date, 'pending'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'Sitework and foundations complete', 250000.00, (current_date - interval '140 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'Structural steel topped out', 300000.00, (current_date - interval '60 days')::date, 'in_progress'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'Foundation and framing complete', 350000.00, (current_date - interval '280 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'Interior finishes complete', 200000.00, (current_date - interval '60 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'Certificate of occupancy issued', 90000.00, (current_date - interval '30 days')::date, 'completed'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'Suites A and B ready for tenant fixturing', 200000.00, (current_date - interval '15 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4', 'Suites C and D ready for tenant fixturing', 225000.00, (current_date + interval '45 days')::date, 'in_progress'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'Site mobilization and erosion control', 60000.00, (current_date - interval '44 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5', 'Building shell and roof complete', 500000.00, (current_date + interval '150 days')::date, 'pending'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'Tower A demo and remediation complete', 260000.00, (current_date - interval '150 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'Tower B and C waterproofing complete', 260000.00, (current_date - interval '30 days')::date, 'in_progress'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6', 'Final painting and punch-list', 200000.00, (current_date + interval '20 days')::date, 'pending'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'Foundation and structural steel complete', 400000.00, (current_date - interval '200 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'Building envelope and roofing complete', 350000.00, (current_date - interval '60 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7', 'Final finishes and occupancy', 350000.00, (current_date + interval '12 days')::date, 'in_progress'),
-
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa8', 'Level 2-3 repair complete', 150000.00, (current_date - interval '260 days')::date, 'completed'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa8', 'Level 4 repair and restriping', 150000.00, (current_date - interval '210 days')::date, 'in_progress');
+  insert into public.access_audit_log (actor_user_id, action, entity_type, entity_id, details)
+  values
+    (admin_id, 'seed_reseed_completed', 'system', null, jsonb_build_object('contracts', 40, 'pms', n_pm, 'field', n_field)),
+    (pm_ids[1], 'contract_created', 'contract', null, jsonb_build_object('source', 'seed')),
+    (pm_ids[2], 'contract_created', 'contract', null, jsonb_build_object('source', 'seed'));
+end $$;

@@ -306,17 +306,44 @@ export function AuditLogPanel() {
         />
       ) : (
         <div className="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+          <div className="xl:hidden flex flex-wrap gap-2 p-3 border-b border-base-300 bg-base-100">
+            <select
+              className="select select-bordered select-xs min-w-[8rem]"
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              aria-label="Filter permission level"
+            >
+              <option value="all">All roles</option>
+              {rolesInLog.map((role) => (
+                <option key={role} value={role}>
+                  {ROLE_LABELS[role]}
+                </option>
+              ))}
+            </select>
+            <input
+              className="input input-bordered input-xs min-w-[8rem] flex-1"
+              placeholder="Filter related record"
+              value={filterRelated}
+              onChange={(e) => setFilterRelated(e.target.value)}
+            />
+            <input
+              className="input input-bordered input-xs min-w-[8rem] flex-1"
+              placeholder="Filter what changed"
+              value={filterChange}
+              onChange={(e) => setFilterChange(e.target.value)}
+            />
+          </div>
           <table className="table table-sm">
             <thead>
               <tr className="bg-base-200">
                 <th>{headerBtn("date", "Date")}</th>
                 <th>{headerBtn("time", "Time")}</th>
                 <th>{headerBtn("user", "User")}</th>
-                <th>{headerBtn("role", "Permission Level")}</th>
+                <th className="hidden xl:table-cell">{headerBtn("role", "Permission Level")}</th>
                 <th>{headerBtn("action", "Action")}</th>
                 <th>{headerBtn("entityType", "Entity Type")}</th>
-                <th>{headerBtn("related", "Related Record")}</th>
-                <th>{headerBtn("change", "What Changed")}</th>
+                <th className="hidden xl:table-cell">{headerBtn("related", "Related Record")}</th>
+                <th className="hidden xl:table-cell">{headerBtn("change", "What Changed")}</th>
               </tr>
               <tr className="bg-base-100">
                 <th className="font-normal">
@@ -343,7 +370,7 @@ export function AuditLogPanel() {
                     onChange={(e) => setFilterUser(e.target.value)}
                   />
                 </th>
-                <th className="font-normal">
+                <th className="font-normal hidden xl:table-cell">
                   <select
                     className="select select-bordered select-xs w-full min-w-[8rem]"
                     value={filterRole}
@@ -379,7 +406,7 @@ export function AuditLogPanel() {
                     ))}
                   </select>
                 </th>
-                <th className="font-normal">
+                <th className="font-normal hidden xl:table-cell">
                   <input
                     className="input input-bordered input-xs w-full min-w-[8rem]"
                     placeholder="Filter record"
@@ -387,7 +414,7 @@ export function AuditLogPanel() {
                     onChange={(e) => setFilterRelated(e.target.value)}
                   />
                 </th>
-                <th className="font-normal">
+                <th className="font-normal hidden xl:table-cell">
                   <input
                     className="input input-bordered input-xs w-full min-w-[8rem]"
                     placeholder="Filter change"
@@ -410,15 +437,20 @@ export function AuditLogPanel() {
                     <td className="whitespace-nowrap">{row.date}</td>
                     <td className="whitespace-nowrap">{row.time}</td>
                     <td>{row.user}</td>
-                    <td>
+                    <td className="hidden xl:table-cell">
                       <span className="badge badge-ghost badge-sm">{row.role}</span>
                     </td>
-                    <td className="capitalize">{row.action}</td>
+                    <td
+                      className="capitalize"
+                      title={[row.role, row.related, row.change].filter(Boolean).join(" · ")}
+                    >
+                      {row.action}
+                    </td>
                     <td>{row.entityType}</td>
-                    <td className="max-w-[180px] truncate" title={row.related}>
+                    <td className="max-w-[180px] truncate hidden xl:table-cell" title={row.related}>
                       {row.related}
                     </td>
-                    <td className="max-w-[260px] truncate" title={row.change}>
+                    <td className="max-w-[260px] truncate hidden xl:table-cell" title={row.change}>
                       {row.change}
                     </td>
                   </tr>

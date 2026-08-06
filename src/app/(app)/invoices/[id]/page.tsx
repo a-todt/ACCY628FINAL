@@ -8,6 +8,8 @@ import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { writeAuditLog } from "@/lib/audit";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { canCreateInvoices, statusBadgeClass } from "@/lib/roles";
@@ -53,13 +55,7 @@ function formFromInvoice(invoice: Invoice): EditForm {
 
 export default function InvoiceDetailPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="grid place-items-center py-24">
-          <span className="loading loading-spinner loading-lg text-primary" />
-        </div>
-      }
-    >
+    <Suspense fallback={<PageSkeleton rows={5} />}>
       <InvoiceDetailContent />
     </Suspense>
   );
@@ -208,6 +204,15 @@ function InvoiceDetailContent() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: "Invoices", href: "/invoices" },
+          ...(invoice.contracts?.contract_name
+            ? [{ label: invoice.contracts.contract_name, href: `/contracts/${invoice.contract_id}` }]
+            : []),
+          { label: invoice.invoice_number ?? "Invoice" },
+        ]}
+      />
       <PageHeader
         title={invoice.invoice_number ?? "Invoice"}
         subtitle={invoice.contracts?.contract_name ?? "Invoice details"}

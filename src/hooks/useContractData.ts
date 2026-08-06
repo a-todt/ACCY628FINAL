@@ -7,6 +7,7 @@ import {
   scopeDataForAssignedStaffRole,
   type ContractAssignmentRow,
 } from "@/lib/staffScope";
+import { scopeDataForSubcontractorRole } from "@/lib/subScope";
 import { createClient } from "@/lib/supabase/client";
 import type {
   ChangeOrder,
@@ -139,13 +140,14 @@ export function useContractData() {
 
   const scoped = useMemo(() => {
     const forClient = scopeDataForClientRole(data, effectiveRole, profile?.role, user?.id);
-    return scopeDataForAssignedStaffRole(
+    const forStaff = scopeDataForAssignedStaffRole(
       forClient,
       data.assignments,
       effectiveRole,
       profile?.role,
       user?.id
     );
+    return scopeDataForSubcontractorRole(forStaff, effectiveRole, profile?.role, user?.id);
   }, [data, effectiveRole, profile?.role, user?.id]);
 
   return {

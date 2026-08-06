@@ -4,28 +4,25 @@ import { Fragment, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
   Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from "recharts";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
+import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { CHART_COLORS, CHART_SERIES } from "@/lib/chartColors";
 import { labelize, money } from "@/lib/metrics";
 import { canEnterCosts, canViewCosts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import type { CostCategory, CostEntry } from "@/lib/types";
 
 const CATEGORIES: CostCategory[] = ["labor", "materials", "subcontractor", "equipment", "permits", "other"];
-const CHART_COLORS = ["#ea580c", "#16a34a", "#0ea5e9", "#f59e0b", "#8b5cf6", "#ef4444", "#64748b"];
 
 const EMPTY_FORM = {
   contract_id: "",
@@ -38,10 +35,6 @@ const EMPTY_FORM = {
 
 type ViewMode = "by_job" | "by_category" | "matrix" | "entries";
 type SortKey = "date" | "category" | "contract" | "amount";
-
-function shortName(name: string, len = 18): string {
-  return name.length > len ? `${name.slice(0, len - 1)}…` : name;
-}
 
 function costMatchesFilters(
   cost: CostEntry,
@@ -189,10 +182,12 @@ export default function CostsPage() {
     total: row.total,
   }));
 
-  const jobChartData = byJob.map((row) => ({
-    name: shortName(row.name),
-    total: row.total,
-  }));
+  const jobChartData = toNamedBarRows(
+    byJob.map((row) => ({
+      fullName: row.name,
+      values: { total: row.total },
+    }))
+  );
 
   const toggleJob = (id: string) => {
     setExpandedJobs((prev) => {
@@ -379,71 +374,77 @@ export default function CostsPage() {
         <SectionCard title="New Cost Entry">
           {formError ? <AlertBanner type="error">{formError}</AlertBanner> : null}
           {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
-          <form onSubmit={onSubmit} className="space-y-4 mt-4">
-            <FormField label="Contract">
-              <select
-                className="select select-bordered"
-                value={form.contract_id}
-                onChange={(e) => updateField("contract_id", e.target.value)}
-                required
-              >
-                <option value="">Select a contract…</option>
-                {contracts.map((contract) => (
-                  <option key={contract.id} value={contract.id}>
-                    {contract.contract_name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Category">
-              <select
-                className="select select-bordered"
-                value={form.category}
-                onChange={(e) => updateField("category", e.target.value as CostCategory)}
-              >
-                {CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {labelize(category)}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Description">
-              <input
-                className="input input-bordered"
-                value={form.description}
-                onChange={(e) => updateField("description", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Amount">
-              <label className="input input-bordered flex items-center gap-2">
-                $
-                <input
-                  type="number"
-                  step="0.01"
-                  className="grow"
-                  value={form.amount}
-                  onChange={(e) => updateField("amount", e.target.value)}
+          <form onSubmit={onSubmit} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField stacked label="Contract">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.contract_id}
+                  onChange={(e) => updateField("contract_id", e.target.value)}
                   required
+                >
+                  <option value="">Select a contract…</option>
+                  {contracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.contract_name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Category">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.category}
+                  onChange={(e) => updateField("category", e.target.value as CostCategory)}
+                >
+                  {CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {labelize(category)}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Amount">
+                <label className="input input-bordered flex items-center gap-2 w-full">
+                  $
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="grow"
+                    value={form.amount}
+                    onChange={(e) => updateField("amount", e.target.value)}
+                    required
+                  />
+                </label>
+              </FormField>
+              <FormField stacked label="Date Incurred">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={form.date_incurred}
+                  onChange={(e) => updateField("date_incurred", e.target.value)}
                 />
-              </label>
-            </FormField>
-            <FormField label="Date Incurred">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={form.date_incurred}
-                onChange={(e) => updateField("date_incurred", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Notes">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={2}
-                value={form.notes}
-                onChange={(e) => updateField("notes", e.target.value)}
-              />
-            </FormField>
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Description">
+                  <input
+                    className="input input-bordered w-full"
+                    value={form.description}
+                    onChange={(e) => updateField("description", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Notes">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={2}
+                    value={form.notes}
+                    onChange={(e) => updateField("notes", e.target.value)}
+                  />
+                </FormField>
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? <span className="loading loading-spinner loading-sm" /> : null}
@@ -539,17 +540,9 @@ export default function CostsPage() {
           </SectionCard>
 
           <SectionCard title="Job Cost Chart">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={jobChartData} margin={{ top: 8, right: 8, left: 8, bottom: 48 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-25} textAnchor="end" height={60} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(Number(v))} width={72} />
-                  <Tooltip formatter={(value) => money(Number(value))} />
-                  <Bar dataKey="total" fill="#ea580c" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <ScrollableBarChart data={jobChartData}>
+              <Bar dataKey="total" fill={CHART_SERIES.primary} radius={[0, 5, 5, 0]} name="Total" />
+            </ScrollableBarChart>
           </SectionCard>
         </div>
       ) : null}

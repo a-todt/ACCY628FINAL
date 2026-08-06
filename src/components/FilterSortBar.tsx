@@ -31,11 +31,11 @@ export function FilterSortBar({
 }) {
   return (
     <div className="card bg-base-100 border border-base-300 shadow-sm mb-4">
-      <div className="card-body p-4 gap-3">
+      <div className="card-body p-3 sm:p-4 gap-3">
         <div className="flex flex-col lg:flex-row gap-3 lg:items-end">
           <label className="form-control flex-1 min-w-0">
             <span className="label py-1">
-              <span className="label-text text-xs opacity-70">Search</span>
+              <span className="label-text text-xs opacity-60 font-medium">Search</span>
             </span>
             <input
               className="input input-bordered input-sm w-full"
@@ -47,7 +47,7 @@ export function FilterSortBar({
           {filters}
           <label className="form-control w-full lg:w-48">
             <span className="label py-1">
-              <span className="label-text text-xs opacity-70">Sort by</span>
+              <span className="label-text text-xs opacity-60 font-medium">Sort by</span>
             </span>
             <select
               className="select select-bordered select-sm"
@@ -63,7 +63,7 @@ export function FilterSortBar({
           </label>
           <label className="form-control w-full lg:w-36">
             <span className="label py-1">
-              <span className="label-text text-xs opacity-70">Order</span>
+              <span className="label-text text-xs opacity-60 font-medium">Order</span>
             </span>
             <select
               className="select select-bordered select-sm"
@@ -77,7 +77,7 @@ export function FilterSortBar({
         </div>
         {children}
         {typeof resultCount === "number" ? (
-          <p className="text-xs opacity-60">
+          <p className="text-xs opacity-55 tabular-nums">
             Showing {resultCount} result{resultCount === 1 ? "" : "s"}
           </p>
         ) : null}
