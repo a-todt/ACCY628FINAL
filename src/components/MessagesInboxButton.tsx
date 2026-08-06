@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Inbox } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMessages } from "@/hooks/useMessages";
 import { canUseMessaging } from "@/lib/roles";
@@ -30,7 +30,7 @@ export function MessagesInboxButton() {
   return (
     <Link
       href="/messages"
-      className="btn btn-ghost btn-sm h-8 min-h-8 gap-1.5 items-center px-2"
+      className="btn btn-ghost btn-sm btn-square h-8 min-h-8 w-8 relative"
       title={
         muted
           ? "Messages (inbox muted)"
@@ -46,16 +46,12 @@ export function MessagesInboxButton() {
             : "Messages"
       }
     >
-      <Inbox className="h-4 w-4 shrink-0" aria-hidden />
+      <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
       {showBadge ? (
-        <span className="badge badge-primary badge-sm min-w-5 h-5 px-1.5 font-semibold tabular-nums leading-none">
+        <span className="absolute -top-0.5 -right-0.5 badge badge-primary badge-xs min-w-4 h-4 px-1 font-semibold tabular-nums leading-none">
           {unreadTotal > 99 ? "99+" : unreadTotal}
         </span>
-      ) : (
-        <span className="hidden sm:inline text-sm leading-none opacity-80">
-          {muted ? "Muted" : "Inbox"}
-        </span>
-      )}
+      ) : null}
     </Link>
   );
 }
