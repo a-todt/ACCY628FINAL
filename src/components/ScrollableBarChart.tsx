@@ -12,8 +12,8 @@ import {
 import { money } from "@/lib/metrics";
 
 export const CHART_LABEL_LEN = 20;
-export const CHART_PANEL_HEIGHT = 288;
-export const CHART_ROW_HEIGHT = 46;
+export const CHART_PANEL_HEIGHT = 220;
+export const CHART_ROW_HEIGHT = 40;
 const AXIS_STRIP_HEIGHT = 58;
 const CHART_TOP_MARGIN = 20;
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { Download, FileDown } from "lucide-react";
 
@@ -9,6 +10,7 @@ export function StatCard({
   icon: Icon,
   tone = "default",
   compact = false,
+  href,
 }: {
   title: string;
   value: string;
@@ -16,6 +18,7 @@ export function StatCard({
   icon?: LucideIcon;
   tone?: "default" | "success" | "warning" | "error";
   compact?: boolean;
+  href?: string;
 }) {
   const toneClass =
     tone === "success"
@@ -26,20 +29,32 @@ export function StatCard({
           ? "border-error/50 bg-error/5"
           : "border-base-300";
 
-  return (
-    <div className={`card bg-base-100 border ${toneClass} shadow-sm`}>
-      <div className={`card-body gap-0.5 ${compact ? "p-1.5" : "p-3.5 sm:p-4 gap-1.5"}`}>
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-[10px] uppercase tracking-wider opacity-55 leading-tight font-medium">{title}</p>
-          {Icon ? <Icon className="h-3.5 w-3.5 opacity-45 shrink-0" /> : null}
-        </div>
-        <p className={`font-semibold tracking-tight leading-tight tabular-nums ${compact ? "text-sm" : "text-xl sm:text-2xl"}`}>
-          {value}
-        </p>
-        {hint ? <p className="text-[10px] opacity-55 leading-tight">{hint}</p> : null}
+  const body = (
+    <div className={`card-body gap-0.5 ${compact ? "p-1.5" : "p-3.5 sm:p-4 gap-1.5"}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[10px] uppercase tracking-wider opacity-55 leading-tight font-medium">{title}</p>
+        {Icon ? <Icon className="h-3.5 w-3.5 opacity-45 shrink-0" /> : null}
       </div>
+      <p className={`font-semibold tracking-tight leading-tight tabular-nums ${compact ? "text-sm" : "text-xl sm:text-2xl"}`}>
+        {value}
+      </p>
+      {hint ? <p className="text-[10px] opacity-55 leading-tight">{hint}</p> : null}
     </div>
   );
+
+  const cardClass = `card bg-base-100 border ${toneClass} shadow-sm ${
+    href ? "hover:border-primary/60 transition-colors h-full" : ""
+  }`;
+
+  if (href) {
+    return (
+      <Link href={href} className={cardClass}>
+        {body}
+      </Link>
+    );
+  }
+
+  return <div className={cardClass}>{body}</div>;
 }
 
 export function PageHeader({
@@ -101,16 +116,24 @@ export function SectionCard({
   title,
   children,
   actions,
+  compact = false,
 }: {
   title: string;
   children: ReactNode;
   actions?: ReactNode;
+  compact?: boolean;
 }) {
   return (
     <div className="card bg-base-100 border border-base-300 shadow-sm">
-      <div className="card-body p-4 sm:p-5 gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="card-title text-base sm:text-lg font-semibold tracking-tight">{title}</h2>
+      <div className={`card-body gap-2 ${compact ? "p-3 sm:p-3.5" : "p-4 sm:p-5 gap-3"}`}>
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <h2
+            className={`card-title font-semibold tracking-tight min-w-0 truncate ${
+              compact ? "text-sm sm:text-base" : "text-base sm:text-lg"
+            }`}
+          >
+            {title}
+          </h2>
           {actions ? <div className="shrink-0">{actions}</div> : null}
         </div>
         {children}

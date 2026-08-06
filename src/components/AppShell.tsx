@@ -169,7 +169,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </>
         ) : null}
 
-        <main className="px-4 py-5 sm:py-6 lg:px-8 max-w-[1400px] mx-auto w-full app-enter">
+        <main className="px-4 py-3 sm:py-4 lg:px-6 max-w-[1400px] mx-auto w-full app-enter">
           {locked ? <AccessGate access={access} onResolved={() => access.refresh()} /> : children}
         </main>
       </div>
