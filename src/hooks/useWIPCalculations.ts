@@ -15,8 +15,14 @@ export interface WIPProject {
 export interface WIPCalculations {
   completionPercentage: number;
   revenueEarned: number;
+  /** Billings in excess of earned revenue (GAAP contract liability). */
   overbilling: number;
+  /** Earned revenue in excess of billings (GAAP contract asset). */
   underbilling: number;
+  /** Alias of underbilling for GAAP presentation. */
+  contractAsset: number;
+  /** Alias of overbilling for GAAP presentation. */
+  contractLiability: number;
   projectedProfit: number;
   projectedMargin: number;
   retainageHeld: number;
@@ -30,6 +36,8 @@ const EMPTY_CALCS: WIPCalculations = {
   revenueEarned: 0,
   overbilling: 0,
   underbilling: 0,
+  contractAsset: 0,
+  contractLiability: 0,
   projectedProfit: 0,
   projectedMargin: 0,
   retainageHeld: 0,
@@ -82,6 +90,8 @@ export function computeWIP(
     revenueEarned,
     overbilling,
     underbilling,
+    contractAsset: underbilling,
+    contractLiability: overbilling,
     projectedProfit,
     projectedMargin,
     retainageHeld,
@@ -165,7 +175,7 @@ export function useWIPCalculations(project: WIPProject | null | undefined) {
   }, [projectId, userId]);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(() => load());
   }, [load]);
 
   const calculations = useMemo(() => {

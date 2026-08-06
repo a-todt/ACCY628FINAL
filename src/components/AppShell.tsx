@@ -186,8 +186,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           </div>
           <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 shrink-0 group">
             <NailItLogo size="sm" />
-            <span className="text-[11px] leading-tight opacity-50 truncate hidden xl:block max-w-[120px] group-hover:opacity-70 transition-opacity">
-              GC Contract Manager
+            <span className="text-[11px] leading-tight opacity-50 whitespace-nowrap hidden xl:block group-hover:opacity-70 transition-opacity">
+              General Contract Managing
             </span>
           </Link>
         </div>

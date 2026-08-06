@@ -4,13 +4,21 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ContractInsuranceRequirement, InsurancePolicy } from "@/lib/types";
 
-export function useInsuranceData() {
+export function useInsuranceData(enabled = true) {
   const [policies, setPolicies] = useState<InsurancePolicy[]>([]);
   const [requirements, setRequirements] = useState<ContractInsuranceRequirement[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!enabled) {
+      setPolicies([]);
+      setRequirements([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     const supabase = createClient();
@@ -34,7 +42,7 @@ export function useInsuranceData() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     void Promise.resolve().then(() => load());
