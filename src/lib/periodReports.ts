@@ -5,6 +5,8 @@ export type PeriodMode = "month" | "year";
 export interface WipProjectLike {
   id: string;
   project_name: string;
+  /** Linked GC contract when set; preferred over name matching. */
+  contract_id?: string | null;
   estimated_total_cost?: number | null;
   revised_contract_value?: number | null;
 }
@@ -92,6 +94,16 @@ export function matchWipProject(
   const target = normalizeName(contract.contract_name);
   if (!target) return null;
   return projects.find((p) => normalizeName(p.project_name) === target) ?? null;
+}
+
+/** Prefer projects.contract_id; fall back to name match for unlinked rows. */
+export function resolveWipProject(
+  contract: Pick<Contract, "id" | "contract_name">,
+  projects: WipProjectLike[]
+): WipProjectLike | null {
+  const byId = projects.find((p) => p.contract_id && p.contract_id === contract.id);
+  if (byId) return byId;
+  return matchWipProject(contract, projects);
 }
 
 export function revisedContractValue(
@@ -295,7 +307,7 @@ export function buildPeriodRows(input: BuildPeriodRowsInput): PeriodReportResult
   let unspecifiedHasWip = false;
 
   for (const contract of scopedContracts) {
-    const wip = matchWipProject(contract, projects);
+    const wip = resolveWipProject(contract, projects);
     const revised = revisedContractValue(contract, changeOrders);
     const relatedCosts = costEntries.filter((c) => c.contract_id === contract.id);
     const relatedInvoices = invoices.filter((i) => i.contract_id === contract.id);

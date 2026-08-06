@@ -5,6 +5,7 @@ import {
   costToCostEarned,
   cumulativeEarned,
   matchWipProject,
+  resolveWipProject,
   monthKey,
   revisedContractValue,
 } from "@/lib/periodReports";
@@ -73,6 +74,39 @@ describe("periodReports helpers", () => {
   it("matches WIP projects by name case-insensitively", () => {
     const match = matchWipProject(contract, [
       { id: "p1", project_name: "alpha job", estimated_total_cost: 800_000, revised_contract_value: 1_000_000 },
+    ]);
+    expect(match?.id).toBe("p1");
+  });
+
+  it("resolves WIP by contract_id before name", () => {
+    const match = resolveWipProject(contract, [
+      {
+        id: "wrong-name",
+        project_name: "Other Job",
+        contract_id: "c1",
+        estimated_total_cost: 700_000,
+        revised_contract_value: 1_000_000,
+      },
+      {
+        id: "name-match",
+        project_name: "Alpha Job",
+        contract_id: null,
+        estimated_total_cost: 800_000,
+        revised_contract_value: 1_000_000,
+      },
+    ]);
+    expect(match?.id).toBe("wrong-name");
+  });
+
+  it("falls back to name match when contract_id is unset", () => {
+    const match = resolveWipProject(contract, [
+      {
+        id: "p1",
+        project_name: "Alpha Job",
+        contract_id: null,
+        estimated_total_cost: 800_000,
+        revised_contract_value: 1_000_000,
+      },
     ]);
     expect(match?.id).toBe("p1");
   });

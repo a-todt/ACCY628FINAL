@@ -1,6 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
+import {
+  ChevronDown,
+  CircleDollarSign,
+  ClipboardList,
+  FilePlus2,
+  Pencil,
+  Receipt,
+  Trash2,
+} from "lucide-react";
 import {
   ColumnAutocompleteHeader,
   ColumnSortHeader,
@@ -22,10 +32,37 @@ const C = WIP_DB.projectCosts;
 const B = WIP_DB.billings;
 const CO = WIP_DB.projectChangeOrders;
 
+const PROJECT_STATUS_OPTIONS = ["active", "completed", "on_hold"] as const;
+type ProjectStatus = (typeof PROJECT_STATUS_OPTIONS)[number];
+
 type ActiveModal = "project" | "cost" | "billing" | "change_order" | null;
 type SortKey = "name" | "status" | "value" | "cost";
 
+function moneyField(value: number): string {
+  return Number.isFinite(value) ? String(value) : "";
+}
+
+function dateField(value: unknown): string {
+  if (value == null || value === "") return "";
+  return String(value).slice(0, 10);
+}
+
+function projectToForm(row: DbRow) {
+  return {
+    contract_id: colStr(row, P.contractId),
+    project_name: colStr(row, P.name),
+    client_name: colStr(row, P.clientName),
+    original_contract_value: moneyField(colNum(row, P.originalValue)),
+    revised_contract_value: moneyField(colNum(row, P.contractValue)),
+    estimated_total_cost: moneyField(colNum(row, P.estimatedCost)),
+    start_date: dateField(row.start_date),
+    end_date: dateField(row.end_date),
+    status: colStr(row, P.status, "active") || "active",
+  };
+}
+
 const EMPTY_PROJECT = {
+  contract_id: "",
   project_name: "",
   client_name: "",
   original_contract_value: "",
@@ -75,11 +112,15 @@ export default function ProjectsPage() {
   const canEdit = canEnterCosts(effectiveRole);
 
   const [projects, setProjects] = useState<DbRow[]>([]);
+  const [contracts, setContracts] = useState<
+    Array<{ id: string; contract_name: string; client_name: string | null }>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [selectRefreshKey, setSelectRefreshKey] = useState(0);
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
 
   const [nameFilter, setNameFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -97,6 +138,10 @@ export default function ProjectsPage() {
   const [savingCost, setSavingCost] = useState(false);
   const [savingBilling, setSavingBilling] = useState(false);
   const [savingChangeOrder, setSavingChangeOrder] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
 
   const load = useCallback(async () => {
     if (!user || !canView) {
@@ -110,19 +155,47 @@ export default function ProjectsPage() {
       const { data, error: loadError } = await supabase
         .from(P.table)
         .select(
-          selectList(P.pk, P.name, P.contractValue, P.estimatedCost, P.status),
+          selectList(
+            P.pk,
+            P.contractId,
+            P.name,
+            P.clientName,
+            P.originalValue,
+            P.contractValue,
+            P.estimatedCost,
+            P.status,
+            "start_date",
+            "end_date"
+          ),
         )
         .eq(P.userId, user.id)
         .order(P.name, { ascending: true });
       if (loadError) throw loadError;
       setProjects((data ?? []) as unknown as DbRow[]);
+
+      if (canEdit) {
+        const { data: contractRows, error: contractError } = await supabase
+          .from("contracts")
+          .select("id, contract_name, client_name")
+          .order("contract_name", { ascending: true });
+        if (contractError) throw contractError;
+        setContracts(
+          (contractRows ?? []) as Array<{
+            id: string;
+            contract_name: string;
+            client_name: string | null;
+          }>
+        );
+      } else {
+        setContracts([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load projects");
       setProjects([]);
     } finally {
       setLoading(false);
     }
-  }, [user, canView]);
+  }, [user, canView, canEdit]);
 
   useEffect(() => {
     void load();
@@ -130,6 +203,7 @@ export default function ProjectsPage() {
 
   const closeModal = () => {
     setActiveModal(null);
+    setEditingProjectId(null);
     setProjectError(null);
     setCostError(null);
     setBillingError(null);
@@ -142,7 +216,19 @@ export default function ProjectsPage() {
     setCostError(null);
     setBillingError(null);
     setChangeOrderError(null);
+    if (modal === "project") {
+      setEditingProjectId(null);
+      setProjectForm(EMPTY_PROJECT);
+    }
     setActiveModal(modal);
+  };
+
+  const openEditProject = (row: DbRow) => {
+    setSuccess(null);
+    setProjectError(null);
+    setEditingProjectId(colStr(row, P.pk));
+    setProjectForm(projectToForm(row));
+    setActiveModal("project");
   };
 
   const filteredProjects = useMemo(() => {
@@ -168,6 +254,117 @@ export default function ProjectsPage() {
     [projects]
   );
 
+  const allFilteredSelected =
+    filteredProjects.length > 0 &&
+    filteredProjects.every((p) => selectedIds.has(colStr(p, P.pk)));
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const p of filteredProjects) next.delete(colStr(p, P.pk));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const p of filteredProjects) next.add(colStr(p, P.pk));
+        return next;
+      });
+    }
+  };
+
+  const setProjectStatus = async (projectId: string, status: ProjectStatus) => {
+    if (!user) return;
+    setBusyId(projectId);
+    setError(null);
+    setSuccess(null);
+    try {
+      const supabase = createClient();
+      const { error: updateError } = await supabase
+        .from(P.table)
+        .update({ [P.status]: status })
+        .eq(P.pk, projectId)
+        .eq(P.userId, user.id);
+      if (updateError) throw updateError;
+      setSuccess(`Status set to ${labelize(status)}.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update status.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const runBulkStatus = async (status: ProjectStatus) => {
+    if (!user || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const supabase = createClient();
+      const ids = Array.from(selectedIds);
+      const { error: updateError } = await supabase
+        .from(P.table)
+        .update({ [P.status]: status })
+        .in(P.pk, ids)
+        .eq(P.userId, user.id);
+      if (updateError) throw updateError;
+      setSuccess(`Updated ${ids.length} project${ids.length === 1 ? "" : "s"} to ${labelize(status)}.`);
+      setSelectedIds(new Set());
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update selected projects.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const deleteProject = async (projectId: string, projectName: string) => {
+    if (!user) return;
+    if (
+      !window.confirm(
+        `Permanently delete project "${projectName || projectId}"? Related costs, billings, and change orders will also be deleted.`
+      )
+    ) {
+      return;
+    }
+    setDeletingProject(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const supabase = createClient();
+      const { error: deleteError } = await supabase
+        .from(P.table)
+        .delete()
+        .eq(P.pk, projectId)
+        .eq(P.userId, user.id);
+      if (deleteError) throw deleteError;
+      setSuccess("Project deleted.");
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(projectId);
+        return next;
+      });
+      closeModal();
+      setSelectRefreshKey((k) => k + 1);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete project.");
+    } finally {
+      setDeletingProject(false);
+    }
+  };
+
   const onSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((current) => (current === "asc" ? "desc" : "asc"));
@@ -177,7 +374,7 @@ export default function ProjectsPage() {
     }
   };
 
-  const onCreateProject = async (e: FormEvent) => {
+  const onSaveProject = async (e: FormEvent) => {
     e.preventDefault();
     setProjectError(null);
     setSuccess(null);
@@ -225,8 +422,7 @@ export default function ProjectsPage() {
       const supabase = createClient();
       const originalValue = original ?? 0;
       const revisedValue = revised ?? originalValue;
-      const { error: insertError } = await supabase.from(P.table).insert({
-        [P.userId]: user.id,
+      const payload = {
         [P.name]: projectForm.project_name.trim(),
         [P.clientName]: projectForm.client_name.trim() || null,
         [P.originalValue]: originalValue,
@@ -235,15 +431,38 @@ export default function ProjectsPage() {
         start_date: projectForm.start_date || null,
         end_date: projectForm.end_date || null,
         [P.status]: projectForm.status || "active",
-      });
-      if (insertError) throw insertError;
+        [P.contractId]: projectForm.contract_id || null,
+      };
+
+      if (editingProjectId) {
+        const { error: updateError } = await supabase
+          .from(P.table)
+          .update(payload)
+          .eq(P.pk, editingProjectId)
+          .eq(P.userId, user.id);
+        if (updateError) throw updateError;
+        setSuccess("Project updated.");
+      } else {
+        const { error: insertError } = await supabase.from(P.table).insert({
+          [P.userId]: user.id,
+          ...payload,
+        });
+        if (insertError) throw insertError;
+        setSuccess("Project created.");
+      }
+
       setProjectForm(EMPTY_PROJECT);
-      setSuccess("Project created.");
       setSelectRefreshKey((k) => k + 1);
       closeModal();
       await load();
     } catch (err) {
-      setProjectError(err instanceof Error ? err.message : "Failed to create project.");
+      setProjectError(
+        err instanceof Error
+          ? err.message
+          : editingProjectId
+            ? "Failed to update project."
+            : "Failed to create project."
+      );
     } finally {
       setSavingProject(false);
     }
@@ -441,45 +660,81 @@ export default function ProjectsPage() {
       <PageHeader
         title="Projects"
         subtitle="Create projects and enter costs/billings for WIP revenue recognition"
+        actions={
+          canEdit && selectedIds.size > 0 ? (
+            <div className="dropdown dropdown-end">
+              <div
+                tabIndex={0}
+                role="button"
+                className={`btn btn-sm ${bulkBusy ? "btn-disabled" : "btn-secondary"}`}
+              >
+                Bulk actions ({selectedIds.size})
+                <ChevronDown className="h-4 w-4" />
+              </div>
+              <ul
+                tabIndex={0}
+                className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300"
+              >
+                <li className="menu-title px-3 pt-1">
+                  <span>Change status</span>
+                </li>
+                {PROJECT_STATUS_OPTIONS.map((status) => (
+                  <li key={status}>
+                    <button
+                      type="button"
+                      disabled={bulkBusy}
+                      onClick={() => void runBulkStatus(status)}
+                    >
+                      Set {labelize(status)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : undefined
+        }
       />
 
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
       {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
 
       {canEdit ? (
-        <div className="rounded-box border border-base-300 bg-base-100 px-3 py-2.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide opacity-60 mr-1">
-              Add
-            </span>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => openModal("project")}>
-              Project
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => openModal("cost")}
-              disabled={!hasProjects}
-            >
-              Cost
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => openModal("billing")}
-              disabled={!hasProjects}
-            >
-              Billing
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => openModal("change_order")}
-              disabled={!hasProjects}
-            >
-              Change order
-            </button>
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1.5"
+            onClick={() => openModal("project")}
+          >
+            <FilePlus2 className="h-4 w-4" />
+            Add Project
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1.5"
+            onClick={() => openModal("cost")}
+            disabled={!hasProjects}
+          >
+            <CircleDollarSign className="h-4 w-4" />
+            Log Cost
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1.5"
+            onClick={() => openModal("billing")}
+            disabled={!hasProjects}
+          >
+            <Receipt className="h-4 w-4" />
+            Add Billing
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1.5"
+            onClick={() => openModal("change_order")}
+            disabled={!hasProjects}
+          >
+            <ClipboardList className="h-4 w-4" />
+            Add Change Order
+          </button>
         </div>
       ) : null}
 
@@ -491,13 +746,26 @@ export default function ProjectsPage() {
         ) : (
           <table className="table table-xs table-fixed w-full text-[11px]">
             <colgroup>
-              <col className="w-[40%]" />
-              <col className="w-[16%]" />
-              <col className="w-[22%]" />
-              <col className="w-[22%]" />
+              {canEdit ? <col className="w-[5%]" /> : null}
+              <col className={canEdit ? "w-[30%]" : "w-[40%]"} />
+              <col className="w-[12%]" />
+              <col className="w-[18%]" />
+              <col className="w-[18%]" />
+              {canEdit ? <col className="w-[17%]" /> : null}
             </colgroup>
             <thead>
               <tr className="bg-base-200/80">
+                {canEdit ? (
+                  <th className="w-10 align-middle text-center">
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm"
+                      checked={allFilteredSelected}
+                      onChange={toggleSelectAllFiltered}
+                      aria-label="Select all filtered projects"
+                    />
+                  </th>
+                ) : null}
                 <ColumnAutocompleteHeader
                   label="Name"
                   listId="projects-filter-name"
@@ -528,26 +796,51 @@ export default function ProjectsPage() {
                   onSort={() => onSort("cost")}
                   align="right"
                 />
+                {canEdit ? <th className="text-center align-middle">Actions</th> : null}
               </tr>
             </thead>
             <tbody>
               {filteredProjects.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center opacity-60 py-6">
+                  <td colSpan={canEdit ? 6 : 4} className="text-center opacity-60 py-6">
                     No projects match the name filter.
                   </td>
                 </tr>
               ) : (
                 filteredProjects.map((p) => {
                   const id = colStr(p, P.pk);
+                  const name = colStr(p, P.name);
+                  const contractId = colStr(p, P.contractId);
+                  const status = colStr(p, P.status, "active") || "active";
                   return (
                     <tr key={id} className="hover:bg-base-200/60">
-                      <td className="font-medium truncate">{colStr(p, P.name)}</td>
+                      {canEdit ? (
+                        <td className="text-center">
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-sm"
+                            checked={selectedIds.has(id)}
+                            onChange={() => toggleSelect(id)}
+                            aria-label={`Select ${name || "project"}`}
+                          />
+                        </td>
+                      ) : null}
+                      <td className="font-medium truncate">
+                        {contractId ? (
+                          <Link
+                            href={`/contracts/${contractId}`}
+                            className="link link-primary font-medium"
+                            title="Open linked contract"
+                          >
+                            {name}
+                          </Link>
+                        ) : (
+                          name
+                        )}
+                      </td>
                       <td className="text-center">
-                        <span
-                          className={`badge badge-sm ${statusBadgeClass(colStr(p, P.status, "active"))}`}
-                        >
-                          {labelize(colStr(p, P.status, "active"))}
+                        <span className={`badge badge-sm ${statusBadgeClass(status)}`}>
+                          {labelize(status)}
                         </span>
                       </td>
                       <td className="text-right tabular-nums">
@@ -556,6 +849,73 @@ export default function ProjectsPage() {
                       <td className="text-right tabular-nums">
                         {moneyExact(colNum(p, P.estimatedCost))}
                       </td>
+                      {canEdit ? (
+                        <td className="text-center">
+                          <div className="inline-flex justify-center gap-0.5">
+                            <div className="dropdown dropdown-end">
+                              <div
+                                tabIndex={0}
+                                role="button"
+                                className="btn btn-ghost h-6 min-h-6 gap-0 px-1 text-[10px]"
+                                title="Change status"
+                              >
+                                Status
+                                <ChevronDown className="h-3 w-3" />
+                              </div>
+                              <ul
+                                tabIndex={0}
+                                className="dropdown-content menu bg-base-100 rounded-box z-40 w-44 p-2 shadow border border-base-300"
+                              >
+                                {PROJECT_STATUS_OPTIONS.map((option) => (
+                                  <li key={option}>
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        busyId === id || bulkBusy || status === option
+                                      }
+                                      onClick={() => void setProjectStatus(id, option)}
+                                    >
+                                      {labelize(option)}
+                                      {status === option ? " ✓" : ""}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="dropdown dropdown-end">
+                              <div
+                                tabIndex={0}
+                                role="button"
+                                className="btn btn-ghost h-6 min-h-6 gap-0 px-1 text-[10px]"
+                                title="Edit"
+                              >
+                                Edit
+                                <ChevronDown className="h-3 w-3" />
+                              </div>
+                              <ul
+                                tabIndex={0}
+                                className="dropdown-content menu bg-base-100 rounded-box z-40 w-48 p-2 shadow border border-base-300"
+                              >
+                                <li>
+                                  <button type="button" onClick={() => openEditProject(p)}>
+                                    <Pencil className="h-4 w-4" /> Edit Project
+                                  </button>
+                                </li>
+                                <li>
+                                  <button
+                                    type="button"
+                                    className="text-error"
+                                    disabled={busyId === id || bulkBusy || deletingProject}
+                                    onClick={() => void deleteProject(id, name)}
+                                  >
+                                    <Trash2 className="h-4 w-4" /> Delete Project
+                                  </button>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })
@@ -569,7 +929,9 @@ export default function ProjectsPage() {
         <div className="modal modal-open">
           <div className="modal-box max-w-2xl">
             <div className="flex items-start justify-between gap-3 mb-4">
-              <h3 className="font-semibold text-lg">Create project</h3>
+              <h3 className="font-semibold text-lg">
+                {editingProjectId ? "Edit project" : "Create project"}
+              </h3>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm btn-circle"
@@ -579,13 +941,44 @@ export default function ProjectsPage() {
                 ✕
               </button>
             </div>
-            <form className="grid sm:grid-cols-2 gap-4" onSubmit={onCreateProject} noValidate>
+            <form className="grid sm:grid-cols-2 gap-4" onSubmit={onSaveProject} noValidate>
               {projectError ? (
                 <div className="sm:col-span-2">
                   <AlertBanner type="error">{projectError}</AlertBanner>
                 </div>
               ) : null}
-              <FormField label="Project name">
+              <div className="sm:col-span-2">
+                <FormField
+                  stacked
+                  label="Linked contract"
+                  hint="Optional. Links this WIP workbook to a GC contract."
+                >
+                  <select
+                    className="select select-bordered w-full"
+                    value={projectForm.contract_id}
+                    onChange={(e) => {
+                      const contractId = e.target.value;
+                      const selected = contracts.find((c) => c.id === contractId);
+                      setProjectForm((p) => ({
+                        ...p,
+                        contract_id: contractId,
+                        project_name:
+                          p.project_name.trim() || selected?.contract_name || p.project_name,
+                        client_name:
+                          p.client_name.trim() || selected?.client_name || p.client_name,
+                      }));
+                    }}
+                  >
+                    <option value="">None</option>
+                    {contracts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.contract_name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </div>
+              <FormField stacked label="Project name">
                 <input
                   className="input input-bordered w-full"
                   value={projectForm.project_name}
@@ -593,14 +986,14 @@ export default function ProjectsPage() {
                   required
                 />
               </FormField>
-              <FormField label="Client name">
+              <FormField stacked label="Client name">
                 <input
                   className="input input-bordered w-full"
                   value={projectForm.client_name}
                   onChange={(e) => setProjectForm((p) => ({ ...p, client_name: e.target.value }))}
                 />
               </FormField>
-              <FormField label="Original contract value">
+              <FormField stacked label="Original contract value">
                 <input
                   className="input input-bordered w-full"
                   inputMode="decimal"
@@ -611,7 +1004,7 @@ export default function ProjectsPage() {
                   }
                 />
               </FormField>
-              <FormField label="Revised contract value">
+              <FormField stacked label="Revised contract value">
                 <input
                   className="input input-bordered w-full"
                   inputMode="decimal"
@@ -622,7 +1015,7 @@ export default function ProjectsPage() {
                   }
                 />
               </FormField>
-              <FormField label="Estimated total cost">
+              <FormField stacked label="Estimated total cost">
                 <input
                   className="input input-bordered w-full"
                   inputMode="decimal"
@@ -633,7 +1026,7 @@ export default function ProjectsPage() {
                   }
                 />
               </FormField>
-              <FormField label="Status">
+              <FormField stacked label="Status">
                 <select
                   className="select select-bordered w-full"
                   value={projectForm.status}
@@ -644,7 +1037,7 @@ export default function ProjectsPage() {
                   <option value="on_hold">On Hold</option>
                 </select>
               </FormField>
-              <FormField label="Start date">
+              <FormField stacked label="Start date">
                 <input
                   type="date"
                   className="input input-bordered w-full"
@@ -652,7 +1045,7 @@ export default function ProjectsPage() {
                   onChange={(e) => setProjectForm((p) => ({ ...p, start_date: e.target.value }))}
                 />
               </FormField>
-              <FormField label="End date">
+              <FormField stacked label="End date">
                 <input
                   type="date"
                   className="input input-bordered w-full"
@@ -660,17 +1053,42 @@ export default function ProjectsPage() {
                   onChange={(e) => setProjectForm((p) => ({ ...p, end_date: e.target.value }))}
                 />
               </FormField>
-              <div className="sm:col-span-2 modal-action mt-2">
-                <button type="button" className="btn btn-ghost" onClick={closeModal}>
-                  Cancel
-                </button>
-                <button className="btn btn-primary" disabled={savingProject}>
-                  {savingProject ? (
-                    <span className="loading loading-spinner loading-sm" />
-                  ) : (
-                    "Create project"
-                  )}
-                </button>
+              <div className="sm:col-span-2 modal-action mt-2 justify-between">
+                {editingProjectId ? (
+                  <button
+                    type="button"
+                    className="btn btn-error btn-outline"
+                    disabled={savingProject || deletingProject}
+                    onClick={() =>
+                      void deleteProject(editingProjectId, projectForm.project_name)
+                    }
+                  >
+                    {deletingProject ? (
+                      <span className="loading loading-spinner loading-sm" />
+                    ) : (
+                      <>
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <div className="flex gap-2">
+                  <button type="button" className="btn btn-ghost" onClick={closeModal}>
+                    Cancel
+                  </button>
+                  <button className="btn btn-primary" disabled={savingProject || deletingProject}>
+                    {savingProject ? (
+                      <span className="loading loading-spinner loading-sm" />
+                    ) : editingProjectId ? (
+                      "Save changes"
+                    ) : (
+                      "Create project"
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

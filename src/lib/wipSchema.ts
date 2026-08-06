@@ -12,6 +12,8 @@ export const WIP_DB = {
     table: "projects",
     pk: "id",
     userId: "user_id",
+    /** Optional FK to public.contracts (same job as this WIP workbook). */
+    contractId: "contract_id",
     name: "project_name",
     clientName: "client_name",
     /** Used for revenue / WIP contract value calculations */

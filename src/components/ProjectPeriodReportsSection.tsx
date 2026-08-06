@@ -357,6 +357,7 @@ export function ProjectPeriodReportsSection({
           return {
             id: colStr(r, P.pk),
             project_name: colStr(r, P.name),
+            contract_id: colStr(r, P.contractId) || null,
             estimated_total_cost: colNum(r, P.estimatedCost),
             revised_contract_value: colNum(r, P.contractValue),
           };

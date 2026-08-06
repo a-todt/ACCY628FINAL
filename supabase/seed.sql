@@ -494,21 +494,23 @@ begin
 
     insert into public.projects (
       user_id, project_name, client_name, original_contract_value, revised_contract_value,
-      estimated_total_cost, start_date, end_date, status
+      estimated_total_cost, start_date, end_date, status, contract_id
     ) values (
       admin_id, cname, client_name, oval, oval + approved_co,
       greatest(cost_total, oval * 0.85), start_d, end_d,
-      case cstatus when 'completed' then 'completed' when 'on_hold' then 'on_hold' when 'canceled' then 'on_hold' else 'active' end
+      case cstatus when 'completed' then 'completed' when 'on_hold' then 'on_hold' when 'canceled' then 'on_hold' else 'active' end,
+      cid
     ) returning id into project_id_admin;
 
     if owner_id <> admin_id then
       insert into public.projects (
         user_id, project_name, client_name, original_contract_value, revised_contract_value,
-        estimated_total_cost, start_date, end_date, status
+        estimated_total_cost, start_date, end_date, status, contract_id
       ) values (
         owner_id, cname, client_name, oval, oval + approved_co,
         greatest(cost_total, oval * 0.85), start_d, end_d,
-        case cstatus when 'completed' then 'completed' when 'on_hold' then 'on_hold' when 'canceled' then 'on_hold' else 'active' end
+        case cstatus when 'completed' then 'completed' when 'on_hold' then 'on_hold' when 'canceled' then 'on_hold' else 'active' end,
+        cid
       ) returning id into project_id_owner;
     else
       project_id_owner := project_id_admin;
