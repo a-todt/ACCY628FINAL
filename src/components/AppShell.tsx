@@ -140,7 +140,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-base-200">
-      <header className="navbar bg-base-100/95 backdrop-blur-sm border-b border-base-300 px-3 sm:px-4 lg:px-6 sticky top-0 z-30 min-h-14 gap-2">
+      <header className="sticky top-0 z-30 border-b border-base-300 bg-base-100/95 backdrop-blur-sm">
+        <div className="navbar min-h-14 gap-2 w-full max-w-[1400px] mx-auto px-3 sm:px-4 lg:px-6">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
           <div className="dropdown lg:hidden">
             <div tabIndex={0} role="button" className="btn btn-ghost btn-sm btn-square">
@@ -217,17 +218,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               ) : null}
             </ul>
           </div>
-          <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 shrink-0 group">
+          <Link href="/dashboard" className="flex items-center min-w-0 shrink-0">
             <NailItLogo size="sm" />
-            <span className="text-[11px] leading-tight opacity-50 whitespace-nowrap hidden xl:block group-hover:opacity-70 transition-opacity">
-              General Contract Managing
-            </span>
           </Link>
         </div>
         {!locked ? <GlobalSearch /> : <div className="flex-1" />}
         <div className="ml-auto flex-none flex items-center gap-1 sm:gap-1.5 shrink-0">
           {!locked ? <AlertsBell /> : null}
           <UserMenu />
+        </div>
         </div>
       </header>
 

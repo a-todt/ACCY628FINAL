@@ -29,10 +29,12 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useDismissedAlerts } from "@/hooks/useDismissedAlerts";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { buildAlertsForRole, type AlertItem } from "@/lib/alerts";
+import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
 import { CHART_COLORS } from "@/lib/chartColors";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
 import {
@@ -237,7 +239,9 @@ function DashboardAlertsPreview({
   fieldLogs: FieldLog[];
   changeOrders: ChangeOrder[];
 }) {
-  const alerts = useMemo(
+  const { dismissedSet, pruneAgainstLiveIds } = useDismissedAlerts();
+
+  const rawAlerts = useMemo(
     () =>
       buildAlertsForRole(role, {
         invoices,
@@ -245,6 +249,15 @@ function DashboardAlertsPreview({
         changeOrders,
       }),
     [role, invoices, fieldLogs, changeOrders]
+  );
+
+  useEffect(() => {
+    pruneAgainstLiveIds(rawAlerts.map((alert) => alert.id));
+  }, [rawAlerts, pruneAgainstLiveIds]);
+
+  const alerts = useMemo(
+    () => withoutDismissedAlerts(rawAlerts, dismissedSet),
+    [rawAlerts, dismissedSet]
   );
 
   if (alerts.length === 0) return null;
