@@ -1,10 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { NailItLogo } from "@/components/NailItLogo";
-import { ThemeSelector } from "@/components/ThemeSelector";
 import { AlertBanner, FormField } from "@/components/ui";
 import { COMPANY_ROLES, ROLE_LABELS } from "@/lib/roles";
 import { requestClientSignupAccessMatch } from "@/lib/clientSignupAccessEmail";
@@ -34,6 +33,10 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", "jobsite");
+  }, []);
 
   const looksLikeClientId = (value: string) => {
     const v = value.trim();
@@ -194,24 +197,21 @@ export default function LoginPage() {
         <div className="flex items-center justify-center p-4 sm:p-8 lg:p-12">
           <div className="card w-full max-w-md bg-base-100/95 backdrop-blur-md shadow-2xl border border-base-100/40">
             <div className="card-body gap-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-2xl font-display font-semibold uppercase tracking-wide">
-                    {mode === "login"
-                      ? "Sign in"
-                      : mode === "signup"
-                        ? "Create account"
-                        : "Reset password"}
-                  </h2>
-                  <p className="text-sm opacity-65 mt-0.5">
-                    {mode === "forgot"
-                      ? "Reset via email or Client ID"
-                      : mode === "login"
-                        ? "Use your email or Client ID"
-                        : "Secure access for project stakeholders"}
-                  </p>
-                </div>
-                <ThemeSelector compact />
+              <div>
+                <h2 className="text-2xl font-display font-semibold uppercase tracking-wide">
+                  {mode === "login"
+                    ? "Sign in"
+                    : mode === "signup"
+                      ? "Create account"
+                      : "Reset password"}
+                </h2>
+                <p className="text-sm opacity-65 mt-0.5">
+                  {mode === "forgot"
+                    ? "Reset via email or Client ID"
+                    : mode === "login"
+                      ? "Use your email or Client ID"
+                      : "Secure access for project stakeholders"}
+                </p>
               </div>
 
               {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
