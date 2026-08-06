@@ -268,7 +268,6 @@ export function canViewFieldLogs(role: UserRole): boolean {
 
 export type NavCategoryId =
   | "dashboard"
-  | "alerts"
   | "reports"
   | "contracts"
   | "subcontracting"
@@ -285,7 +284,6 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
   return (
     [
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
-      { id: "alerts" as const, href: "/alerts", label: "Alerts", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
       {
         id: "contracts" as const,
@@ -366,10 +364,6 @@ export function secondaryNavForCategory(
       .map(({ href, label }) => ({ href, label }));
   }
 
-  if (category === "alerts") {
-    return [{ href: "/alerts", label: "All Alerts" }];
-  }
-
   if (category === "finance") {
     return (
       [
@@ -400,7 +394,6 @@ export function secondaryNavForCategory(
 
 export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (pathname.startsWith("/dashboard")) return "dashboard";
-  if (pathname.startsWith("/alerts")) return "alerts";
   if (pathname.startsWith("/reports")) return "reports";
   if (pathname.startsWith("/admin")) return "reports";
   if (pathname.startsWith("/audit-log") || pathname.startsWith("/management")) return "management";

@@ -129,7 +129,9 @@ export default function AlertsPage() {
                           : "badge-info"
                     }`}
                   >
-                    {labelize(alert.severity)}
+                    {alert.category === "invoice" && alert.severity === "critical"
+                      ? "Overdue"
+                      : labelize(alert.severity)}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="font-medium leading-tight">{alert.title}</p>

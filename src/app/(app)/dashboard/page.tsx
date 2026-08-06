@@ -13,14 +13,15 @@ import {
 } from "recharts";
 import {
   Banknote,
+  Bell,
   Building2,
+  ChevronRight,
   CircleDollarSign,
   ClipboardList,
   FileText,
   Gavel,
   Plus,
   TrendingUp,
-  TriangleAlert,
   Wrench,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -29,9 +30,10 @@ import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
-import { buildInsuranceWarnings } from "@/lib/insurance";
+import { buildAlertsForRole, type AlertItem } from "@/lib/alerts";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
 import { statusBadgeClass } from "@/lib/roles";
+import type { UserRole } from "@/lib/types";
 import { resolveSubcontractorScopeUserId } from "@/lib/subScope";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -110,6 +112,16 @@ export default function DashboardPage() {
         subtitle={`Welcome back${profile?.full_name ? `, ${profile.full_name}` : ""}`}
       />
 
+      <DashboardAlertsPreview
+        role={effectiveRole}
+        invoices={data.invoices}
+        fieldLogs={data.fieldLogs}
+        changeOrders={data.changeOrders}
+        insurancePolicies={insurance.policies}
+        insuranceRequirements={insurance.requirements}
+        subcontractors={data.subcontractors}
+      />
+
       {effectiveRole === "admin" ||
       effectiveRole === "owner" ||
       effectiveRole === "project_manager" ? (
@@ -125,16 +137,118 @@ export default function DashboardPage() {
   );
 }
 
+const DASHBOARD_ALERT_PREVIEW_LIMIT = 5;
+
+function DashboardAlertsPreview({
+  role,
+  invoices,
+  fieldLogs,
+  changeOrders,
+  insurancePolicies,
+  insuranceRequirements,
+  subcontractors,
+}: {
+  role: UserRole;
+  invoices: Invoice[];
+  fieldLogs: FieldLog[];
+  changeOrders: ChangeOrder[];
+  insurancePolicies: InsurancePolicy[];
+  insuranceRequirements: ContractInsuranceRequirement[];
+  subcontractors: Subcontractor[];
+}) {
+  const alerts = useMemo(
+    () =>
+      buildAlertsForRole(role, {
+        invoices,
+        fieldLogs,
+        changeOrders,
+        insurancePolicies,
+        insuranceRequirements,
+        subcontractors,
+      }),
+    [
+      role,
+      invoices,
+      fieldLogs,
+      changeOrders,
+      insurancePolicies,
+      insuranceRequirements,
+      subcontractors,
+    ]
+  );
+
+  if (alerts.length === 0) return null;
+
+  const preview = alerts.slice(0, DASHBOARD_ALERT_PREVIEW_LIMIT);
+  const remaining = alerts.length - preview.length;
+
+  return (
+    <SectionCard
+      title="Needs attention"
+      actions={
+        <Link href="/alerts" className="btn btn-ghost btn-xs gap-1">
+          <Bell className="h-3.5 w-3.5" />
+          View all ({alerts.length})
+        </Link>
+      }
+    >
+      <ul className="divide-y divide-base-300">
+        {preview.map((alert) => (
+          <AlertPreviewRow key={alert.id} alert={alert} />
+        ))}
+      </ul>
+      {remaining > 0 ? (
+        <p className="text-xs opacity-60 mt-2">
+          +{remaining} more in{" "}
+          <Link href="/alerts" className="link link-primary">
+            Alerts
+          </Link>
+        </p>
+      ) : null}
+    </SectionCard>
+  );
+}
+
+function AlertPreviewRow({ alert }: { alert: AlertItem }) {
+  const badgeLabel =
+    alert.category === "invoice" && alert.severity === "critical"
+      ? "Overdue"
+      : labelize(alert.severity);
+
+  return (
+    <li>
+      <Link
+        href={alert.href}
+        className="flex items-start gap-3 py-2.5 hover:bg-base-200/60 px-1 rounded-lg transition-colors"
+      >
+        <span
+          className={`badge badge-sm mt-0.5 ${
+            alert.severity === "critical"
+              ? "badge-error"
+              : alert.severity === "warning"
+                ? "badge-warning"
+                : "badge-info"
+          }`}
+        >
+          {badgeLabel}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium leading-tight text-sm">{alert.title}</p>
+          <p className="text-xs opacity-70 mt-0.5 line-clamp-1">{alert.detail}</p>
+        </div>
+        <ChevronRight className="h-4 w-4 opacity-40 shrink-0 mt-0.5" />
+      </Link>
+    </li>
+  );
+}
+
 function AdminDashboard({
   contracts,
   changeOrders,
-  subcontractors,
   costEntries,
   invoices,
   payments,
   milestones,
-  insurancePolicies = [],
-  insuranceRequirements = [],
 }: DashboardData) {
   if (contracts.length === 0) {
     return (
@@ -173,10 +287,6 @@ function AdminDashboard({
   const overdueInvoices = invoices.filter(
     (i) => (i.status === "unpaid" || i.status === "partially_paid") && daysPastDue(i.due_date) > 0
   );
-  const overpaidSubs = subcontractors.filter(
-    (s) => Number(s.amount_paid ?? 0) > Number(s.subcontract_value ?? 0)
-  );
-  const unprofitableContracts = perContract.filter(({ metrics }) => metrics.grossProfit < 0);
 
   const contractValueData = toNamedBarRows(
     perContract.map(({ contract, metrics }) => ({
@@ -219,33 +329,6 @@ function AdminDashboard({
     }))
   );
 
-  const warnings: string[] = [];
-  if (overdueInvoices.length > 0) {
-    warnings.push(
-      `${overdueInvoices.length} invoice${overdueInvoices.length > 1 ? "s" : ""} overdue for payment.`
-    );
-  }
-  if (overpaidSubs.length > 0) {
-    warnings.push(
-      `${overpaidSubs.length} subcontractor${overpaidSubs.length > 1 ? "s" : ""} paid more than their contract value.`
-    );
-  }
-  if (pendingCOs > 0) {
-    warnings.push(`${pendingCOs} change order${pendingCOs > 1 ? "s" : ""} awaiting a decision.`);
-  }
-  if (unprofitableContracts.length > 0) {
-    warnings.push(
-      `${unprofitableContracts.length} contract${unprofitableContracts.length > 1 ? "s" : ""} running at a loss.`
-    );
-  }
-  for (const warning of buildInsuranceWarnings(
-    insurancePolicies,
-    insuranceRequirements,
-    subcontractors
-  )) {
-    warnings.push(warning);
-  }
-
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -254,6 +337,13 @@ function AdminDashboard({
         <StatCard title="Total Billed" value={money(totals.totalBilled)} icon={FileText} />
         <StatCard title="Total Collected" value={money(totals.totalCollected)} icon={Banknote} tone="success" />
         <StatCard title="Outstanding AR" value={money(totals.outstanding)} tone={totals.outstanding > 0 ? "warning" : "default"} />
+        <StatCard
+          title="Overdue Invoices"
+          value={String(overdueInvoices.length)}
+          hint={overdueInvoices.length > 0 ? "Past due · see Needs attention" : undefined}
+          icon={FileText}
+          tone={overdueInvoices.length > 0 ? "error" : "default"}
+        />
         <StatCard title="Total Job Costs" value={money(totals.totalCosts)} icon={Wrench} />
         <StatCard
           title="Gross Profit"
@@ -326,26 +416,6 @@ function AdminDashboard({
           </ScrollableBarChart>
         </SectionCard>
       </div>
-
-      {warnings.length > 0 ? (
-        <SectionCard
-          title="Warnings"
-          actions={
-            <Link href="/contracts" className="btn btn-ghost btn-xs">
-              Review contracts
-            </Link>
-          }
-        >
-          <ul className="space-y-2">
-            {warnings.map((warning) => (
-              <li key={warning} className="flex items-start gap-2 text-sm">
-                <TriangleAlert className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-                <span>{warning}</span>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      ) : null}
     </div>
   );
 }
