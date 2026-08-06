@@ -44,11 +44,11 @@ export function resolveSubcontractorScopeUserId(
   );
 }
 
-function filterByContractIds<T extends { contract_id: string }>(
+function filterByContractIds<T extends { contract_id: string | null }>(
   rows: T[],
   contractIds: Set<string>
 ): T[] {
-  return rows.filter((row) => contractIds.has(row.contract_id));
+  return rows.filter((row) => row.contract_id != null && contractIds.has(row.contract_id));
 }
 
 /** Narrow loaded data to the subcontractor's own engagements and related projects. */
@@ -81,7 +81,9 @@ export function scopeDataForSubcontractorRole(
   }
 
   const mySubs = data.subcontractors.filter((s) => s.user_id === scopeId);
-  const contractIds = new Set(mySubs.map((s) => s.contract_id));
+  const contractIds = new Set(
+    mySubs.map((s) => s.contract_id).filter((id): id is string => Boolean(id))
+  );
   const contracts = data.contracts.filter((c) => contractIds.has(c.id));
   const invoices = filterByContractIds(data.invoices, contractIds);
   const invoiceIds = new Set(invoices.map((i) => i.id));
@@ -92,10 +94,10 @@ export function scopeDataForSubcontractorRole(
     changeOrders: filterByContractIds(data.changeOrders, contractIds),
     subcontractors: mySubs,
     costEntries: data.costEntries.filter(
-      (c) => c.user_id === scopeId || contractIds.has(c.contract_id)
+      (c) => c.user_id === scopeId || (c.contract_id != null && contractIds.has(c.contract_id))
     ),
     fieldLogs: data.fieldLogs.filter(
-      (f) => f.user_id === scopeId || contractIds.has(f.contract_id)
+      (f) => f.user_id === scopeId || (f.contract_id != null && contractIds.has(f.contract_id))
     ),
     invoices,
     payments: data.payments.filter((p) => invoiceIds.has(p.invoice_id)),

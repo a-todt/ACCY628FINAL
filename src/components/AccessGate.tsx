@@ -164,6 +164,10 @@ export function AccessGate({
 
       {access.status === "needs_invite" || access.role === "subcontractor" ? (
         <SectionCard title="Enter invite code">
+          <p className="text-sm opacity-70 mb-3">
+            If your GC sent an invite after awarding you work, enter the code here. New
+            subcontractors can usually sign in and bid without an invite first.
+          </p>
           <form onSubmit={onAcceptInvite} className="space-y-4">
             <FormField label="Invite code" hint="From your GC (Owner / Management → External Parties).">
               <input

@@ -18,7 +18,7 @@ export type CostCategory =
   | "other";
 export type InvoiceStatus = "unpaid" | "partially_paid" | "paid" | "overdue";
 export type MilestoneStatus = "pending" | "in_progress" | "completed";
-export type SubStatus = "active" | "complete" | "terminated";
+export type SubStatus = "active" | "complete" | "terminated" | "prospect";
 export type BidPackageStatus = "draft" | "open" | "closed" | "awarded";
 export type BidStatus = "submitted" | "withdrawn" | "accepted" | "rejected";
 
@@ -180,7 +180,8 @@ export interface ChangeOrder {
 
 export interface Subcontractor {
   id: string;
-  contract_id: string;
+  /** Null for registered bidders not yet assigned to a project. */
+  contract_id: string | null;
   company_name: string;
   contact_name: string | null;
   contact_email: string | null;

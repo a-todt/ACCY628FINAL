@@ -45,6 +45,29 @@ export function useAccessStatus() {
       return;
     }
 
+    // Client-side unlock: subcontractors may always use the app to bid,
+    // even if the DB still returns needs_invite (migration not applied yet).
+    if (actualRole === "subcontractor" || effectiveRole === "subcontractor") {
+      const supabase = createClient();
+      const { data } = await supabase.rpc("get_my_access_status");
+      const raw = (data as Record<string, unknown> | null) ?? {};
+      const subCount = Number(raw.subcontractor_count ?? raw.subcontract_count ?? 0);
+      setInfo({
+        status: "ready",
+        role: "subcontractor",
+        reason:
+          subCount === 0
+            ? "No contract engagement yet — you can still bid on open packages"
+            : null,
+        assignment_count: Number(raw.assignment_count ?? 0),
+        subcontract_count: subCount,
+        client_contract_count: Number(raw.client_contract_count ?? 0),
+        customer_linked: Boolean(raw.customer_linked),
+      });
+      setLoading(false);
+      return;
+    }
+
     const supabase = createClient();
     const { data, error } = await supabase.rpc("get_my_access_status");
     if (error) {
@@ -60,13 +83,24 @@ export function useAccessStatus() {
     const raw = data as Record<string, unknown>;
     const rawStatus = String(raw.status ?? "locked");
     // DB historically returned "ok"; app AccessStatus uses "ready"
-    const status = (rawStatus === "ok" ? "ready" : rawStatus) as AccessStatus;
+    let status = (rawStatus === "ok" ? "ready" : rawStatus) as AccessStatus;
+    const role = ((raw.role as UserRole) ?? actualRole ?? null) as UserRole | null;
+    const subCount = Number(raw.subcontractor_count ?? raw.subcontract_count ?? 0);
+
+    if (role === "subcontractor" && (status === "needs_invite" || status === "locked")) {
+      status = "ready";
+    }
+
     setInfo({
       status,
-      role: (raw.role as UserRole) ?? null,
-      reason: (raw.reason as string) ?? null,
+      role,
+      reason:
+        role === "subcontractor" && subCount === 0
+          ? ((raw.reason as string) ??
+            "No contract engagement yet — you can still bid on open packages")
+          : ((raw.reason as string) ?? null),
       assignment_count: Number(raw.assignment_count ?? 0),
-      subcontract_count: Number(raw.subcontract_count ?? 0),
+      subcontract_count: subCount,
       client_contract_count: Number(raw.client_contract_count ?? 0),
       customer_linked: Boolean(raw.customer_linked),
     });

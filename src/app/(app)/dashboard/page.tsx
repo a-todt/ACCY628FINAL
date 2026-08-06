@@ -39,6 +39,7 @@ import { DashboardPaneGrid } from "@/components/DashboardPaneGrid";
 import { ExpandableChart } from "@/components/ExpandableChart";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { SubcontractorInviteCard } from "@/components/SubcontractorInviteCard";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { buildAlertsForRole, type AlertItem } from "@/lib/alerts";
 import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
@@ -92,6 +93,7 @@ type DashboardPaneProps = DashboardData & {
   role: UserRole;
   layout: DashboardLayoutPrefs;
   onCustomize: () => void;
+  refreshData?: () => Promise<void>;
 };
 
 function chartHasValues(
@@ -194,6 +196,7 @@ export default function DashboardPage() {
     role: effectiveRole,
     layout,
     onCustomize: () => setCustomizeOpen(true),
+    refreshData: data.refresh,
   };
 
   return (
@@ -1079,8 +1082,10 @@ function SubcontractorDashboard({
   role,
   layout,
   onCustomize,
+  refreshData,
 }: DashboardPaneProps & { userId?: string }) {
   const mySubs = subcontractors.filter((s) => !userId || s.user_id === userId);
+  const unassigned = mySubs.length === 0;
   const myFieldLogs = fieldLogs
     .filter((f) => !userId || f.user_id === userId)
     .slice(0, 6);
@@ -1210,7 +1215,8 @@ function SubcontractorDashboard({
       >
         {mySubs.length === 0 ? (
           <p className="text-sm opacity-60 py-4 text-center">
-            You are not assigned to any subcontract engagements yet.
+            No project engagements yet. Bid on open packages, then link a GC invite when you are
+            awarded work.
           </p>
         ) : (
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
@@ -1321,7 +1327,22 @@ function SubcontractorDashboard({
   };
 
   return (
-    <DashboardPaneGrid role={role} layout={layout} panes={panes} onCustomize={onCustomize} />
+    <div className="space-y-3">
+      {unassigned ? (
+        <>
+          <AlertBanner type="info">
+            You are registered as a bidder. Browse open bid packages to submit proposals. Project
+            tools (engagements, field logs, costs) unlock after your GC awards you and you accept an
+            invite.{" "}
+            <Link href="/bidding" className="link link-hover font-medium">
+              Go to Bidding
+            </Link>
+          </AlertBanner>
+          <SubcontractorInviteCard compact onLinked={refreshData} />
+        </>
+      ) : null}
+      <DashboardPaneGrid role={role} layout={layout} panes={panes} onCustomize={onCustomize} />
+    </div>
   );
 }
 
