@@ -74,13 +74,23 @@ export function computeContractMetrics(
     0
   );
   const totalCollected = Math.max(totalCollectedFromInvoices, totalCollectedFromPayments);
-  const retainageHeld = relatedInvoices.reduce(
-    (sum, i) => sum + Number(i.retainage_amount ?? 0),
-    0
-  );
+  const retainageHeld = relatedInvoices.reduce((sum, i) => {
+    const retainage = Number(i.retainage_amount ?? 0);
+    const remaining = Math.max(
+      Number(i.invoice_amount ?? 0) - Number(i.amount_paid ?? 0),
+      0
+    );
+    return sum + Math.max(0, Math.min(retainage, remaining));
+  }, 0);
   const totalCosts = relatedCosts.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
   const grossProfit = totalBilled - totalCosts;
   const grossMargin = totalBilled > 0 ? grossProfit / totalBilled : 0;
+  // Current AR = unpaid net due only. Retainage is tracked separately in retainageHeld.
+  const outstanding = relatedInvoices.reduce((sum, i) => {
+    const net = Number(i.net_amount_due ?? i.invoice_amount ?? 0);
+    const paid = Number(i.amount_paid ?? 0);
+    return sum + Math.max(net - paid, 0);
+  }, 0);
 
   let completionPercent = 0;
   if (relatedMilestones.length > 0) {
@@ -95,7 +105,7 @@ export function computeContractMetrics(
     revisedValue,
     totalBilled,
     totalCollected,
-    outstanding: totalBilled - totalCollected,
+    outstanding,
     retainageHeld,
     totalCosts,
     grossProfit,

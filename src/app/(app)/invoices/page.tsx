@@ -65,7 +65,8 @@ function nextInvoiceStatus(amountPaid: number, netAmountDue: number): InvoiceSta
 }
 
 function invoiceBalance(invoice: Invoice): number {
-  return Number(invoice.invoice_amount ?? 0) - Number(invoice.amount_paid ?? 0);
+  const net = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
+  return Math.max(net - Number(invoice.amount_paid ?? 0), 0);
 }
 
 type SortKey = "number" | "contract" | "date" | "due" | "amount" | "status" | "balance";
