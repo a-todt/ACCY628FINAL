@@ -115,7 +115,7 @@ function buildEvents(args: {
       title: m.milestone_name?.trim() || "Milestone",
       subtitle: contractName.get(m.contract_id),
       href: `/contracts/${m.contract_id}`,
-      overdue: isOverdueDate(date) && m.status !== "completed",
+      overdue: isOverdueDate(date),
     });
   }
 
