@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -45,6 +45,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const { effectiveRole, loading } = useAuth();
   const access = useAccessStatus();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
   const { toast } = useToast();
   const { favorites, isFavorite, toggleFavorite } = useNavFavorites();
 
@@ -77,7 +79,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   };
 
   const renderSecondaryTab = (item: NavItem, showStar: boolean) => {
-    const active = isNavItemActive(pathname, item.href);
+    const active = isNavItemActive(pathname, item.href, search);
     const pinned = isFavorite(item.href);
     return (
       <div key={item.href} className="inline-flex items-center shrink-0">
@@ -142,7 +144,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                                   <Link
                                     href={sub.href}
                                     className={`flex-1 ${
-                                      isNavItemActive(pathname, sub.href) ? "active" : ""
+                                      isNavItemActive(pathname, sub.href, search)
+                                        ? "active"
+                                        : ""
                                     }`}
                                   >
                                     {sub.label}
