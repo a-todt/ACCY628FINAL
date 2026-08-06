@@ -21,6 +21,7 @@ import {
   FilePlus2,
   FileText,
   Gavel,
+  MessageCircle,
   Plus,
   Receipt,
   Settings2,
@@ -32,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useDashboardLayout } from "@/hooks/useDashboardLayout";
 import { useDismissedAlerts } from "@/hooks/useDismissedAlerts";
+import { startOrGetThread } from "@/hooks/useMessages";
 import { DashboardCustomizeModal } from "@/components/DashboardCustomizeModal";
 import { DashboardPaneGrid } from "@/components/DashboardPaneGrid";
 import { ExpandableChart } from "@/components/ExpandableChart";
@@ -1165,6 +1167,8 @@ function ClientDashboard({
   onCustomize,
 }: DashboardPaneProps) {
   const router = useRouter();
+  const [messagingContractId, setMessagingContractId] = useState<string | null>(null);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const approvedChangeOrders = changeOrders.filter((co) => co.status === "approved");
   const perContract = contracts.map((contract) => {
     const metrics = computeContractMetrics(
@@ -1192,6 +1196,19 @@ function ClientDashboard({
       row.schedule.health === "ahead" ||
       row.schedule.health === "completed"
   ).length;
+
+  const messagePmAboutSchedule = async (contractId: string) => {
+    setMessageError(null);
+    setMessagingContractId(contractId);
+    try {
+      const threadId = await startOrGetThread(contractId);
+      router.push(`/messages?thread=${encodeURIComponent(threadId)}`);
+    } catch (err) {
+      setMessageError(err instanceof Error ? err.message : "Could not open messages with your PM.");
+    } finally {
+      setMessagingContractId(null);
+    }
+  };
 
   const panes: Record<string, ReactNode> = {
     kpi_stats: (
@@ -1239,6 +1256,9 @@ function ClientDashboard({
           </span>
         }
       >
+        {messageError ? (
+          <p className="text-xs text-error mb-2">{messageError}</p>
+        ) : null}
         {perContract.length === 0 ? (
           <p className="text-sm opacity-60 py-4 text-center">No projects linked to your account yet.</p>
         ) : (
@@ -1252,6 +1272,9 @@ function ClientDashboard({
                   <th>Completed</th>
                   <th>Schedule</th>
                   <th>Details</th>
+                  <th className="w-12 text-center">
+                    <span className="sr-only">Message PM</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1288,6 +1311,24 @@ function ClientDashboard({
                       ) : (
                         <span className="opacity-60">{schedule.detail}</span>
                       )}
+                    </td>
+                    <td className="text-center">
+                      {schedule.health === "behind" ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs btn-square text-primary"
+                          title={`Message PM about ${contract.contract_name}`}
+                          aria-label={`Message project manager about ${contract.contract_name}`}
+                          disabled={messagingContractId === contract.id}
+                          onClick={() => void messagePmAboutSchedule(contract.id)}
+                        >
+                          {messagingContractId === contract.id ? (
+                            <span className="loading loading-spinner loading-xs" />
+                          ) : (
+                            <MessageCircle className="h-4 w-4" />
+                          )}
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
