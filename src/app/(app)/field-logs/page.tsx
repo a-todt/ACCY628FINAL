@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode, Fragment } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode, Fragment } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Building2, ClipboardList, ExternalLink, Paperclip, Plus, Trash2 } from "lucide-react";
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
@@ -75,6 +76,7 @@ function weatherKey(log: FieldLog): string {
 
 export default function FieldLogsPage() {
   const { effectiveRole, user } = useAuth();
+  const searchParams = useSearchParams();
   const { contracts, fieldLogs, userProfiles, loading, error, refresh } =
     useContractData();
   const canCreate = canCreateFieldLogs(effectiveRole);
@@ -97,6 +99,13 @@ export default function FieldLogsPage() {
   const [logRefreshKey, setLogRefreshKey] = useState(0);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [viewingStaff, setViewingStaff] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q) setProjectFilter(q);
+    const id = searchParams.get("id");
+    if (id) setExpandedLogId(id);
+  }, [searchParams]);
 
   const filtered = useMemo(() => {
     const next = fieldLogs.filter((log) => {
