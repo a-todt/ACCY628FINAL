@@ -1,4 +1,4 @@
-# GC Contract Manager
+# General Contract Management
 
 Contract-to-cash management for general contractors.
 

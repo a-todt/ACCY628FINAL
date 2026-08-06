@@ -14,7 +14,7 @@ export function buildClientAccessEmail(payload: ClientAccessEmailPayload) {
   const text = [
     `Hi ${name},`,
     "",
-    "Your general contractor created client access for you in General Contract Management.",
+    "Your general contractor created client access for you in the app.",
     "",
     `Client ID: ${payload.clientId}`,
     "",
@@ -31,7 +31,7 @@ export function buildClientAccessEmail(payload: ClientAccessEmailPayload) {
     <div style="font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#1f2937">
       <h2 style="margin:0 0 12px">Your Client ID</h2>
       <p>Hi ${escapeHtml(name)},</p>
-      <p>Your general contractor created client access for <strong>${escapeHtml(company)}</strong> in General Contract Management.</p>
+      <p>Your general contractor created client access for <strong>${escapeHtml(company)}</strong> in the app.</p>
       <table style="border-collapse:collapse;margin:16px 0">
         <tr><td style="padding:6px 12px;background:#f3f4f6"><strong>Client ID</strong></td><td style="padding:6px 12px;font-family:monospace">${escapeHtml(payload.clientId)}</td></tr>
       </table>
