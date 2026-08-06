@@ -312,9 +312,14 @@ export function canCreateSafetyIncidents(role: UserRole): boolean {
   return hasPermission(role, "createSafetyIncidents");
 }
 
-/** Client ↔ PM messaging hub (inbox icon). Admin, owner, field, and subs are excluded. */
+/** Client ↔ company messaging hub (inbox icon). Field supervisors and subs are excluded. */
 export function canUseMessaging(role: UserRole): boolean {
-  return role === "client" || role === "project_manager";
+  return (
+    role === "client" ||
+    role === "project_manager" ||
+    role === "owner" ||
+    role === "admin"
+  );
 }
 
 /** Main alerts inbox / bell — not shown for field supervisors or subcontractors. */

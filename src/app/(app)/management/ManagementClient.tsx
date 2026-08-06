@@ -27,6 +27,7 @@ import {
   complianceLabel,
 } from "@/lib/compliance";
 import { createClient } from "@/lib/supabase/client";
+import { passwordResetRedirectTo } from "@/lib/authUrls";
 import type {
   ContractAssignment,
   Customer,
@@ -393,6 +394,9 @@ export default function ManagementPage() {
     }
 
     const pendingClients = admin.customers.filter((c) => !c.claimed_at && !c.user_id);
+    const prospectClients = admin.customers.filter(
+      (c) => Boolean(c.user_id) && !c.contract_id
+    );
     const linkedClients = admin.customers.filter((c) => Boolean(c.claimed_at || c.user_id));
     const openInvites = admin.invites.filter((inv) => !inv.accepted_at);
     const staffMissingEmail = staffProfiles.filter((p) => !p.email?.trim());
@@ -409,6 +413,7 @@ export default function ManagementPage() {
       contractsMissingPm,
       contractsMissingField,
       pendingClients,
+      prospectClients,
       linkedClientsCount: linkedClients.length,
       openInvites,
       staffMissingEmail,
@@ -906,7 +911,7 @@ export default function ManagementPage() {
     try {
       const supabase = createClient();
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: passwordResetRedirectTo(),
       });
       if (resetError) throw resetError;
       await logAction("password_reset_sent", "user_profiles", email);
@@ -1061,10 +1066,16 @@ export default function ManagementPage() {
             />
             <StatCard
               title="External Parties"
-              value={String(overview.pendingClients.length)}
-              hint={`${overview.linkedClientsCount} linked clients · ${overview.openInvites.length} open sub invites`}
+              value={String(overview.pendingClients.length + overview.prospectClients.length)}
+              hint={`${overview.prospectClients.length} self-serve prospects · ${overview.linkedClientsCount} linked · ${overview.openInvites.length} open sub invites`}
               icon={Building2}
-              tone={overview.pendingClients.length > 0 || overview.openInvites.length > 0 ? "warning" : "default"}
+              tone={
+                overview.pendingClients.length > 0 ||
+                overview.prospectClients.length > 0 ||
+                overview.openInvites.length > 0
+                  ? "warning"
+                  : "default"
+              }
             />
             <StatCard
               title="Access Risk"
@@ -1114,6 +1125,49 @@ export default function ManagementPage() {
           ) : null}
 
           <div className="grid gap-4 lg:grid-cols-2">
+            <SectionCard title="Self-serve project inquiries">
+              {overview.prospectClients.length === 0 ? (
+                <p className="text-sm opacity-60">No open prospects. New client signups appear here.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Interest</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overview.prospectClients.slice(0, 8).map((customer) => (
+                        <tr key={customer.id}>
+                          <td>
+                            <div className="font-medium">{customer.company_name}</div>
+                            <div className="text-xs opacity-60">
+                              {customer.contact_email || customer.contact_name || "—"}
+                            </div>
+                          </td>
+                          <td className="text-xs max-w-[12rem] truncate">
+                            {customer.notes || "—"}
+                          </td>
+                          <td className="text-right">
+                            <a className="btn btn-ghost btn-xs" href="/messages">
+                              Message
+                            </a>
+                            <a
+                              className="btn btn-primary btn-xs ml-1"
+                              href={`/contracts/new?customer=${customer.id}`}
+                            >
+                              Create contract
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
             <SectionCard title="Clients Pending Setup">
               {overview.pendingClients.length === 0 ? (
                 <p className="text-sm opacity-60">All client invites are linked.</p>
@@ -2217,7 +2271,11 @@ export default function ManagementPage() {
                         <tr key={customer.id} className="hover:bg-base-200/60">
                           <td className="px-1 break-words">
                             {customer.contracts?.contract_name ||
-                              (customer.contract_id ? "Linked project" : "No project")}
+                              (customer.contract_id
+                                ? "Linked project"
+                                : customer.user_id
+                                  ? "Prospect (no contract yet)"
+                                  : "No project")}
                           </td>
                           <td className="px-1 break-words">
                             <div className="font-medium">{customer.company_name}</div>
@@ -2240,12 +2298,18 @@ export default function ManagementPage() {
                           <td className="px-1 text-center">
                             <span
                               className={`badge badge-xs h-auto whitespace-normal text-center ${
-                                customer.claimed_at || customer.user_id
-                                  ? "badge-success"
-                                  : "badge-warning"
+                                customer.user_id && !customer.contract_id
+                                  ? "badge-info"
+                                  : customer.claimed_at || customer.user_id
+                                    ? "badge-success"
+                                    : "badge-warning"
                               }`}
                             >
-                              {customer.claimed_at || customer.user_id ? "Linked" : "Pending setup"}
+                              {customer.user_id && !customer.contract_id
+                                ? "Prospect"
+                                : customer.claimed_at || customer.user_id
+                                  ? "Linked"
+                                  : "Pending setup"}
                             </span>
                             {customer.is_active === false ? (
                               <div className="mt-1 text-error">Inactive</div>

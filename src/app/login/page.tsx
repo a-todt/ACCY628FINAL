@@ -1,12 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { NailItLogo } from "@/components/NailItLogo";
 import { AlertBanner, FormField } from "@/components/ui";
 import { COMPANY_ROLES, ROLE_LABELS } from "@/lib/roles";
-import { requestClientSignupAccessMatch } from "@/lib/clientSignupAccessEmail";
+import { registerClientProspect } from "@/lib/clientProspect";
+import { passwordResetRedirectTo } from "@/lib/authUrls";
 import { loadUserPreferences } from "@/lib/userPreferences";
 import type { UserRole } from "@/lib/types";
 
@@ -20,8 +21,23 @@ const FEATURES = [
   "Generate a WIP schedule instantly",
 ] as const;
 
-export default function LoginPage() {
+export default function LoginRoute() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen grid place-items-center bg-base-200">
+          <span className="loading loading-spinner loading-lg text-primary" />
+        </div>
+      }
+    >
+      <LoginPage />
+    </Suspense>
+  );
+}
+
+function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -29,6 +45,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [secondaryName, setSecondaryName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [projectInterest, setProjectInterest] = useState("");
   const [accountType, setAccountType] = useState<UserRole>("field_supervisor");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -37,6 +56,11 @@ export default function LoginPage() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", "jobsite");
   }, []);
+
+  useEffect(() => {
+    const fromLink = searchParams.get("error");
+    if (fromLink) setError(fromLink);
+  }, [searchParams]);
 
   const looksLikeClientId = (value: string) => {
     const v = value.trim();
@@ -76,7 +100,7 @@ export default function LoginPage() {
       if (mode === "forgot") {
         const resetEmail = await resolveLoginEmail(loginId || email);
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-          redirectTo: `${window.location.origin}/reset-password`,
+          redirectTo: passwordResetRedirectTo(),
         });
         if (resetError) throw resetError;
         setMessage("If that account exists, a reset link was sent to the linked email.");
@@ -121,19 +145,26 @@ export default function LoginPage() {
       }
 
       let clientNote = "";
-      if (accountType === "client" && data.session) {
-        const matched = await requestClientSignupAccessMatch();
-        if (matched.matched && matched.clientId) {
-          clientNote = ` Matched — after you sign in, your Client ID (${matched.clientId}) will be shown on the site.`;
-        } else if (matched.reason === "no_match") {
-          clientNote =
-            " Sign in after your GC adds you by the same name (or spouse/partner name).";
+      if (accountType === "client") {
+        if (data.session) {
+          try {
+            const prospect = await registerClientProspect({
+              companyName: companyName || fullName,
+              contactPhone,
+              projectInterest,
+            });
+            clientNote = prospect.created
+              ? " You’re in our client list — sign in and message us from Messages to discuss your project."
+              : " Your client profile is ready — sign in and open Messages to talk with our team.";
+          } catch (prospectErr) {
+            console.warn(prospectErr);
+            clientNote =
+              " Sign in to finish registering your project inquiry, or enter a Client ID if you already have one.";
+          }
         } else {
-          clientNote = " Sign in — if your name matches, the site will show your Client ID.";
+          clientNote =
+            " Confirm your email if required, then sign in — we’ll add you as a client prospect so you can message us.";
         }
-      } else if (accountType === "client") {
-        clientNote =
-          " Sign in with this email — if your name (or spouse/partner name) matches, the site shows your Client ID.";
       }
 
       setMessage(
@@ -222,7 +253,11 @@ export default function LoginPage() {
                   <>
                     <FormField
                       label="Full name or business name"
-                      hint="Use your personal name (e.g. Joe Durrett) or your business name (e.g. Durrett Construction) — whichever your GC listed on the project invite."
+                      hint={
+                        accountType === "client"
+                          ? "Your name as you’d like our team to see it."
+                          : "Use your personal name or business name — whichever your GC listed on the project invite."
+                      }
                     >
                       <input
                         className="input input-bordered"
@@ -233,20 +268,56 @@ export default function LoginPage() {
                         placeholder="Joe Durrett or Acme LLC"
                       />
                     </FormField>
-                    <FormField
-                      label="Spouse / partner name (optional)"
-                      hint="If your GC listed a spouse/partner on this project, either of you can match and get that project's Client ID."
-                    >
-                      <input
-                        className="input input-bordered"
-                        value={secondaryName}
-                        onChange={(e) => setSecondaryName(e.target.value)}
-                        autoComplete="nickname"
-                      />
-                    </FormField>
+                    {accountType === "client" ? (
+                      <>
+                        <FormField
+                          label="Company / organization (optional)"
+                          hint="Added to our client list when you register."
+                        >
+                          <input
+                            className="input input-bordered"
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                            placeholder="Acme Properties"
+                          />
+                        </FormField>
+                        <FormField label="Phone (optional)">
+                          <input
+                            className="input input-bordered"
+                            value={contactPhone}
+                            onChange={(e) => setContactPhone(e.target.value)}
+                            autoComplete="tel"
+                          />
+                        </FormField>
+                        <FormField
+                          label="What project are you interested in?"
+                          hint="Short description — you’ll negotiate details in Messages after signup."
+                        >
+                          <textarea
+                            className="textarea textarea-bordered"
+                            rows={2}
+                            value={projectInterest}
+                            onChange={(e) => setProjectInterest(e.target.value)}
+                            placeholder="Kitchen remodel at 123 Main St…"
+                          />
+                        </FormField>
+                      </>
+                    ) : (
+                      <FormField
+                        label="Spouse / partner name (optional)"
+                        hint="If your GC listed a spouse/partner on this project, either of you can match and get that project's Client ID."
+                      >
+                        <input
+                          className="input input-bordered"
+                          value={secondaryName}
+                          onChange={(e) => setSecondaryName(e.target.value)}
+                          autoComplete="nickname"
+                        />
+                      </FormField>
+                    )}
                     <FormField
                       label="Account type"
-                      hint="Clients need a Client ID from your GC. Subcontractors need an invite code after sign-in."
+                      hint="Clients can register without a prior invite, then message us. Subcontractors need an invite code after sign-in."
                     >
                       <select
                         className="select select-bordered"

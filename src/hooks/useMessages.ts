@@ -38,7 +38,7 @@ export function useMessages() {
     try {
       const { data: threadRows, error: threadError } = await supabase
         .from("message_threads")
-        .select("*, contracts(contract_name, client_name)")
+        .select("*, contracts(contract_name, client_name), customers(company_name, contact_name)")
         .order("updated_at", { ascending: false });
 
       if (threadError) throw threadError;
@@ -132,6 +132,16 @@ export async function startOrGetThread(contractId: string): Promise<string> {
   return data as string;
 }
 
+/** Client ↔ owner/admin inquiry thread before a contract exists. */
+export async function startOrGetLeadThread(customerId?: string | null): Promise<string> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("start_or_get_customer_lead_thread", {
+    p_customer_id: customerId ?? null,
+  });
+  if (error) throw error;
+  return data as string;
+}
+
 export async function sendMessage(
   threadId: string,
   senderId: string,
@@ -207,8 +217,8 @@ export async function loadMessageableContracts(args: {
     const linked = scopeId
       ? contracts.filter((c) => c.client_user_id === scopeId)
       : [];
-    // If linkage is missing in demo data, still show every contract this login can read.
-    return sortContracts(linked.length > 0 ? linked : contracts);
+    // Prospects may have zero contracts — that is fine (they use lead threads).
+    return sortContracts(linked);
   }
 
   if (effectiveRole === "project_manager") {
@@ -226,5 +236,30 @@ export async function loadMessageableContracts(args: {
     return sortContracts(assigned.length > 0 ? assigned : contracts);
   }
 
+  if (effectiveRole === "owner" || effectiveRole === "admin") {
+    // Company inbox uses lead threads; contract compose still lists all jobs.
+    return sortContracts(contracts);
+  }
+
   return [];
+}
+
+/** Unattached (prospect) customers for owner/admin lead compose. */
+export async function loadMessageableProspects(): Promise<
+  Array<{ id: string; company_name: string; contact_name: string | null; notes: string | null }>
+> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id, company_name, contact_name, notes")
+    .is("contract_id", null)
+    .not("user_id", "is", null)
+    .order("company_name", { ascending: true });
+  if (error) throw error;
+  return (data as Array<{
+    id: string;
+    company_name: string;
+    contact_name: string | null;
+    notes: string | null;
+  }>) ?? [];
 }
