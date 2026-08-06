@@ -14,6 +14,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
+import { FavoriteProjectButton } from "@/components/FavoriteProjectButton";
 import {
   ColumnAutocompleteHeader,
   ColumnSortHeader,
@@ -488,6 +489,12 @@ export default function ContractsPage() {
                       </span>
                     </div>
                   </Link>
+                  <div className="flex justify-end -mt-1">
+                    <FavoriteProjectButton
+                      projectId={contract.id}
+                      projectName={contract.contract_name}
+                    />
+                  </div>
                   <p className="text-xs opacity-60 flex items-center gap-1">
                     <MapPin className="h-3 w-3 shrink-0" />
                     {[contract.project_address, contract.city, contract.state].filter(Boolean).join(", ") ||
@@ -656,16 +663,22 @@ export default function ContractsPage() {
                         </td>
                       ) : null}
                       <td className="min-w-0 px-1 text-left">
-                        <Link
-                          href={`/contracts/${contract.id}`}
-                          className="link link-primary block truncate font-medium"
-                          title={contract.contract_name}
-                        >
-                          <span className="inline-flex max-w-full items-center gap-1">
-                            <Building2 className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                            <span className="truncate">{contract.contract_name}</span>
-                          </span>
-                        </Link>
+                        <div className="flex items-center gap-0.5 min-w-0">
+                          <FavoriteProjectButton
+                            projectId={contract.id}
+                            projectName={contract.contract_name}
+                          />
+                          <Link
+                            href={`/contracts/${contract.id}`}
+                            className="link link-primary block truncate font-medium min-w-0"
+                            title={contract.contract_name}
+                          >
+                            <span className="inline-flex max-w-full items-center gap-1">
+                              <Building2 className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                              <span className="truncate">{contract.contract_name}</span>
+                            </span>
+                          </Link>
+                        </div>
                       </td>
                       <td className="truncate px-1 text-left" title={contract.client_name ?? "—"}>
                         {contract.client_name ?? "—"}
@@ -934,9 +947,15 @@ function FieldSupervisorContracts({
                 <div className="card-body p-4 gap-3">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-medium leading-tight">{contract.contract_name}</p>
-                    <span className={`badge badge-sm shrink-0 ${statusBadgeClass(contract.status)}`}>
-                      {labelize(contract.status)}
-                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <FavoriteProjectButton
+                        projectId={contract.id}
+                        projectName={contract.contract_name}
+                      />
+                      <span className={`badge badge-sm ${statusBadgeClass(contract.status)}`}>
+                        {labelize(contract.status)}
+                      </span>
+                    </div>
                   </div>
                   <p className="text-sm opacity-70">{contract.client_name ?? "No client listed"}</p>
                   <p className="text-xs opacity-60 flex items-center gap-1">
@@ -977,7 +996,7 @@ function FieldSupervisorContracts({
                   <tr key={contract.id} className="hover:bg-base-200/60">
                     <td>
                       <span
-                        className="inline-flex items-center gap-2 font-medium"
+                        className="inline-flex items-center gap-1 font-medium min-w-0"
                         title={[
                           [contract.city, contract.state].filter(Boolean).join(", ") || null,
                           contract.contract_type ? labelize(contract.contract_type) : null,
@@ -986,8 +1005,12 @@ function FieldSupervisorContracts({
                           .filter(Boolean)
                           .join(" · ")}
                       >
-                        <Building2 className="h-4 w-4 opacity-50" />
-                        {contract.contract_name}
+                        <FavoriteProjectButton
+                          projectId={contract.id}
+                          projectName={contract.contract_name}
+                        />
+                        <Building2 className="h-4 w-4 opacity-50 shrink-0" />
+                        <span className="truncate">{contract.contract_name}</span>
                       </span>
                     </td>
                     <td>{contract.client_name ?? "—"}</td>
