@@ -8,6 +8,7 @@ import { ThemeSelector } from "@/components/ThemeSelector";
 import { AlertBanner, FormField } from "@/components/ui";
 import { COMPANY_ROLES, ROLE_LABELS } from "@/lib/roles";
 import { requestClientSignupAccessMatch } from "@/lib/clientSignupAccessEmail";
+import { loadUserPreferences } from "@/lib/userPreferences";
 import type { UserRole } from "@/lib/types";
 
 type Mode = "login" | "signup" | "forgot";
@@ -86,7 +87,8 @@ export default function LoginPage() {
           password,
         });
         if (signInError) throw signInError;
-        router.replace("/dashboard");
+        const landing = loadUserPreferences().defaultLandingPage || "/dashboard";
+        router.replace(landing);
         router.refresh();
         return;
       }
