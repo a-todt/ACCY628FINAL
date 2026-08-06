@@ -418,10 +418,14 @@ begin
       );
 
       if paid_amt > 0 then
-        insert into public.payments (invoice_id, payment_amount, payment_date, payment_method, reference_number, notes)
-        values (inv_id, paid_amt, start_d + (30 * j) + 10,
+        insert into public.payments (
+          invoice_id, payment_amount, payment_date, payment_method, reference_number, notes, approval_status
+        )
+        values (
+          inv_id, paid_amt, start_d + (30 * j) + 10,
           case when (i + j) % 2 = 0 then 'ACH' else 'Check' end,
-          'PMT-' || lpad(i::text, 2, '0') || j::text, 'Seeded payment');
+          'PMT-' || lpad(i::text, 2, '0') || j::text, 'Seeded payment', 'posted'
+        );
       end if;
     end loop;
 

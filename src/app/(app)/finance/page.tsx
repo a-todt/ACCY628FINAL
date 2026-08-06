@@ -98,7 +98,9 @@ export default function FinanceOverviewPage() {
   const totalCosts = costRows.reduce((sum, r) => sum + r.amount, 0);
   const totalBilled = invoiceRows.reduce((sum, r) => sum + r.amount, 0);
   const totalCollected = invoices.reduce((sum, i) => sum + Number(i.amount_paid ?? 0), 0);
-  const totalPayments = payments.reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0);
+  const totalPayments = payments
+    .filter((p) => (p.approval_status ?? "posted") === "posted")
+    .reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0);
   const overdueCount = invoiceRows.filter((r) => r.status === "overdue").length;
   const retainageReceivable = invoices.reduce(
     (sum, i) => sum + invoiceRetainageReceivable(i),

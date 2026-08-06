@@ -210,6 +210,7 @@ export function buildSearchIndex(data: SearchIndexData, role: UserRole): SearchR
       data.invoices.map((i) => [i.id, i.invoice_number || "Invoice"] as const)
     );
     for (const payment of data.payments) {
+      if ((payment.approval_status ?? "posted") !== "posted") continue;
       const invoiceId = payment.invoice_id;
       const invoice = data.invoices.find((i) => i.id === invoiceId);
       if (invoice && !allowedContractIds.has(invoice.contract_id)) continue;

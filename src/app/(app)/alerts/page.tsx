@@ -37,8 +37,20 @@ export default function AlertsPage() {
       invoices: data.invoices,
       fieldLogs: data.fieldLogs,
       changeOrders: data.changeOrders,
+      payments: data.payments,
+      costEntries: data.costEntries,
+      contracts: data.contracts,
     });
-  }, [effectiveRole, data.loading, data.invoices, data.fieldLogs, data.changeOrders]);
+  }, [
+    effectiveRole,
+    data.loading,
+    data.invoices,
+    data.fieldLogs,
+    data.changeOrders,
+    data.payments,
+    data.costEntries,
+    data.contracts,
+  ]);
 
   useEffect(() => {
     if (data.loading) return;
@@ -150,6 +162,7 @@ export default function AlertsPage() {
           <option value="invoice">Invoices</option>
           <option value="weather">Weather</option>
           <option value="change_order">Change orders</option>
+          <option value="fraud">Fraud / controls</option>
         </select>
         {filtered.length > 0 ? (
           <label className="label cursor-pointer gap-2 py-0 ml-auto">
@@ -203,9 +216,11 @@ export default function AlertsPage() {
                           : "badge-info"
                     }`}
                   >
-                    {alert.category === "invoice" && alert.severity === "critical"
-                      ? "Overdue"
-                      : labelize(alert.severity)}
+                    {alert.category === "fraud"
+                      ? "Fraud"
+                      : alert.category === "invoice" && alert.severity === "critical"
+                        ? "Overdue"
+                        : labelize(alert.severity)}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="font-medium leading-tight">{alert.title}</p>

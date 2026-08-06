@@ -202,6 +202,16 @@ export function canRecordPayments(role: UserRole): boolean {
   return hasPermission(role, "recordPayments");
 }
 
+/** Owner is the checker in the payment dual-approval workflow. */
+export function canApprovePayments(role: UserRole): boolean {
+  return role === "owner";
+}
+
+/** Owner-only fraud / control exception alerts. */
+export function canViewFraudAlerts(role: UserRole): boolean {
+  return role === "owner";
+}
+
 export function canCreateChangeOrders(role: UserRole): boolean {
   return hasPermission(role, "manageChangeOrders");
 }

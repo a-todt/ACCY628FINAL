@@ -88,10 +88,9 @@ export function computeContractMetrics(
     (sum, i) => sum + Number(i.amount_paid ?? 0),
     0
   );
-  const totalCollectedFromPayments = relatedPayments.reduce(
-    (sum, p) => sum + Number(p.payment_amount ?? 0),
-    0
-  );
+  const totalCollectedFromPayments = relatedPayments
+    .filter((p) => (p.approval_status ?? "posted") === "posted")
+    .reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0);
   const totalCollected = Math.max(totalCollectedFromInvoices, totalCollectedFromPayments);
   // GAAP: retainage receivable (contract asset), separate from current AR.
   const retainageHeld = relatedInvoices.reduce(

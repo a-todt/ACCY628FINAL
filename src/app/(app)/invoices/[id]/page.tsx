@@ -12,7 +12,12 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { writeAuditLog } from "@/lib/audit";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
-import { canCreateInvoices, statusBadgeClass } from "@/lib/roles";
+import {
+  invoiceAfterApplyingPayment,
+  isPostedPayment,
+  paymentApprovalBadge,
+} from "@/lib/payments";
+import { canApprovePayments, canCreateInvoices, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 
@@ -66,9 +71,10 @@ function InvoiceDetailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const invoiceId = params.id;
-  const { effectiveRole } = useAuth();
+  const { effectiveRole, user } = useAuth();
   const { contracts, invoices, payments, loading, error, refresh } = useContractData();
   const canEdit = canCreateInvoices(effectiveRole);
+  const canApprove = canApprovePayments(effectiveRole);
   const wantsEdit = searchParams.get("edit") === "1";
   const isEditing = canEdit && wantsEdit;
 
@@ -77,6 +83,7 @@ function InvoiceDetailContent() {
   const [form, setForm] = useState<EditForm | null>(null);
   const [formSourceId, setFormSourceId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingApproval, setSavingApproval] = useState(false);
 
   const invoice = invoices.find((i) => i.id === invoiceId);
 
@@ -138,10 +145,80 @@ function InvoiceDetailContent() {
     .sort((a, b) =>
       String(b.payment_date ?? b.created_at).localeCompare(String(a.payment_date ?? a.created_at))
     );
-  const paymentsTotal = invoicePayments.reduce(
-    (sum, p) => sum + Number(p.payment_amount ?? 0),
-    0
-  );
+  const paymentsTotal = invoicePayments
+    .filter(isPostedPayment)
+    .reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0);
+
+  const onApprovePayment = async (paymentId: string) => {
+    const payment = invoicePayments.find((p) => p.id === paymentId);
+    if (!payment) return;
+    if (payment.submitted_by && user?.id && payment.submitted_by === user.id) {
+      setActionError("You cannot approve a payment you submitted (dual-approval control).");
+      return;
+    }
+    setSavingApproval(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const supabase = createClient();
+      const amount = Number(payment.payment_amount ?? 0);
+      const update = invoiceAfterApplyingPayment(invoice, amount);
+      const { error: payErr } = await supabase
+        .from("payments")
+        .update({
+          approval_status: "posted",
+          approved_by: user?.id ?? null,
+          approved_at: new Date().toISOString(),
+          rejection_reason: null,
+        })
+        .eq("id", paymentId)
+        .eq("approval_status", "pending_approval");
+      if (payErr) throw payErr;
+      const { error: invErr } = await supabase.from("invoices").update(update).eq("id", invoice.id);
+      if (invErr) throw invErr;
+      await writeAuditLog("payment_approved", "payment", paymentId, {
+        invoice_id: invoice.id,
+        payment_amount: amount,
+      });
+      setActionSuccess("Payment approved and posted to AR.");
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to approve payment.");
+    } finally {
+      setSavingApproval(false);
+    }
+  };
+
+  const onRejectPayment = async (paymentId: string) => {
+    const reason = window.prompt("Rejection reason (optional):") ?? "";
+    setSavingApproval(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const supabase = createClient();
+      const { error: payErr } = await supabase
+        .from("payments")
+        .update({
+          approval_status: "rejected",
+          approved_by: user?.id ?? null,
+          approved_at: new Date().toISOString(),
+          rejection_reason: reason.trim() || null,
+        })
+        .eq("id", paymentId)
+        .eq("approval_status", "pending_approval");
+      if (payErr) throw payErr;
+      await writeAuditLog("payment_rejected", "payment", paymentId, {
+        invoice_id: invoice.id,
+        reason: reason.trim() || null,
+      });
+      setActionSuccess("Payment rejected — not applied to AR.");
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to reject payment.");
+    } finally {
+      setSavingApproval(false);
+    }
+  };
 
   const updateField = <K extends keyof EditForm>(key: K, value: EditForm[K]) => {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -472,25 +549,71 @@ function InvoiceDetailContent() {
                     <th className="text-right">Amount</th>
                     <th>Method</th>
                     <th>Reference #</th>
+                    <th>Status</th>
                     <th>Notes</th>
+                    {canApprove ? <th className="text-right">Actions</th> : null}
                   </tr>
                 </thead>
                 <tbody>
-                  {invoicePayments.map((payment) => (
-                    <tr key={payment.id}>
-                      <td className="whitespace-nowrap">{payment.payment_date ?? "—"}</td>
-                      <td className="text-right font-medium">{money(payment.payment_amount)}</td>
-                      <td>{payment.payment_method ?? "—"}</td>
-                      <td>{payment.reference_number ?? "—"}</td>
-                      <td className="max-w-xs truncate">{payment.notes ?? "—"}</td>
-                    </tr>
-                  ))}
+                  {invoicePayments.map((payment) => {
+                    const status = payment.approval_status ?? "posted";
+                    const selfSubmitted =
+                      !!payment.submitted_by && !!user?.id && payment.submitted_by === user.id;
+                    return (
+                      <tr key={payment.id}>
+                        <td className="whitespace-nowrap">{payment.payment_date ?? "—"}</td>
+                        <td className="text-right font-medium">{money(payment.payment_amount)}</td>
+                        <td>{payment.payment_method ?? "—"}</td>
+                        <td>{payment.reference_number ?? "—"}</td>
+                        <td>
+                          <span className={`badge badge-sm ${paymentApprovalBadge(status)}`}>
+                            {labelize(status)}
+                          </span>
+                        </td>
+                        <td className="max-w-xs truncate">
+                          {payment.rejection_reason
+                            ? `Rejected: ${payment.rejection_reason}`
+                            : (payment.notes ?? "—")}
+                        </td>
+                        {canApprove ? (
+                          <td className="text-right whitespace-nowrap">
+                            {status === "pending_approval" ? (
+                              selfSubmitted ? (
+                                <span className="text-xs opacity-60">Submitted by you</span>
+                              ) : (
+                                <div className="flex justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    className="btn btn-success btn-xs"
+                                    disabled={savingApproval}
+                                    onClick={() => void onApprovePayment(payment.id)}
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs text-error"
+                                    disabled={savingApproval}
+                                    onClick={() => void onRejectPayment(payment.id)}
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              )
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
             <div className="mt-3 flex justify-end text-sm">
               <p>
-                <span className="opacity-60">Payments total: </span>
+                <span className="opacity-60">Posted payments total: </span>
                 <span className="font-semibold">{money(paymentsTotal)}</span>
               </p>
             </div>

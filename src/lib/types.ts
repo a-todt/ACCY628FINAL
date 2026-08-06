@@ -305,6 +305,8 @@ export interface Invoice {
   contracts?: { contract_name: string; client_name: string | null } | null;
 }
 
+export type PaymentApprovalStatus = "pending_approval" | "posted" | "rejected";
+
 export interface Payment {
   id: string;
   invoice_id: string;
@@ -314,6 +316,13 @@ export interface Payment {
   reference_number: string | null;
   notes: string | null;
   created_at: string;
+  /** Dual-approval: pending until owner posts; rejected payments never hit AR. */
+  approval_status?: PaymentApprovalStatus;
+  submitted_by?: string | null;
+  approved_by?: string | null;
+  submitted_at?: string | null;
+  approved_at?: string | null;
+  rejection_reason?: string | null;
   invoices?: { invoice_number: string | null; contract_id: string } | null;
 }
 

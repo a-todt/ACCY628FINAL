@@ -21,7 +21,8 @@ import { useToast } from "@/components/ToastProvider";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
-import { canCreateInvoices, statusBadgeClass } from "@/lib/roles";
+import { invoiceAfterApplyingPayment, paymentNeedsOwnerApproval } from "@/lib/payments";
+import { canApprovePayments, canCreateInvoices, canRecordPayments, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 
@@ -58,12 +59,6 @@ function displayStatus(invoice: Invoice): InvoiceStatus | "overdue" {
   return isOverdue(invoice) ? "overdue" : invoice.status;
 }
 
-function nextInvoiceStatus(amountPaid: number, netAmountDue: number): InvoiceStatus {
-  if (netAmountDue > 0 && amountPaid >= netAmountDue) return "paid";
-  if (amountPaid > 0) return "partially_paid";
-  return "unpaid";
-}
-
 function invoiceBalance(invoice: Invoice): number {
   const net = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
   return Math.max(net - Number(invoice.amount_paid ?? 0), 0);
@@ -72,9 +67,11 @@ function invoiceBalance(invoice: Invoice): number {
 type SortKey = "number" | "contract" | "date" | "due" | "amount" | "status" | "balance";
 
 export default function InvoicesPage() {
-  const { effectiveRole } = useAuth();
-  const { contracts, invoices, loading, error, refresh } = useContractData();
+  const { effectiveRole, user } = useAuth();
+  const { contracts, invoices, payments, loading, error, refresh } = useContractData();
   const canManage = canCreateInvoices(effectiveRole);
+  const canPay = canRecordPayments(effectiveRole);
+  const canApprove = canApprovePayments(effectiveRole);
   const canMutate = canManage;
 
   const [invoiceForm, setInvoiceForm] = useState(EMPTY_INVOICE_FORM);
@@ -398,34 +395,134 @@ export default function InvoicesPage() {
     try {
       const supabase = createClient();
       const paymentAmount = Number(paymentForm.payment_amount);
+      const needsApproval = paymentNeedsOwnerApproval(effectiveRole);
+      const nowIso = new Date().toISOString();
 
-      const { error: paymentInsertError } = await supabase.from("payments").insert({
-        invoice_id: paymentForm.invoice_id,
-        payment_amount: paymentAmount,
-        payment_date: paymentForm.payment_date || null,
-        payment_method: paymentForm.payment_method.trim() || null,
-        reference_number: paymentForm.reference_number.trim() || null,
-        notes: paymentForm.notes.trim() || null,
-      });
+      const { data: inserted, error: paymentInsertError } = await supabase
+        .from("payments")
+        .insert({
+          invoice_id: paymentForm.invoice_id,
+          payment_amount: paymentAmount,
+          payment_date: paymentForm.payment_date || null,
+          payment_method: paymentForm.payment_method.trim() || null,
+          reference_number: paymentForm.reference_number.trim() || null,
+          notes: paymentForm.notes.trim() || null,
+          approval_status: needsApproval ? "pending_approval" : "posted",
+          submitted_by: user?.id ?? null,
+          submitted_at: nowIso,
+          approved_by: needsApproval ? null : user?.id ?? null,
+          approved_at: needsApproval ? null : nowIso,
+        })
+        .select("id")
+        .single();
       if (paymentInsertError) throw paymentInsertError;
 
-      const newAmountPaid = Number(selectedInvoice.amount_paid ?? 0) + paymentAmount;
-      const netAmountDue = Number(
-        selectedInvoice.net_amount_due ?? selectedInvoice.invoice_amount ?? 0
-      );
-      const newStatus = nextInvoiceStatus(newAmountPaid, netAmountDue);
+      if (needsApproval) {
+        await writeAuditLog("payment_submitted_for_approval", "payment", inserted?.id, {
+          invoice_id: paymentForm.invoice_id,
+          payment_amount: paymentAmount,
+        });
+        setPaymentSuccess(
+          "Payment submitted for owner approval. AR will update after the owner posts it."
+        );
+      } else {
+        const update = invoiceAfterApplyingPayment(selectedInvoice, paymentAmount);
+        const { error: updateError } = await supabase
+          .from("invoices")
+          .update(update)
+          .eq("id", paymentForm.invoice_id);
+        if (updateError) throw updateError;
+        await writeAuditLog("payment_posted", "payment", inserted?.id, {
+          invoice_id: paymentForm.invoice_id,
+          payment_amount: paymentAmount,
+          dual_approval: "owner_direct",
+        });
+        setPaymentSuccess("Payment posted to AR.");
+      }
 
-      const { error: updateError } = await supabase
-        .from("invoices")
-        .update({ amount_paid: newAmountPaid, status: newStatus })
-        .eq("id", paymentForm.invoice_id);
-      if (updateError) throw updateError;
-
-      setPaymentSuccess("Payment recorded successfully.");
       setPaymentForm(EMPTY_PAYMENT_FORM);
       await refresh();
     } catch (err) {
       setPaymentError(err instanceof Error ? err.message : "Failed to record payment.");
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
+  const pendingPayments = useMemo(
+    () => payments.filter((p) => (p.approval_status ?? "posted") === "pending_approval"),
+    [payments]
+  );
+
+  const onApprovePayment = async (paymentId: string, invoiceId: string) => {
+    const payment = payments.find((p) => p.id === paymentId);
+    const invoice = invoices.find((i) => i.id === invoiceId);
+    if (!payment || !invoice) return;
+    if (payment.submitted_by && user?.id && payment.submitted_by === user.id) {
+      setPaymentError("You cannot approve a payment you submitted (dual-approval control).");
+      return;
+    }
+
+    setSavingPayment(true);
+    setPaymentError(null);
+    try {
+      const supabase = createClient();
+      const amount = Number(payment.payment_amount ?? 0);
+      const update = invoiceAfterApplyingPayment(invoice, amount);
+      const nowIso = new Date().toISOString();
+
+      const { error: payErr } = await supabase
+        .from("payments")
+        .update({
+          approval_status: "posted",
+          approved_by: user?.id ?? null,
+          approved_at: nowIso,
+          rejection_reason: null,
+        })
+        .eq("id", paymentId)
+        .eq("approval_status", "pending_approval");
+      if (payErr) throw payErr;
+
+      const { error: invErr } = await supabase.from("invoices").update(update).eq("id", invoiceId);
+      if (invErr) throw invErr;
+
+      await writeAuditLog("payment_approved", "payment", paymentId, {
+        invoice_id: invoiceId,
+        payment_amount: amount,
+      });
+      setPaymentSuccess("Payment approved and posted to AR.");
+      await refresh();
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : "Failed to approve payment.");
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
+  const onRejectPayment = async (paymentId: string) => {
+    const reason = window.prompt("Rejection reason (optional):") ?? "";
+    setSavingPayment(true);
+    setPaymentError(null);
+    try {
+      const supabase = createClient();
+      const { error: payErr } = await supabase
+        .from("payments")
+        .update({
+          approval_status: "rejected",
+          approved_by: user?.id ?? null,
+          approved_at: new Date().toISOString(),
+          rejection_reason: reason.trim() || null,
+        })
+        .eq("id", paymentId)
+        .eq("approval_status", "pending_approval");
+      if (payErr) throw payErr;
+      await writeAuditLog("payment_rejected", "payment", paymentId, {
+        reason: reason.trim() || null,
+      });
+      setPaymentSuccess("Payment rejected — not applied to AR.");
+      await refresh();
+    } catch (err) {
+      setPaymentError(err instanceof Error ? err.message : "Failed to reject payment.");
     } finally {
       setSavingPayment(false);
     }
@@ -448,21 +545,32 @@ export default function InvoicesPage() {
         subtitle="Billing and payment status across all projects."
         actions={
           <div className="flex flex-wrap gap-2 items-center">
-            {canManage ? (
+            {canPay || canApprove ? (
               <>
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setShowPaymentForm((v) => !v)}
-                >
-                  <Receipt className="h-4 w-4" /> {showPaymentForm ? "Close" : "Record Payment"}
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => setShowInvoiceForm((v) => !v)}
-                >
-                  <Plus className="h-4 w-4" /> {showInvoiceForm ? "Close" : "Create Invoice"}
-                </button>
+                {canPay ? (
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => setShowPaymentForm((v) => !v)}
+                  >
+                    <Receipt className="h-4 w-4" /> {showPaymentForm ? "Close" : "Record Payment"}
+                  </button>
+                ) : null}
+                {canManage ? (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => setShowInvoiceForm((v) => !v)}
+                  >
+                    <Plus className="h-4 w-4" /> {showInvoiceForm ? "Close" : "Create Invoice"}
+                  </button>
+                ) : null}
               </>
+            ) : canManage ? (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowInvoiceForm((v) => !v)}
+              >
+                <Plus className="h-4 w-4" /> {showInvoiceForm ? "Close" : "Create Invoice"}
+              </button>
             ) : null}
           </div>
         }
@@ -650,8 +758,13 @@ export default function InvoicesPage() {
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
       {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
 
-      {canManage && showPaymentForm ? (
+      {canPay && showPaymentForm ? (
         <SectionCard title="Record Payment">
+          <p className="text-sm opacity-70 mb-3">
+            {paymentNeedsOwnerApproval(effectiveRole)
+              ? "This payment will be submitted for owner dual-approval before it updates AR."
+              : "As owner, this payment posts to AR immediately."}
+          </p>
           {paymentError ? <AlertBanner type="error">{paymentError}</AlertBanner> : null}
           {paymentSuccess ? <AlertBanner type="success">{paymentSuccess}</AlertBanner> : null}
           <form onSubmit={onSubmitPayment} className="space-y-4 mt-4">
@@ -731,10 +844,78 @@ export default function InvoicesPage() {
             <div className="flex justify-end gap-2">
               <button type="submit" className="btn btn-primary" disabled={savingPayment}>
                 {savingPayment ? <span className="loading loading-spinner loading-sm" /> : null}
-                Save Payment
+                {paymentNeedsOwnerApproval(effectiveRole) ? "Submit for Approval" : "Post Payment"}
               </button>
             </div>
           </form>
+        </SectionCard>
+      ) : null}
+
+      {canApprove && pendingPayments.length > 0 ? (
+        <SectionCard title={`Payments awaiting your approval (${pendingPayments.length})`}>
+          {paymentError ? <AlertBanner type="error">{paymentError}</AlertBanner> : null}
+          {paymentSuccess ? <AlertBanner type="success">{paymentSuccess}</AlertBanner> : null}
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Invoice</th>
+                  <th>Date</th>
+                  <th className="text-right">Amount</th>
+                  <th>Reference</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingPayments.map((payment) => {
+                  const invoice = invoices.find((i) => i.id === payment.invoice_id);
+                  const selfSubmitted =
+                    !!payment.submitted_by && !!user?.id && payment.submitted_by === user.id;
+                  return (
+                    <tr key={payment.id}>
+                      <td>
+                        <Link
+                          href={`/invoices/${payment.invoice_id}`}
+                          className="link link-primary font-medium"
+                        >
+                          {invoice?.invoice_number ?? "Invoice"}
+                        </Link>
+                      </td>
+                      <td className="whitespace-nowrap">{payment.payment_date ?? "—"}</td>
+                      <td className="text-right font-medium">{money(payment.payment_amount)}</td>
+                      <td>{payment.reference_number ?? "—"}</td>
+                      <td className="text-right whitespace-nowrap">
+                        {selfSubmitted ? (
+                          <span className="text-xs opacity-60">Submitted by you</span>
+                        ) : (
+                          <div className="flex justify-end gap-1">
+                            <button
+                              type="button"
+                              className="btn btn-success btn-xs"
+                              disabled={savingPayment}
+                              onClick={() =>
+                                void onApprovePayment(payment.id, payment.invoice_id)
+                              }
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs text-error"
+                              disabled={savingPayment}
+                              onClick={() => void onRejectPayment(payment.id)}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </SectionCard>
       ) : null}
 
