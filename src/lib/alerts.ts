@@ -39,18 +39,38 @@ function canSeeFinancialAlerts(role: UserRole): boolean {
   return role === "admin" || role === "owner" || role === "project_manager";
 }
 
-function canSeeWeatherAlerts(role: UserRole): boolean {
-  return (
-    role === "admin" ||
-    role === "owner" ||
-    role === "project_manager" ||
-    role === "field_supervisor" ||
-    role === "subcontractor"
-  );
-}
-
 function encodeQuery(value: string): string {
   return encodeURIComponent(value);
+}
+
+/** Adverse field-log weather — shown in the PM weather inbox, not the main alerts feed. */
+export function buildWeatherAlerts(fieldLogs: FieldLog[]): AlertItem[] {
+  const now = new Date().toISOString();
+  const alerts: AlertItem[] = [];
+
+  for (const log of fieldLogs) {
+    if ((log.status ?? "active") === "canceled") continue;
+    if (!isBadWeather(log.weather_conditions)) continue;
+
+    const project = log.contracts?.contract_name?.trim() || "Project";
+    const weather = log.weather_conditions ?? "Bad weather";
+    const params = new URLSearchParams();
+    params.set("q", project);
+    params.set("id", log.id);
+
+    alerts.push({
+      id: `weather-${log.id}`,
+      severity: "warning",
+      category: "weather",
+      title: `Adverse weather — ${project}`,
+      detail: `${weather}${log.log_date ? ` · ${log.log_date}` : ""}`,
+      action: "Open field log to review impact and adjust the schedule",
+      href: `/field-logs?${params.toString()}`,
+      createdAt: log.log_date ?? log.created_at ?? now,
+    });
+  }
+
+  return alerts.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
 const LARGE_CO_THRESHOLD = 50_000;
@@ -218,30 +238,6 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
           : "Open invoice to record a payment or follow up with the client",
         href: `/invoices/${invoice.id}`,
         createdAt: invoice.due_date ?? invoice.created_at ?? now,
-      });
-    }
-  }
-
-  if (canSeeWeatherAlerts(role)) {
-    for (const log of data.fieldLogs) {
-      if ((log.status ?? "active") === "canceled") continue;
-      if (!isBadWeather(log.weather_conditions)) continue;
-
-      const project = log.contracts?.contract_name?.trim() || "Project";
-      const weather = log.weather_conditions ?? "Bad weather";
-      const params = new URLSearchParams();
-      params.set("q", project);
-      params.set("id", log.id);
-
-      alerts.push({
-        id: `weather-${log.id}`,
-        severity: "warning",
-        category: "weather",
-        title: `Adverse weather — ${project}`,
-        detail: `${weather}${log.log_date ? ` · ${log.log_date}` : ""}`,
-        action: "Open field log to review impact and adjust the schedule",
-        href: `/field-logs?${params.toString()}`,
-        createdAt: log.log_date ?? log.created_at ?? now,
       });
     }
   }

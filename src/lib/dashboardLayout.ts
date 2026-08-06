@@ -27,7 +27,6 @@ const FIELD_PANES: DashboardPaneDef[] = [
   { id: "kpi_stats", label: "Field KPIs", fullWidth: true },
   { id: "assigned_projects", label: "Assigned projects" },
   { id: "recent_field_logs", label: "My recent field logs" },
-  { id: "alerts", label: "Needs attention" },
 ];
 
 const SUB_PANES: DashboardPaneDef[] = [
@@ -35,7 +34,6 @@ const SUB_PANES: DashboardPaneDef[] = [
   { id: "open_bid_packages", label: "Open bid packages" },
   { id: "engagements", label: "My subcontract engagements" },
   { id: "recent_field_logs", label: "My recent field logs" },
-  { id: "alerts", label: "Needs attention" },
 ];
 
 const CLIENT_PANES: DashboardPaneDef[] = [

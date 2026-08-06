@@ -16,6 +16,7 @@ import {
 } from "@/lib/alerts";
 import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
 import { labelize } from "@/lib/metrics";
+import { canViewAlerts } from "@/lib/roles";
 
 export default function AlertsPage() {
   const { effectiveRole } = useAuth();
@@ -121,6 +122,15 @@ export default function AlertsPage() {
     );
   }
 
+  if (!canViewAlerts(effectiveRole)) {
+    return (
+      <EmptyState
+        title="Alerts not available"
+        message="Your role does not use the alerts inbox. Field weather is tracked on field logs."
+      />
+    );
+  }
+
   if (data.error) {
     return <AlertBanner type="error">{data.error}</AlertBanner>;
   }
@@ -129,7 +139,7 @@ export default function AlertsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Alerts"
-        subtitle="Actionable warnings for overdue invoices, weather delays, and pending change orders."
+        subtitle="Actionable warnings for overdue invoices, pending change orders, and control exceptions."
         actions={
           <span
             className={`badge badge-lg gap-1.5 font-medium tabular-nums ${
@@ -160,7 +170,6 @@ export default function AlertsPage() {
         >
           <option value="all">All categories</option>
           <option value="invoice">Invoices</option>
-          <option value="weather">Weather</option>
           <option value="change_order">Change orders</option>
           <option value="fraud">Fraud / controls</option>
         </select>

@@ -4,6 +4,7 @@ import {
   canManageCompany,
   canManageRoles,
   canUseMessaging,
+  canViewAlerts,
   canViewAuditLog,
   canViewBidding,
   canViewCalendar,
@@ -142,7 +143,9 @@ function navPagesForRole(role: UserRole): SearchResult[] {
   if (canUseMessaging(role)) {
     pushPage("/messages", "Messages", "Communication");
   }
-  pushPage("/alerts", "Alerts", "Inbox");
+  if (canViewAlerts(role)) {
+    pushPage("/alerts", "Alerts", "Inbox");
+  }
   if (canManageRoles(role)) {
     pushPage("/admin/roles", "Role Switcher", "Admin");
   }

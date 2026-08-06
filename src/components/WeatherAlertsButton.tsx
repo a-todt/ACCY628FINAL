@@ -3,18 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, ChevronRight } from "lucide-react";
+import { ChevronRight, Cloud } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useDismissedAlerts } from "@/hooks/useDismissedAlerts";
-import { buildAlertsForRole } from "@/lib/alerts";
+import { buildWeatherAlerts } from "@/lib/alerts";
 import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
-import { labelize } from "@/lib/metrics";
-import { canViewAlerts } from "@/lib/roles";
+import { canViewWeatherAlerts } from "@/lib/roles";
 
 const PREVIEW_LIMIT = 5;
 
-export function AlertsBell() {
+export function WeatherAlertsButton() {
   const { effectiveRole } = useAuth();
   const pathname = usePathname();
   const data = useContractData();
@@ -23,28 +22,12 @@ export function AlertsBell() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const rawAlerts = useMemo(() => {
-    if (data.loading || !canViewAlerts(effectiveRole)) return [];
-    return buildAlertsForRole(effectiveRole, {
-      invoices: data.invoices,
-      fieldLogs: data.fieldLogs,
-      changeOrders: data.changeOrders,
-      payments: data.payments,
-      costEntries: data.costEntries,
-      contracts: data.contracts,
-    });
-  }, [
-    effectiveRole,
-    data.loading,
-    data.invoices,
-    data.fieldLogs,
-    data.changeOrders,
-    data.payments,
-    data.costEntries,
-    data.contracts,
-  ]);
+    if (data.loading || !canViewWeatherAlerts(effectiveRole)) return [];
+    return buildWeatherAlerts(data.fieldLogs);
+  }, [effectiveRole, data.loading, data.fieldLogs]);
 
   useEffect(() => {
-    if (data.loading || !canViewAlerts(effectiveRole)) return;
+    if (data.loading || !canViewWeatherAlerts(effectiveRole)) return;
     pruneAgainstLiveIds(rawAlerts.map((alert) => alert.id));
   }, [data.loading, effectiveRole, rawAlerts, pruneAgainstLiveIds]);
 
@@ -77,7 +60,7 @@ export function AlertsBell() {
     [rawAlerts, dismissedSet]
   );
 
-  if (!canViewAlerts(effectiveRole)) return null;
+  if (!canViewWeatherAlerts(effectiveRole)) return null;
 
   const count = alerts.length;
   const preview = alerts.slice(0, PREVIEW_LIMIT);
@@ -87,19 +70,22 @@ export function AlertsBell() {
       <button
         type="button"
         className="btn btn-ghost btn-sm h-8 min-h-8 gap-1.5 items-center px-2"
-        title={count > 0 ? `${count} open alerts` : "Alerts"}
+        title={count > 0 ? `${count} weather alert${count === 1 ? "" : "s"}` : "Weather alerts"}
+        aria-label={
+          count > 0
+            ? `Weather alerts, ${count} open`
+            : "Weather alerts"
+        }
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((value) => !value)}
       >
-        <Bell className="h-4 w-4 shrink-0" aria-hidden />
+        <Cloud className="h-4 w-4 shrink-0" aria-hidden />
         {count > 0 ? (
-          <span className="badge badge-error badge-sm min-w-5 h-5 px-1.5 font-semibold tabular-nums leading-none">
+          <span className="badge badge-warning badge-sm min-w-5 h-5 px-1.5 font-semibold tabular-nums leading-none">
             {count > 99 ? "99+" : count}
           </span>
-        ) : (
-          <span className="hidden sm:inline text-sm leading-none">Alerts</span>
-        )}
+        ) : null}
       </button>
 
       {open ? (
@@ -108,12 +94,12 @@ export function AlertsBell() {
           className="absolute right-0 top-full z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] rounded-box border border-base-300 bg-base-100 shadow-xl overflow-hidden"
         >
           <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-base-300 bg-base-200/60">
-            <p className="text-sm font-semibold">Notifications</p>
+            <p className="text-sm font-semibold">Weather alerts</p>
             <span className="badge badge-ghost badge-sm tabular-nums">{count}</span>
           </div>
           {preview.length === 0 ? (
             <p className="px-3 py-6 text-sm opacity-60 text-center">
-              Nothing needs attention right now.
+              No adverse weather on field logs right now.
             </p>
           ) : (
             <ul className="max-h-80 overflow-y-auto divide-y divide-base-300">
@@ -124,18 +110,8 @@ export function AlertsBell() {
                     className="flex items-start gap-2 px-3 py-2.5 hover:bg-base-200/70 transition-colors"
                     onClick={() => setOpen(false)}
                   >
-                    <span
-                      className={`badge badge-xs mt-1 shrink-0 ${
-                        alert.severity === "critical"
-                          ? "badge-error"
-                          : alert.severity === "warning"
-                            ? "badge-warning"
-                            : "badge-info"
-                      }`}
-                    >
-                      {alert.category === "invoice" && alert.severity === "critical"
-                        ? "Overdue"
-                        : labelize(alert.severity)}
+                    <span className="badge badge-xs mt-1 shrink-0 badge-warning">
+                      Weather
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium leading-tight line-clamp-1">
@@ -156,11 +132,11 @@ export function AlertsBell() {
           )}
           <div className="border-t border-base-300 p-2 bg-base-100">
             <Link
-              href="/alerts"
+              href="/field-logs"
               className="btn btn-primary btn-sm w-full"
               onClick={() => setOpen(false)}
             >
-              View all alerts
+              View field logs
             </Link>
           </div>
         </div>

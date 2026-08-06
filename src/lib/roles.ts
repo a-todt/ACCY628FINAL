@@ -317,6 +317,21 @@ export function canUseMessaging(role: UserRole): boolean {
   return role === "client" || role === "project_manager";
 }
 
+/** Main alerts inbox / bell — not shown for field supervisors or subcontractors. */
+export function canViewAlerts(role: UserRole): boolean {
+  return (
+    role === "admin" ||
+    role === "owner" ||
+    role === "project_manager" ||
+    role === "client"
+  );
+}
+
+/** Weather alert icon next to the bell — project managers only. */
+export function canViewWeatherAlerts(role: UserRole): boolean {
+  return role === "project_manager";
+}
+
 export type NavCategoryId =
   | "favorites"
   | "dashboard"

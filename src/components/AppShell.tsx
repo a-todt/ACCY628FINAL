@@ -22,6 +22,7 @@ import { AlertsBell } from "@/components/AlertsBell";
 import { AccessGate } from "@/components/AccessGate";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { MessagesInboxButton } from "@/components/MessagesInboxButton";
+import { WeatherAlertsButton } from "@/components/WeatherAlertsButton";
 import { UserMenu } from "@/components/UserMenu";
 import { SettingsMenu } from "@/components/SettingsMenu";
 import { ToastProvider } from "@/components/ToastProvider";
@@ -139,6 +140,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         <div className="ml-auto flex-none flex items-center gap-1 sm:gap-1.5 shrink-0">
           {!locked ? <MessagesInboxButton /> : null}
           {!locked ? <AlertsBell /> : null}
+          {!locked ? <WeatherAlertsButton /> : null}
           {!locked && canViewCalendar(effectiveRole) ? (
             <Link
               href="/calendar"
