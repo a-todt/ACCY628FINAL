@@ -1178,7 +1178,7 @@ function ClientDashboard({
     return {
       contract,
       metrics,
-      schedule: computeScheduleStatus(contract, metrics.completionPercent),
+      schedule: computeScheduleStatus(contract, milestones),
     };
   });
   const totalValue = perContract.reduce((sum, { metrics }) => sum + metrics.revisedValue, 0);
@@ -1248,10 +1248,10 @@ function ClientDashboard({
                 <tr>
                   <th>Project</th>
                   <th>Status</th>
-                  <th>Planned</th>
-                  <th>Actual</th>
+                  <th>Due so far</th>
+                  <th>Completed</th>
                   <th>Schedule</th>
-                  <th>How far</th>
+                  <th>Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -1271,7 +1271,7 @@ function ClientDashboard({
                       </span>
                     </td>
                     <td>{percent(schedule.plannedPercent)}</td>
-                    <td>{percent(metrics.completionPercent)}</td>
+                    <td>{percent(schedule.actualPercent)}</td>
                     <td>
                       <span className={`badge badge-sm ${scheduleBadgeClass(schedule.health)}`}>
                         {schedule.label}
@@ -1281,10 +1281,9 @@ function ClientDashboard({
                       {schedule.daysBehind > 0 ? (
                         <span className="text-error font-medium">
                           {schedule.daysBehind} day{schedule.daysBehind === 1 ? "" : "s"} behind
-                        </span>
-                      ) : schedule.daysAhead > 0 ? (
-                        <span className="text-success font-medium">
-                          {schedule.daysAhead} day{schedule.daysAhead === 1 ? "" : "s"} ahead
+                          <span className="block text-xs font-normal opacity-80 mt-0.5">
+                            {schedule.detail}
+                          </span>
                         </span>
                       ) : (
                         <span className="opacity-60">{schedule.detail}</span>
@@ -1324,25 +1323,20 @@ function ClientDashboard({
                     <p className="text-xs text-error font-medium">
                       {schedule.daysBehind} day{schedule.daysBehind === 1 ? "" : "s"} behind
                     </p>
-                  ) : schedule.daysAhead > 0 ? (
-                    <p className="text-xs text-success font-medium">
-                      {schedule.daysAhead} day{schedule.daysAhead === 1 ? "" : "s"} ahead
-                    </p>
-                  ) : (
-                    <p className="text-xs opacity-60">{schedule.detail}</p>
-                  )}
+                  ) : null}
+                  <p className="text-xs opacity-60">{schedule.detail}</p>
                   <div className="mt-0.5">
                     <div className="flex items-center justify-between text-xs opacity-70 mb-1">
-                      <span>Completion</span>
-                      <span>{percent(metrics.completionPercent)}</span>
+                      <span>Milestones complete</span>
+                      <span>{percent(schedule.actualPercent)}</span>
                     </div>
                     <progress
                       className="progress progress-primary w-full h-2"
-                      value={Math.round(metrics.completionPercent * 100)}
+                      value={Math.round(schedule.actualPercent * 100)}
                       max={100}
                     />
                     <div className="flex items-center justify-between text-[10px] opacity-50 mt-1">
-                      <span>Planned {percent(schedule.plannedPercent)}</span>
+                      <span>Due so far {percent(schedule.plannedPercent)}</span>
                       <span>
                         {contract.start_date ?? "—"} → {contract.end_date ?? "—"}
                       </span>

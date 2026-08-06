@@ -143,107 +143,96 @@ function parseDateOnly(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function daysBetween(from: Date, to: Date): number {
+  return Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 /**
- * Compare planned calendar progress (start→end) with actual completion %.
- * Used on the client dashboard so owners can see if a job is on schedule.
+ * Schedule health from milestone due dates.
+ * Behind only when a milestone's expected (due) date has passed and it is not completed.
  */
 export function computeScheduleStatus(
   contract: Contract,
-  actualCompletionPercent: number
+  milestones: Milestone[]
 ): ScheduleStatus {
-  const actualPercent = Math.max(0, Math.min(1, Number(actualCompletionPercent) || 0));
+  const related = milestones.filter((m) => m.contract_id === contract.id);
+  const withDue = related.filter((m) => Boolean(parseDateOnly(m.due_date)));
+  const completedCount = related.filter((m) => m.status === "completed").length;
+  const actualPercent = related.length > 0 ? completedCount / related.length : 0;
 
-  if (contract.status === "completed" || actualPercent >= 0.999) {
+  const today = startOfDay(new Date());
+  const dueByToday = withDue.filter((m) => {
+    const due = parseDateOnly(m.due_date);
+    return due != null && due.getTime() <= today.getTime();
+  });
+  const plannedPercent = withDue.length > 0 ? dueByToday.length / withDue.length : 0;
+
+  if (
+    contract.status === "completed" ||
+    (related.length > 0 && completedCount === related.length)
+  ) {
     return {
       health: "completed",
       label: "Complete",
       daysBehind: 0,
       daysAhead: 0,
       plannedPercent: 1,
-      actualPercent,
-      detail: "Project is complete.",
+      actualPercent: related.length > 0 ? 1 : actualPercent,
+      detail: related.length > 0 ? "All milestones are complete." : "Project is complete.",
     };
   }
 
-  const start = parseDateOnly(contract.start_date);
-  const end = parseDateOnly(contract.end_date);
-  if (!start || !end || end.getTime() <= start.getTime()) {
+  if (related.length === 0) {
     return {
       health: "no_dates",
-      label: "Schedule TBD",
+      label: "No milestones",
       daysBehind: 0,
       daysAhead: 0,
       plannedPercent: 0,
-      actualPercent,
-      detail: "Add project start and end dates to track schedule.",
+      actualPercent: 0,
+      detail: "Add milestones with due dates to track schedule.",
     };
   }
 
-  const today = startOfDay(new Date());
-  const totalDays = Math.max(
-    1,
-    Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-  );
-  const elapsedDays = Math.round((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  const overdue = related.filter((m) => {
+    if (m.status === "completed") return false;
+    const due = parseDateOnly(m.due_date);
+    if (!due) return false;
+    // Expected date has passed (due date strictly before today).
+    return due.getTime() < today.getTime();
+  });
 
-  if (elapsedDays < 0) {
-    return {
-      health: "not_started",
-      label: "Not started",
-      daysBehind: 0,
-      daysAhead: 0,
-      plannedPercent: 0,
-      actualPercent,
-      detail: `Scheduled to start ${start.toLocaleDateString()}.`,
-    };
-  }
-
-  const plannedPercent = Math.max(0, Math.min(1, elapsedDays / totalDays));
-  const gapFraction = plannedPercent - actualPercent;
-  const gapDays = Math.round(Math.abs(gapFraction) * totalDays);
-
-  // Past planned end date and not complete → days past end is a clear behind signal
-  if (today.getTime() > end.getTime() && actualPercent < 0.999) {
-    const daysPastEnd = Math.round(
-      (today.getTime() - end.getTime()) / (1000 * 60 * 60 * 24)
+  if (overdue.length > 0) {
+    const daysBehind = Math.max(
+      ...overdue.map((m) => {
+        const due = parseDateOnly(m.due_date)!;
+        return daysBetween(due, today);
+      })
     );
-    const daysBehind = Math.max(daysPastEnd, gapDays);
+    const names = overdue
+      .map((m) => m.milestone_name?.trim() || "Untitled milestone")
+      .slice(0, 2)
+      .join(", ");
+    const more = overdue.length > 2 ? ` (+${overdue.length - 2} more)` : "";
     return {
       health: "behind",
       label: "Behind schedule",
       daysBehind,
       daysAhead: 0,
-      plannedPercent: 1,
+      plannedPercent,
       actualPercent,
-      detail: `${daysBehind} day${daysBehind === 1 ? "" : "s"} past the planned end date.`,
+      detail:
+        overdue.length === 1
+          ? `${names} was due ${overdue[0].due_date} (${daysBehind} day${
+              daysBehind === 1 ? "" : "s"
+            } overdue).`
+          : `${overdue.length} milestones overdue: ${names}${more}.`,
     };
   }
 
-  // Small buffer (~3% of schedule or 2 days) counts as on schedule
-  const bufferDays = Math.max(2, Math.round(totalDays * 0.03));
-  if (gapFraction > bufferDays / totalDays) {
-    return {
-      health: "behind",
-      label: "Behind schedule",
-      daysBehind: gapDays,
-      daysAhead: 0,
-      plannedPercent,
-      actualPercent,
-      detail: `About ${gapDays} day${gapDays === 1 ? "" : "s"} behind the planned pace.`,
-    };
-  }
-
-  if (gapFraction < -(bufferDays / totalDays)) {
-    return {
-      health: "ahead",
-      label: "Ahead of schedule",
-      daysBehind: 0,
-      daysAhead: gapDays,
-      plannedPercent,
-      actualPercent,
-      detail: `About ${gapDays} day${gapDays === 1 ? "" : "s"} ahead of the planned pace.`,
-    };
-  }
+  const upcoming = [...related]
+    .filter((m) => m.status !== "completed" && parseDateOnly(m.due_date))
+    .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))[0];
 
   return {
     health: "on_schedule",
@@ -252,7 +241,9 @@ export function computeScheduleStatus(
     daysAhead: 0,
     plannedPercent,
     actualPercent,
-    detail: "Progress matches the planned timeline.",
+    detail: upcoming
+      ? `Next: ${upcoming.milestone_name?.trim() || "Milestone"} due ${upcoming.due_date}.`
+      : "Milestones are on track.",
   };
 }
 
@@ -272,4 +263,3 @@ export function scheduleBadgeClass(health: ScheduleHealth): string {
       return "badge-warning";
   }
 }
-
