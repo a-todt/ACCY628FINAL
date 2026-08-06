@@ -1,6 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import {
   BarChart,
   CartesianGrid,
@@ -16,6 +23,9 @@ export const CHART_PANEL_HEIGHT = 220;
 export const CHART_ROW_HEIGHT = 40;
 const AXIS_STRIP_HEIGHT = 58;
 const CHART_TOP_MARGIN = 20;
+const TOOLTIP_OFFSET = 12;
+const TOOLTIP_FALLBACK_WIDTH = 220;
+const TOOLTIP_FALLBACK_HEIGHT = 80;
 
 const NICE_STEPS = [
   10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000,
@@ -175,6 +185,35 @@ function FullNameTooltip({
   );
 }
 
+/** Recharts 3 chart onMouseMove no longer includes activePayload — sync from Tooltip content instead. */
+function TooltipPayloadBridge({
+  active,
+  payload,
+  onPayload,
+}: {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  onPayload: (payload: TooltipPayloadItem[] | null) => void;
+}) {
+  const signature =
+    active && payload?.length
+      ? payload.map((p) => `${p.name}:${p.value}:${p.payload?.fullName ?? ""}`).join("|")
+      : "";
+  const lastSignature = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (signature === lastSignature.current) return;
+    lastSignature.current = signature;
+    if (signature && payload?.length) {
+      onPayload(payload);
+    } else {
+      onPayload(null);
+    }
+  }, [signature, payload, onPayload]);
+
+  return null;
+}
+
 function StickyMoneyAxis({
   domain,
   step,
@@ -256,15 +295,86 @@ export function ScrollableBarChart({
   panelHeight = CHART_PANEL_HEIGHT,
   rowHeight = CHART_ROW_HEIGHT,
 }: ScrollableBarChartProps) {
+  const plotRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const [hoverPayload, setHoverPayload] = useState<TooltipPayloadItem[] | null>(null);
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const [tipPos, setTipPos] = useState<{ left: number; top: number } | null>(null);
+
   const plotHeight = Math.max(120, panelHeight - AXIS_STRIP_HEIGHT);
   const chartHeight = Math.max(plotHeight, data.length * rowHeight + CHART_TOP_MARGIN + 8);
   const canScroll = chartHeight > plotHeight;
   const { min, max } = dataExtent(data);
   const { domain, step } = snapDomain(min, max);
 
+  const onPayload = useCallback((payload: TooltipPayloadItem[] | null) => {
+    setHoverPayload((prev) => {
+      if (prev === payload) return prev;
+      if (!prev && !payload) return prev;
+      return payload;
+    });
+    if (!payload) {
+      setTipPos((prev) => (prev ? null : prev));
+    }
+  }, []);
+
+  const onPlotMouseMove = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const rect = plot.getBoundingClientRect();
+    setPointer({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    });
+  }, []);
+
+  const onPlotMouseLeave = useCallback(() => {
+    setHoverPayload(null);
+    setPointer(null);
+    setTipPos(null);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!hoverPayload || !pointer || !plotRef.current) {
+      setTipPos(null);
+      return;
+    }
+
+    const plotRect = plotRef.current.getBoundingClientRect();
+    const tipRect = tipRef.current?.getBoundingClientRect();
+    const tipW = tipRect?.width || TOOLTIP_FALLBACK_WIDTH;
+    const tipH = tipRect?.height || TOOLTIP_FALLBACK_HEIGHT;
+    const maxLeft = Math.max(8, plotRect.width - tipW - 8);
+    const maxTop = Math.max(8, plotRect.height - tipH - 8);
+
+    let left = pointer.x + TOOLTIP_OFFSET;
+    let top = pointer.y + TOOLTIP_OFFSET;
+
+    // Prefer below/right of cursor; flip up near the bottom of the plot card.
+    if (top + tipH > plotRect.height - 8) {
+      top = pointer.y - tipH - TOOLTIP_OFFSET;
+    }
+    if (left + tipW > plotRect.width - 8) {
+      left = pointer.x - tipW - TOOLTIP_OFFSET;
+    }
+
+    left = Math.min(maxLeft, Math.max(8, left));
+    top = Math.min(maxTop, Math.max(8, top));
+    setTipPos({ left, top });
+  }, [hoverPayload, pointer]);
+
+  const showTip = Boolean(hoverPayload?.length && pointer);
+  const left = tipPos?.left ?? (pointer ? pointer.x + TOOLTIP_OFFSET : 0);
+  const top = tipPos?.top ?? (pointer ? pointer.y + TOOLTIP_OFFSET : 0);
+
   return (
     <div className="flex flex-col" style={{ height: panelHeight }}>
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg bg-base-200/40">
+      <div
+        ref={plotRef}
+        className="relative min-h-0 flex-1 overflow-hidden rounded-lg bg-base-200/40"
+        onMouseMove={onPlotMouseMove}
+        onMouseLeave={onPlotMouseLeave}
+      >
         <div className="h-full overflow-y-auto overflow-x-hidden">
           <div style={{ height: chartHeight, minHeight: plotHeight }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -272,6 +382,7 @@ export function ScrollableBarChart({
                 layout="vertical"
                 data={data}
                 margin={{ top: CHART_TOP_MARGIN, right: 16, left: 4, bottom: 4 }}
+                onMouseLeave={() => onPayload(null)}
               >
                 <CartesianGrid strokeDasharray="3 3" opacity={0.12} horizontal={false} />
                 <XAxis type="number" domain={domain} hide />
@@ -283,13 +394,7 @@ export function ScrollableBarChart({
                   interval={0}
                 />
                 <Tooltip
-                  content={(props) => (
-                    <FullNameTooltip
-                      active={props.active}
-                      payload={props.payload as unknown as TooltipPayloadItem[] | undefined}
-                      valueFormatter={valueFormatter}
-                    />
-                  )}
+                  content={<TooltipPayloadBridge onPayload={onPayload} />}
                   cursor={{
                     fill: "color-mix(in oklab, var(--color-base-content) 5%, transparent)",
                   }}
@@ -299,6 +404,18 @@ export function ScrollableBarChart({
             </ResponsiveContainer>
           </div>
         </div>
+
+        {/* Overlay outside the scroll clip so the popup is never cut off */}
+        {showTip ? (
+          <div
+            ref={tipRef}
+            className="pointer-events-none absolute z-30"
+            style={{ left, top }}
+          >
+            <FullNameTooltip active payload={hoverPayload!} valueFormatter={valueFormatter} />
+          </div>
+        ) : null}
+
         {canScroll ? (
           <div
             className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-base-200/80 to-transparent"
