@@ -39,7 +39,9 @@ export type PermissionKey =
   | "viewContractFinancials"
   | "viewChangeOrders"
   | "viewSubcontractors"
-  | "viewFieldLogs";
+  | "viewFieldLogs"
+  | "viewSafetyIncidents"
+  | "createSafetyIncidents";
 
 type RolePermissions = Record<PermissionKey, boolean>;
 
@@ -63,6 +65,8 @@ const FULL_ACCESS: RolePermissions = {
   viewChangeOrders: true,
   viewSubcontractors: true,
   viewFieldLogs: true,
+  viewSafetyIncidents: true,
+  createSafetyIncidents: true,
 };
 
 /**
@@ -99,6 +103,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     viewChangeOrders: true,
     viewSubcontractors: true,
     viewFieldLogs: true,
+    viewSafetyIncidents: true,
+    createSafetyIncidents: true,
   },
   field_supervisor: {
     manageCompany: false,
@@ -120,6 +126,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     viewChangeOrders: true,
     viewSubcontractors: false,
     viewFieldLogs: true,
+    viewSafetyIncidents: true,
+    createSafetyIncidents: true,
   },
   subcontractor: {
     manageCompany: false,
@@ -141,6 +149,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     viewChangeOrders: true,
     viewSubcontractors: true,
     viewFieldLogs: true,
+    viewSafetyIncidents: false,
+    createSafetyIncidents: false,
   },
   client: {
     manageCompany: false,
@@ -162,6 +172,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     viewChangeOrders: true,
     viewSubcontractors: false,
     viewFieldLogs: false,
+    viewSafetyIncidents: false,
+    createSafetyIncidents: false,
   },
 };
 
@@ -277,6 +289,14 @@ export function canViewFieldLogs(role: UserRole): boolean {
   return hasPermission(role, "viewFieldLogs");
 }
 
+export function canViewSafetyIncidents(role: UserRole): boolean {
+  return hasPermission(role, "viewSafetyIncidents");
+}
+
+export function canCreateSafetyIncidents(role: UserRole): boolean {
+  return hasPermission(role, "createSafetyIncidents");
+}
+
 /** Client ↔ PM messaging hub (inbox icon). Admin, owner, field, and subs are excluded. */
 export function canUseMessaging(role: UserRole): boolean {
   return role === "client" || role === "project_manager";
@@ -357,6 +377,11 @@ export function secondaryNavForCategory(
           label: "Field Logs",
           show: canViewFieldLogs(role),
         },
+        {
+          href: "/safety",
+          label: "Safety / Incidents",
+          show: canViewSafetyIncidents(role),
+        },
       ] as Array<NavItem & { show: boolean }>
     )
       .filter((item) => item.show)
@@ -422,7 +447,8 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (
     pathname.startsWith("/contracts") ||
     pathname.startsWith("/change-orders") ||
-    pathname.startsWith("/field-logs")
+    pathname.startsWith("/field-logs") ||
+    pathname.startsWith("/safety")
   ) {
     return "contracts";
   }
