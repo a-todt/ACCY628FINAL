@@ -73,7 +73,7 @@ export function PageHeader({
       className={`flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between ${compact ? "mb-2" : "mb-5 gap-3"}`}
     >
       <div className="min-w-0">
-        <h1 className={`font-semibold tracking-tight text-base-content ${compact ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl"}`}>
+        <h1 className={`font-display font-semibold uppercase tracking-wide text-base-content ${compact ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl"}`}>
           {title}
         </h1>
         {subtitle ? (
@@ -104,7 +104,7 @@ export function EmptyState({
             <Icon className="h-7 w-7" />
           </div>
         ) : null}
-        <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
+        <h3 className="text-lg font-display font-semibold uppercase tracking-wide">{title}</h3>
         <p className="opacity-65 max-w-md text-sm leading-relaxed">{message}</p>
         {action ? <div className="mt-2">{action}</div> : null}
       </div>
@@ -128,7 +128,7 @@ export function SectionCard({
       <div className={`card-body gap-2 ${compact ? "p-3 sm:p-3.5" : "p-4 sm:p-5 gap-3"}`}>
         <div className="flex items-center justify-between gap-2 min-w-0">
           <h2
-            className={`card-title font-semibold tracking-tight min-w-0 truncate ${
+            className={`card-title font-display font-semibold uppercase tracking-wide min-w-0 truncate ${
               compact ? "text-sm sm:text-base" : "text-base sm:text-lg"
             }`}
           >
@@ -184,7 +184,9 @@ export function ReportPane({
     <div className="card bg-base-100 border border-base-300 shadow-sm flex flex-col">
       <div className="card-body flex flex-col p-2 sm:p-2.5 gap-1.5">
         <div>
-          <h2 className="card-title text-sm sm:text-base leading-tight font-semibold tracking-tight">{title}</h2>
+          <h2 className="card-title text-sm sm:text-base leading-tight font-display font-semibold uppercase tracking-wide">
+            {title}
+          </h2>
           {subtitle ? (
             <p className="mt-0.5 text-[11px] sm:text-xs opacity-65 line-clamp-2 leading-snug">{subtitle}</p>
           ) : null}

@@ -43,8 +43,8 @@ export function NailItLogo({
     >
       <HardHat style={{ width: dim.icon, height: dim.icon }} aria-hidden className="shrink-0" />
       <span
-        className={`font-black tracking-wide uppercase leading-none ${dim.text}`}
-        style={{ letterSpacing: "0.08em" }}
+        className={`font-display font-semibold uppercase leading-none ${dim.text}`}
+        style={{ letterSpacing: "0.1em" }}
       >
         Nail It
       </span>

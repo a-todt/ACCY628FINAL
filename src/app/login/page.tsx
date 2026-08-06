@@ -165,7 +165,7 @@ export default function LoginPage() {
           </div>
 
           <div className="flex-1 flex flex-col justify-center max-w-lg space-y-6 pb-6 lg:pb-8">
-            <p className="text-xl sm:text-2xl font-semibold leading-snug tracking-tight">
+            <p className="text-xl sm:text-2xl font-display font-semibold uppercase leading-snug tracking-wide">
               Know exactly where every project stands
             </p>
             <ul className="list-disc list-inside space-y-3 text-base sm:text-lg font-medium marker:text-primary opacity-90">
@@ -185,7 +185,7 @@ export default function LoginPage() {
             <div className="card-body gap-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-2xl font-semibold tracking-tight">
+                  <h2 className="text-2xl font-display font-semibold uppercase tracking-wide">
                     {mode === "login"
                       ? "Sign in"
                       : mode === "signup"

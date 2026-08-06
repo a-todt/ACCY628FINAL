@@ -99,8 +99,22 @@ body {
 }
 
 body {
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  letter-spacing: -0.01em;
+  font-family: var(--font-body), "Source Sans 3", ui-sans-serif, sans-serif;
+  letter-spacing: 0;
+}
+
+.font-display {
+  font-family: var(--font-display), Oswald, ui-sans-serif, sans-serif;
+  letter-spacing: 0.04em;
+}
+
+.font-mono,
+.tabular-nums {
+  font-family: var(--font-mono), "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.font-body {
+  font-family: var(--font-body), "Source Sans 3", ui-sans-serif, sans-serif;
 }
 
 .form-control .input,
