@@ -150,6 +150,31 @@ function MessagesContent() {
     };
   }, [isClient, loading, user, threads, refresh, router]);
 
+  // Owner/admin: open a prospect lead thread from Management (?customer=…).
+  useEffect(() => {
+    if (!isCompanyInbox || loading || !user) return;
+    const customerId = searchParams.get("customer");
+    if (!customerId) return;
+    if (searchParams.get("thread")) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const threadId = await startOrGetLeadThread(customerId);
+        if (cancelled) return;
+        await refresh();
+        setSelectedId(threadId);
+        router.replace(`/messages?thread=${threadId}`);
+      } catch (err) {
+        if (!cancelled) {
+          setActionError(err instanceof Error ? err.message : "Could not open inquiry thread");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isCompanyInbox, loading, user, searchParams, refresh, router]);
+
   const loadMessages = useCallback(
     async (threadId: string) => {
       setMessagesLoading(true);

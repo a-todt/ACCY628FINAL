@@ -36,7 +36,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { useDashboardExtraKpis } from "@/hooks/useDashboardExtraKpis";
 import { useDashboardLayout } from "@/hooks/useDashboardLayout";
 import { useDismissedAlerts } from "@/hooks/useDismissedAlerts";
-import { startOrGetThread } from "@/hooks/useMessages";
+import { startOrGetLeadThread, startOrGetThread } from "@/hooks/useMessages";
 import { DashboardCustomizeModal } from "@/components/DashboardCustomizeModal";
 import { DashboardPaneGrid } from "@/components/DashboardPaneGrid";
 import { ExpandableChart } from "@/components/ExpandableChart";
@@ -1568,6 +1568,62 @@ function ClientDashboard({
   const router = useRouter();
   const [messagingContractId, setMessagingContractId] = useState<string | null>(null);
   const [messageError, setMessageError] = useState<string | null>(null);
+  const [openingInquiry, setOpeningInquiry] = useState(false);
+
+  // Pre-contract prospects: light inquiry home (message the company) instead of empty finance KPIs.
+  if (contracts.length === 0) {
+    const openInquiry = async () => {
+      setMessageError(null);
+      setOpeningInquiry(true);
+      try {
+        const threadId = await startOrGetLeadThread();
+        router.push(`/messages?thread=${encodeURIComponent(threadId)}`);
+      } catch (err) {
+        setMessageError(
+          err instanceof Error ? err.message : "Could not open your project inquiry thread."
+        );
+      } finally {
+        setOpeningInquiry(false);
+      }
+    };
+
+    return (
+      <div className="space-y-4 max-w-2xl">
+        <SectionCard title="Project inquiry">
+          <div className="space-y-4">
+            <p className="text-sm opacity-80">
+              You’re registered as a client. Message our team to discuss scope and pricing — we’ll
+              create your contract after you negotiate.
+            </p>
+            {messageError ? <p className="text-sm text-error">{messageError}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-primary gap-2"
+                disabled={openingInquiry}
+                onClick={() => void openInquiry()}
+              >
+                {openingInquiry ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  <MessageCircle className="h-4 w-4" />
+                )}
+                Message the company
+              </button>
+              <Link href="/messages" className="btn btn-ghost">
+                Open Messages
+              </Link>
+            </div>
+            <p className="text-xs opacity-55">
+              Already invited to a job? Ask your GC for a Client ID, or use Access if you still need
+              to activate one.
+            </p>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
   const approvedChangeOrders = changeOrders.filter((co) => co.status === "approved");
   const perContract = contracts.map((contract) => {
     const metrics = computeContractMetrics(

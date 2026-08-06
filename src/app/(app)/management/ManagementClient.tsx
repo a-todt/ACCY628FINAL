@@ -1162,7 +1162,10 @@ export default function ManagementPage() {
                             {customer.notes || "—"}
                           </td>
                           <td className="text-right">
-                            <a className="btn btn-ghost btn-xs" href="/messages">
+                            <a
+                              className="btn btn-ghost btn-xs"
+                              href={`/messages?customer=${customer.id}`}
+                            >
                               Message
                             </a>
                             <a
