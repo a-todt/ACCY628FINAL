@@ -174,156 +174,173 @@ export default function NewContractPage() {
       ) : null}
 
       <form onSubmit={onSubmit} className="space-y-6">
-        <SectionCard title="Contract Details">
-          <div className="space-y-4">
-            <FormField label="Contract Name">
-              <input
-                className="input input-bordered"
-                value={form.contract_name}
-                onChange={(e) => updateField("contract_name", e.target.value)}
-                required
-              />
-            </FormField>
-            <FormField label="Client Name">
-              <input
-                className="input input-bordered"
-                value={form.client_name}
-                onChange={(e) => updateField("client_name", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Client Email">
-              <input
-                type="email"
-                className="input input-bordered"
-                value={form.client_email}
-                onChange={(e) => updateField("client_email", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Client Phone">
-              <input
-                className="input input-bordered"
-                value={form.client_phone}
-                onChange={(e) => updateField("client_phone", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Linked Client User" hint="Optional — grants that client login access to this contract.">
-              <select
-                className="select select-bordered"
-                value={form.client_user_id}
-                onChange={(e) => updateField("client_user_id", e.target.value)}
-              >
-                <option value="">None</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.full_name || client.email}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Project Address">
-              <input
-                className="input input-bordered"
-                value={form.project_address}
-                onChange={(e) => updateField("project_address", e.target.value)}
-              />
-            </FormField>
-            <FormField label="City / State">
-              <div className="flex gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          <SectionCard title="Project & Client">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <FormField stacked label="Contract Name">
+                  <input
+                    className="input input-bordered w-full"
+                    value={form.contract_name}
+                    onChange={(e) => updateField("contract_name", e.target.value)}
+                    required
+                  />
+                </FormField>
+              </div>
+              <FormField stacked label="Client Name">
                 <input
                   className="input input-bordered w-full"
-                  placeholder="City"
+                  value={form.client_name}
+                  onChange={(e) => updateField("client_name", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Client Phone">
+                <input
+                  className="input input-bordered w-full"
+                  value={form.client_phone}
+                  onChange={(e) => updateField("client_phone", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Client Email">
+                <input
+                  type="email"
+                  className="input input-bordered w-full"
+                  value={form.client_email}
+                  onChange={(e) => updateField("client_email", e.target.value)}
+                />
+              </FormField>
+              <FormField
+                stacked
+                label="Linked Client User"
+                hint="Optional — grants that client login access to this contract."
+              >
+                <select
+                  className="select select-bordered w-full"
+                  value={form.client_user_id}
+                  onChange={(e) => updateField("client_user_id", e.target.value)}
+                >
+                  <option value="">None</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.full_name || client.email}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Project Address">
+                  <input
+                    className="input input-bordered w-full"
+                    value={form.project_address}
+                    onChange={(e) => updateField("project_address", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <FormField stacked label="City">
+                <input
+                  className="input input-bordered w-full"
                   value={form.city}
                   onChange={(e) => updateField("city", e.target.value)}
                 />
+              </FormField>
+              <FormField stacked label="State">
                 <input
-                  className="input input-bordered w-32"
-                  placeholder="State"
+                  className="input input-bordered w-full"
                   value={form.state}
                   onChange={(e) => updateField("state", e.target.value)}
                 />
-              </div>
-            </FormField>
-            <FormField label="Contract Type">
-              <select
-                className="select select-bordered"
-                value={form.contract_type}
-                onChange={(e) => updateField("contract_type", e.target.value as ContractType)}
-              >
-                <option value="fixed_price">Fixed Price</option>
-                <option value="cost_plus">Cost Plus</option>
-                <option value="time_and_materials">Time &amp; Materials</option>
-              </select>
-            </FormField>
-            <FormField label="Original Value">
-              <label className="input input-bordered flex items-center gap-2">
-                $
+              </FormField>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Terms & Dates">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField stacked label="Contract Type">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.contract_type}
+                  onChange={(e) => updateField("contract_type", e.target.value as ContractType)}
+                >
+                  <option value="fixed_price">Fixed Price</option>
+                  <option value="cost_plus">Cost Plus</option>
+                  <option value="time_and_materials">Time &amp; Materials</option>
+                </select>
+              </FormField>
+              <FormField stacked label="Status">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.status}
+                  onChange={(e) => updateField("status", e.target.value as typeof form.status)}
+                >
+                  <option value="active">Active</option>
+                  <option value="on_hold">On Hold</option>
+                  <option value="completed">Completed</option>
+                  <option value="canceled">Canceled</option>
+                </select>
+              </FormField>
+              <FormField stacked label="Original Value">
+                <label className="input input-bordered flex items-center gap-2 w-full">
+                  $
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="grow"
+                    value={form.original_value}
+                    onChange={(e) => updateField("original_value", e.target.value)}
+                  />
+                </label>
+              </FormField>
+              <FormField stacked label="Retainage %">
                 <input
                   type="number"
-                  step="0.01"
+                  step="0.1"
                   min="0"
-                  className="grow"
-                  value={form.original_value}
-                  onChange={(e) => updateField("original_value", e.target.value)}
+                  max="100"
+                  className="input input-bordered w-full"
+                  value={form.retainage_percent}
+                  onChange={(e) => updateField("retainage_percent", e.target.value)}
                 />
-              </label>
-            </FormField>
-            <FormField label="Retainage %">
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                className="input input-bordered"
-                value={form.retainage_percent}
-                onChange={(e) => updateField("retainage_percent", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Start Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={form.start_date}
-                onChange={(e) => updateField("start_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="End Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={form.end_date}
-                onChange={(e) => updateField("end_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Status">
-              <select
-                className="select select-bordered"
-                value={form.status}
-                onChange={(e) => updateField("status", e.target.value as typeof form.status)}
-              >
-                <option value="active">Active</option>
-                <option value="on_hold">On Hold</option>
-                <option value="completed">Completed</option>
-                <option value="canceled">Canceled</option>
-              </select>
-            </FormField>
-            <FormField label="Scope Description">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={3}
-                value={form.scope_description}
-                onChange={(e) => updateField("scope_description", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Special Terms">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={3}
-                value={form.special_terms}
-                onChange={(e) => updateField("special_terms", e.target.value)}
-              />
-            </FormField>
-          </div>
-        </SectionCard>
+              </FormField>
+              <FormField stacked label="Start Date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={form.start_date}
+                  onChange={(e) => updateField("start_date", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="End Date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={form.end_date}
+                  onChange={(e) => updateField("end_date", e.target.value)}
+                />
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Scope Description">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={3}
+                    value={form.scope_description}
+                    onChange={(e) => updateField("scope_description", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Special Terms">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={3}
+                    value={form.special_terms}
+                    onChange={(e) => updateField("special_terms", e.target.value)}
+                  />
+                </FormField>
+              </div>
+            </div>
+          </SectionCard>
+        </div>
 
         <SectionCard
           title="Milestones / Schedule of Values"

@@ -277,104 +277,111 @@ export default function FieldLogsPage() {
         <SectionCard title="New Field Log">
           {formError ? <AlertBanner type="error">{formError}</AlertBanner> : null}
           {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
-          <form onSubmit={onSubmit} className="space-y-4 mt-4">
-            <FormField label="Project">
-              <select
-                className="select select-bordered"
-                value={form.contract_id}
-                onChange={(e) => updateField("contract_id", e.target.value)}
-                required
+          <form onSubmit={onSubmit} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField stacked label="Project">
+                <select
+                  className="select select-bordered w-full"
+                  value={form.contract_id}
+                  onChange={(e) => updateField("contract_id", e.target.value)}
+                  required
+                >
+                  <option value="">Select a project…</option>
+                  {contracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.contract_name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Log Date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={form.log_date}
+                  onChange={(e) => updateField("log_date", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Hours Worked">
+                <input
+                  type="number"
+                  step="0.25"
+                  className="input input-bordered w-full"
+                  value={form.hours_worked}
+                  onChange={(e) => updateField("hours_worked", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Workers on Site">
+                <input
+                  type="number"
+                  step="1"
+                  className="input input-bordered w-full"
+                  value={form.workers_on_site}
+                  onChange={(e) => updateField("workers_on_site", e.target.value)}
+                />
+              </FormField>
+              <FormField
+                stacked
+                label="Weather Conditions"
+                hint="Bad weather (rain, snow, wind, storm, extreme heat) shows in red."
               >
-                <option value="">Select a project…</option>
-                {contracts.map((contract) => (
-                  <option key={contract.id} value={contract.id}>
-                    {contract.contract_name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Log Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={form.log_date}
-                onChange={(e) => updateField("log_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Work Performed">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={3}
-                value={form.work_performed}
-                onChange={(e) => updateField("work_performed", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Hours Worked">
-              <input
-                type="number"
-                step="0.25"
-                className="input input-bordered"
-                value={form.hours_worked}
-                onChange={(e) => updateField("hours_worked", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Workers on Site">
-              <input
-                type="number"
-                step="1"
-                className="input input-bordered"
-                value={form.workers_on_site}
-                onChange={(e) => updateField("workers_on_site", e.target.value)}
-              />
-            </FormField>
-            <FormField
-              label="Weather Conditions"
-              hint="Bad weather (rain, snow, wind, storm, extreme heat) shows in red."
-            >
-              <select
-                className="select select-bordered"
-                value={form.weather_conditions}
-                onChange={(e) => updateField("weather_conditions", e.target.value)}
-              >
-                <option value="">Select weather…</option>
-                {WEATHER_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                    {isBadWeather(opt) ? " (adverse)" : ""}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Equipment Used">
-              <input
-                className="input input-bordered"
-                value={form.equipment_used}
-                onChange={(e) => updateField("equipment_used", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Materials Used">
-              <input
-                className="input input-bordered"
-                value={form.materials_used}
-                onChange={(e) => updateField("materials_used", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Issues / Delays">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={2}
-                value={form.issues_or_delays}
-                onChange={(e) => updateField("issues_or_delays", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Notes">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={2}
-                value={form.notes}
-                onChange={(e) => updateField("notes", e.target.value)}
-              />
-            </FormField>
+                <select
+                  className="select select-bordered w-full"
+                  value={form.weather_conditions}
+                  onChange={(e) => updateField("weather_conditions", e.target.value)}
+                >
+                  <option value="">Select weather…</option>
+                  {WEATHER_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                      {isBadWeather(opt) ? " (adverse)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Equipment Used">
+                <input
+                  className="input input-bordered w-full"
+                  value={form.equipment_used}
+                  onChange={(e) => updateField("equipment_used", e.target.value)}
+                />
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Materials Used">
+                  <input
+                    className="input input-bordered w-full"
+                    value={form.materials_used}
+                    onChange={(e) => updateField("materials_used", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Work Performed">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={3}
+                    value={form.work_performed}
+                    onChange={(e) => updateField("work_performed", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <FormField stacked label="Issues / Delays">
+                <textarea
+                  className="textarea textarea-bordered w-full"
+                  rows={2}
+                  value={form.issues_or_delays}
+                  onChange={(e) => updateField("issues_or_delays", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Notes">
+                <textarea
+                  className="textarea textarea-bordered w-full"
+                  rows={2}
+                  value={form.notes}
+                  onChange={(e) => updateField("notes", e.target.value)}
+                />
+              </FormField>
+            </div>
             <div className="flex justify-end gap-2">
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? <span className="loading loading-spinner loading-sm" /> : null}

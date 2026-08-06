@@ -517,103 +517,110 @@ export default function InvoicesPage() {
         <SectionCard title="New Invoice">
           {invoiceError ? <AlertBanner type="error">{invoiceError}</AlertBanner> : null}
           {invoiceSuccess ? <AlertBanner type="success">{invoiceSuccess}</AlertBanner> : null}
-          <form onSubmit={onSubmitInvoice} className="space-y-4 mt-4">
-            <FormField label="Contract">
-              <select
-                className="select select-bordered"
-                value={invoiceForm.contract_id}
-                onChange={(e) => onContractChange(e.target.value)}
-                required
-              >
-                <option value="">Select a contract…</option>
-                {contracts.map((contract) => (
-                  <option key={contract.id} value={contract.id}>
-                    {contract.contract_name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Invoice Number">
-              <input
-                className="input input-bordered"
-                value={invoiceForm.invoice_number}
-                onChange={(e) => updateInvoiceField("invoice_number", e.target.value)}
-                placeholder="e.g. INV-1007"
-              />
-            </FormField>
-            <FormField label="Invoice Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={invoiceForm.invoice_date}
-                onChange={(e) => updateInvoiceField("invoice_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Due Date">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={invoiceForm.due_date}
-                onChange={(e) => updateInvoiceField("due_date", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Description">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={2}
-                value={invoiceForm.description}
-                onChange={(e) => updateInvoiceField("description", e.target.value)}
-              />
-            </FormField>
-            <FormField label="Invoice Amount">
-              <label className="input input-bordered flex items-center gap-2">
-                $
+          <form onSubmit={onSubmitInvoice} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField stacked label="Contract">
+                <select
+                  className="select select-bordered w-full"
+                  value={invoiceForm.contract_id}
+                  onChange={(e) => onContractChange(e.target.value)}
+                  required
+                >
+                  <option value="">Select a contract…</option>
+                  {contracts.map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.contract_name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Invoice Number">
+                <input
+                  className="input input-bordered w-full"
+                  value={invoiceForm.invoice_number}
+                  onChange={(e) => updateInvoiceField("invoice_number", e.target.value)}
+                  placeholder="e.g. INV-1007"
+                />
+              </FormField>
+              <FormField stacked label="Invoice Date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={invoiceForm.invoice_date}
+                  onChange={(e) => updateInvoiceField("invoice_date", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Due Date">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={invoiceForm.due_date}
+                  onChange={(e) => updateInvoiceField("due_date", e.target.value)}
+                />
+              </FormField>
+              <FormField stacked label="Invoice Amount">
+                <label className="input input-bordered flex items-center gap-2 w-full">
+                  $
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="grow"
+                    value={invoiceForm.invoice_amount}
+                    onChange={(e) => updateInvoiceField("invoice_amount", e.target.value)}
+                    required
+                  />
+                </label>
+              </FormField>
+              <FormField stacked label="Retainage %">
                 <input
                   type="number"
-                  step="0.01"
-                  className="grow"
-                  value={invoiceForm.invoice_amount}
-                  onChange={(e) => updateInvoiceField("invoice_amount", e.target.value)}
-                  required
+                  step="0.1"
+                  className="input input-bordered w-full"
+                  value={invoiceForm.retainage_percent}
+                  onChange={(e) => updateInvoiceField("retainage_percent", e.target.value)}
                 />
-              </label>
-            </FormField>
-            <FormField label="Retainage %">
-              <input
-                type="number"
-                step="0.1"
-                className="input input-bordered"
-                value={invoiceForm.retainage_percent}
-                onChange={(e) => updateInvoiceField("retainage_percent", e.target.value)}
-              />
-            </FormField>
-            <FormField
-              label="Retainage Amount"
-              hint="Calculated automatically from invoice amount × retainage %."
-            >
-              <input
-                className="input input-bordered"
-                value={money(computedRetainageAmount)}
-                disabled
-                readOnly
-              />
-            </FormField>
-            <FormField label="Net Amount Due" hint="Invoice amount less retainage withheld.">
-              <input
-                className="input input-bordered font-medium"
-                value={money(computedNetAmountDue)}
-                disabled
-                readOnly
-              />
-            </FormField>
-            <FormField label="Notes">
-              <textarea
-                className="textarea textarea-bordered w-full"
-                rows={2}
-                value={invoiceForm.notes}
-                onChange={(e) => updateInvoiceField("notes", e.target.value)}
-              />
-            </FormField>
+              </FormField>
+              <FormField
+                stacked
+                label="Retainage Amount"
+                hint="Calculated automatically from invoice amount × retainage %."
+              >
+                <input
+                  className="input input-bordered w-full"
+                  value={money(computedRetainageAmount)}
+                  disabled
+                  readOnly
+                />
+              </FormField>
+              <FormField stacked label="Net Amount Due" hint="Invoice amount less retainage withheld.">
+                <input
+                  className="input input-bordered font-medium w-full"
+                  value={money(computedNetAmountDue)}
+                  disabled
+                  readOnly
+                />
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Description">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={2}
+                    value={invoiceForm.description}
+                    onChange={(e) => updateInvoiceField("description", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Notes">
+                  <textarea
+                    className="textarea textarea-bordered w-full"
+                    rows={2}
+                    value={invoiceForm.notes}
+                    onChange={(e) => updateInvoiceField("notes", e.target.value)}
+                  />
+                </FormField>
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <button type="submit" className="btn btn-primary" disabled={savingInvoice}>
                 {savingInvoice ? <span className="loading loading-spinner loading-sm" /> : null}

@@ -641,122 +641,122 @@ function BiddingPage() {
 
       {canManage && showCreate ? (
         <SectionCard title="Create bid package">
-          <form onSubmit={onCreatePackage} className="grid gap-3 md:grid-cols-2">
-            <FormField label="Project">
-              <select
-                className="select select-bordered"
-                value={pkgForm.contract_id}
-                onChange={(e) => setPkgForm((p) => ({ ...p, contract_id: e.target.value }))}
-                required
-              >
-                <option value="">Select project…</option>
-                {contracts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.contract_name}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label="Trade">
-              <input
-                className="input input-bordered"
-                value={pkgForm.trade}
-                onChange={(e) => setPkgForm((p) => ({ ...p, trade: e.target.value }))}
-                placeholder="Electrical, HVAC, Glazing…"
-                required
-              />
-            </FormField>
-            <div className="md:col-span-2">
-              <FormField label="Package title">
+          <form onSubmit={onCreatePackage} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField stacked label="Project">
+                <select
+                  className="select select-bordered w-full"
+                  value={pkgForm.contract_id}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, contract_id: e.target.value }))}
+                  required
+                >
+                  <option value="">Select project…</option>
+                  {contracts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.contract_name}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Trade">
                 <input
-                  className="input input-bordered"
-                  value={pkgForm.title}
-                  onChange={(e) => setPkgForm((p) => ({ ...p, title: e.target.value }))}
+                  className="input input-bordered w-full"
+                  value={pkgForm.trade}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, trade: e.target.value }))}
+                  placeholder="Electrical, HVAC, Glazing…"
                   required
                 />
               </FormField>
-            </div>
-            <FormField label="Estimated value">
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="input input-bordered"
-                value={pkgForm.estimated_package_value}
-                onChange={(e) => setPkgForm((p) => ({ ...p, estimated_package_value: e.target.value }))}
-              />
-            </FormField>
-            <FormField label="Status">
-              <select
-                className="select select-bordered"
-                value={pkgForm.status}
-                onChange={(e) =>
-                  setPkgForm((p) => ({ ...p, status: e.target.value as BidPackageStatus }))
-                }
-              >
-                <option value="draft">Draft</option>
-                <option value="open">Open</option>
-              </select>
-            </FormField>
-            <FormField label="Bids due">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={pkgForm.bids_due_at}
-                onChange={(e) => setPkgForm((p) => ({ ...p, bids_due_at: e.target.value }))}
-              />
-            </FormField>
-            <FormField label="Questions due">
-              <input
-                type="date"
-                className="input input-bordered"
-                value={pkgForm.questions_due_at}
-                onChange={(e) => setPkgForm((p) => ({ ...p, questions_due_at: e.target.value }))}
-              />
-            </FormField>
-            {(
-              [
-                ["scope_of_work", "Scope of work"],
-                ["technical_specifications", "Technical specifications"],
-                ["materials_provided_by_gc", "Materials provided by GC"],
-                ["materials_by_subcontractor", "Materials by subcontractor"],
-                ["site_conditions", "Site conditions"],
-                ["working_hours", "Working hours"],
-                ["safety_requirements", "Safety requirements"],
-                ["insurance_requirements", "Insurance requirements"],
-                ["bonding_requirements", "Bonding requirements"],
-                ["permit_notes", "Permit notes"],
-                ["schedule_milestones", "Schedule milestones"],
-                ["bid_instructions", "Bid instructions"],
-                ["submission_requirements", "Submission requirements"],
-              ] as const
-            ).map(([key, label]) => (
-              <div key={key} className="md:col-span-2">
-                <FormField label={label}>
+              <div className="sm:col-span-2">
+                <FormField stacked label="Package title">
+                  <input
+                    className="input input-bordered w-full"
+                    value={pkgForm.title}
+                    onChange={(e) => setPkgForm((p) => ({ ...p, title: e.target.value }))}
+                    required
+                  />
+                </FormField>
+              </div>
+              <FormField stacked label="Estimated value">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input input-bordered w-full"
+                  value={pkgForm.estimated_package_value}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, estimated_package_value: e.target.value }))}
+                />
+              </FormField>
+              <FormField stacked label="Status">
+                <select
+                  className="select select-bordered w-full"
+                  value={pkgForm.status}
+                  onChange={(e) =>
+                    setPkgForm((p) => ({ ...p, status: e.target.value as BidPackageStatus }))
+                  }
+                >
+                  <option value="draft">Draft</option>
+                  <option value="open">Open</option>
+                </select>
+              </FormField>
+              <FormField stacked label="Bids due">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={pkgForm.bids_due_at}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, bids_due_at: e.target.value }))}
+                />
+              </FormField>
+              <FormField stacked label="Questions due">
+                <input
+                  type="date"
+                  className="input input-bordered w-full"
+                  value={pkgForm.questions_due_at}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, questions_due_at: e.target.value }))}
+                />
+              </FormField>
+              {(
+                [
+                  ["scope_of_work", "Scope of work"],
+                  ["technical_specifications", "Technical specifications"],
+                  ["materials_provided_by_gc", "Materials provided by GC"],
+                  ["materials_by_subcontractor", "Materials by subcontractor"],
+                  ["site_conditions", "Site conditions"],
+                  ["working_hours", "Working hours"],
+                  ["safety_requirements", "Safety requirements"],
+                  ["insurance_requirements", "Insurance requirements"],
+                  ["bonding_requirements", "Bonding requirements"],
+                  ["permit_notes", "Permit notes"],
+                  ["schedule_milestones", "Schedule milestones"],
+                  ["bid_instructions", "Bid instructions"],
+                  ["submission_requirements", "Submission requirements"],
+                ] as const
+              ).map(([key, label]) => (
+                <FormField key={key} stacked label={label}>
                   <textarea
-                    className="textarea textarea-bordered min-h-24"
+                    className="textarea textarea-bordered w-full min-h-24"
                     value={pkgForm[key]}
                     onChange={(e) => setPkgForm((p) => ({ ...p, [key]: e.target.value }))}
                   />
                 </FormField>
-              </div>
-            ))}
-            <FormField label="GC contact name">
-              <input
-                className="input input-bordered"
-                value={pkgForm.contact_name}
-                onChange={(e) => setPkgForm((p) => ({ ...p, contact_name: e.target.value }))}
-              />
-            </FormField>
-            <FormField label="GC contact email">
-              <input
-                type="email"
-                className="input input-bordered"
-                value={pkgForm.contact_email}
-                onChange={(e) => setPkgForm((p) => ({ ...p, contact_email: e.target.value }))}
-              />
-            </FormField>
-            <div className="md:col-span-2">
+              ))}
+              <FormField stacked label="GC contact name">
+                <input
+                  className="input input-bordered w-full"
+                  value={pkgForm.contact_name}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, contact_name: e.target.value }))}
+                />
+              </FormField>
+              <FormField stacked label="GC contact email">
+                <input
+                  type="email"
+                  className="input input-bordered w-full"
+                  value={pkgForm.contact_email}
+                  onChange={(e) => setPkgForm((p) => ({ ...p, contact_email: e.target.value }))}
+                />
+              </FormField>
+            </div>
+            <div className="flex justify-end">
               <button type="submit" className="btn btn-primary" disabled={busy}>
                 {busy ? <span className="loading loading-spinner loading-sm" /> : null}
                 Publish package

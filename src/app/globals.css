@@ -184,6 +184,89 @@ body {
   border-color: var(--color-primary) !important;
   color: var(--color-primary);
   font-weight: 600;
+  position: relative;
+  animation: nav-tab-color-in 380ms ease-out;
+}
+
+.nav-tab-active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--color-primary) 22%, transparent) 0%,
+    color-mix(in oklab, var(--color-primary) 8%, transparent) 55%,
+    transparent 100%
+  );
+  transform-origin: left center;
+  animation: nav-tab-wash-in 420ms ease-out both;
+  pointer-events: none;
+}
+
+.nav-tab-active::after {
+  content: "";
+  position: absolute;
+  left: 0.65rem;
+  right: 0.65rem;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--color-primary);
+  transform-origin: left center;
+  animation: nav-tab-underline-in 360ms ease-out both;
+  pointer-events: none;
+}
+
+@keyframes nav-tab-color-in {
+  from {
+    color: color-mix(in oklab, var(--color-base-content) 75%, transparent);
+  }
+  to {
+    color: var(--color-primary);
+  }
+}
+
+@keyframes nav-tab-wash-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.35);
+  }
+  45% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes nav-tab-underline-in {
+  from {
+    transform: scaleX(0);
+    opacity: 0.35;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-tab-active,
+  .nav-tab-active::before,
+  .nav-tab-active::after {
+    animation: none;
+  }
+
+  .nav-tab-active::before {
+    opacity: 0;
+  }
+
+  .nav-tab-active::after {
+    transform: none;
+    opacity: 1;
+  }
 }
 
 /* Shared data-table chrome */

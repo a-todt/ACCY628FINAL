@@ -235,14 +235,22 @@ export function FormField({
   label,
   children,
   hint,
+  stacked = false,
 }: {
   label: string;
   children: ReactNode;
   hint?: string;
+  stacked?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2 sm:gap-4 items-start">
-      <label className="text-sm font-medium pt-2.5 opacity-90">{label}</label>
+    <div
+      className={
+        stacked
+          ? "grid grid-cols-1 gap-1.5 items-start"
+          : "grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-2 sm:gap-4 items-start"
+      }
+    >
+      <label className={`text-sm font-medium opacity-90 ${stacked ? "" : "pt-2.5"}`}>{label}</label>
       <div className="w-full">
         {children}
         {hint ? <p className="mt-1 text-xs opacity-55 leading-relaxed">{hint}</p> : null}

@@ -155,7 +155,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         role="tab"
                         className={`tab whitespace-nowrap transition-colors ${
                           isNavItemActive(pathname, item.href)
-                            ? "tab-active font-semibold text-primary"
+                            ? "tab-active nav-tab-active"
                             : "opacity-70 hover:opacity-100"
                         }`}
                       >
