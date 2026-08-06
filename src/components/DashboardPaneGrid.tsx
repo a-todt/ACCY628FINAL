@@ -44,7 +44,9 @@ export function DashboardPaneGrid({
   }
 
   const nonFullWidthCount = visible.filter((pane) => !pane.fullWidth).length;
-  const columns = paneGridColumns(nonFullWidthCount);
+  // Field / subcontractor / client dashboards stack panes vertically.
+  const stackPanes = role === "field_supervisor" || role === "subcontractor" || role === "client";
+  const columns = stackPanes ? 1 : paneGridColumns(nonFullWidthCount);
   // Prefer chart-pane count so KPI strips don't shrink graphs.
   const chartLikeCount = Math.max(1, nonFullWidthCount);
   const chartHeight = chartPanelHeight(chartLikeCount);
