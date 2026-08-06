@@ -267,6 +267,7 @@ export function canViewFieldLogs(role: UserRole): boolean {
 }
 
 export type NavCategoryId =
+  | "favorites"
   | "dashboard"
   | "reports"
   | "contracts"
@@ -283,6 +284,7 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
   const showSubcontracting = canViewSubcontractors(role) || canViewBidding(role);
   return (
     [
+      { id: "favorites" as const, href: "/favorites", label: "Favorites", show: true },
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
       {
@@ -393,6 +395,7 @@ export function secondaryNavForCategory(
 }
 
 export function categoryFromPath(pathname: string): NavCategoryId | null {
+  if (pathname.startsWith("/favorites")) return "favorites";
   if (pathname.startsWith("/dashboard")) return "dashboard";
   if (pathname.startsWith("/reports")) return "reports";
   if (pathname.startsWith("/admin")) return "reports";
@@ -420,6 +423,7 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
 }
 
 export function isNavItemActive(pathname: string, href: string): boolean {
+  if (href === "/favorites") return pathname.startsWith("/favorites");
   if (href === "/dashboard") return pathname === "/dashboard";
   if (href === "/management") return pathname.startsWith("/management");
   if (href.startsWith("/management?")) {
