@@ -8,6 +8,7 @@ import {
   BarChart3,
   Building2,
   HardHat,
+  Home,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -43,6 +44,7 @@ function AppShellLoading() {
 }
 
 const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
+  home: Home,
   favorites: Star,
   dashboard: LayoutDashboard,
   reports: BarChart3,
@@ -128,7 +130,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 : null}
             </ul>
           </div>
-          <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 shrink-0 group">
+          <Link href="/home" className="flex items-center gap-2.5 min-w-0 shrink-0 group">
             <NailItLogo size="sm" />
           </Link>
         </div>

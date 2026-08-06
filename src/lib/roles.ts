@@ -283,6 +283,7 @@ export function canUseMessaging(role: UserRole): boolean {
 }
 
 export type NavCategoryId =
+  | "home"
   | "favorites"
   | "dashboard"
   | "reports"
@@ -300,6 +301,7 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
   const showSubcontracting = canViewSubcontractors(role) || canViewBidding(role);
   return (
     [
+      { id: "home" as const, href: "/home", label: "Start here", show: true },
       { id: "favorites" as const, href: "/favorites", label: "Favorites", show: true },
       { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
       { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
@@ -411,6 +413,7 @@ export function secondaryNavForCategory(
 }
 
 export function categoryFromPath(pathname: string): NavCategoryId | null {
+  if (pathname.startsWith("/home")) return "home";
   if (pathname.startsWith("/favorites")) return "favorites";
   if (pathname.startsWith("/dashboard")) return "dashboard";
   if (pathname.startsWith("/reports")) return "reports";
@@ -443,6 +446,7 @@ export function isNavItemActive(
   href: string,
   search = ""
 ): boolean {
+  if (href === "/home") return pathname.startsWith("/home");
   if (href === "/favorites") return pathname.startsWith("/favorites");
   if (href === "/dashboard") return pathname === "/dashboard";
   if (href === "/management" || href.startsWith("/management?")) {
