@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Pencil, Plus, Users, ClipboardList, Building2, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -87,6 +87,7 @@ export default function ManagementPage() {
   const { effectiveRole, user } = useAuth();
   const searchParams = useSearchParams();
   const activeTab = tabFromParam(searchParams.get("tab"));
+  const staffParam = searchParams.get("staff");
   const admin = useAdminData();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +126,14 @@ export default function ManagementPage() {
       ),
     [admin.profiles]
   );
+
+  useEffect(() => {
+    if (!staffParam || activeTab !== "team") return;
+    const profile = staffProfiles.find((p) => p.id === staffParam);
+    if (!profile) return;
+    const label = profile.full_name?.trim() || profile.email?.trim() || "";
+    if (label) setNameFilter(label);
+  }, [staffParam, activeTab, staffProfiles]);
 
   const assignmentCountByUser = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1593,7 +1602,12 @@ export default function ManagementPage() {
                         const listId = `assign-contract-${p.id}`;
                         const certSummary = nearestCertSummary(p.id);
                         return (
-                          <tr key={p.id} className="hover:bg-base-200/60">
+                          <tr
+                            key={p.id}
+                            className={`hover:bg-base-200/60 ${
+                              staffParam === p.id ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : ""
+                            }`}
+                          >
                             <td
                               className="px-1 font-medium break-words"
                               title={[p.employee_id ? `ID: ${p.employee_id}` : null, p.title, p.phone]

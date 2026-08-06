@@ -125,6 +125,7 @@ export function ColumnCheckboxFilterHeader({
   sortActive = false,
   sortDir = "asc",
   onSort,
+  className,
 }: {
   label: string;
   options: CheckboxFilterOption[];
@@ -133,6 +134,7 @@ export function ColumnCheckboxFilterHeader({
   sortActive?: boolean;
   sortDir?: ColumnSortDir;
   onSort?: () => void;
+  className?: string;
 }) {
   const selectedSet = new Set(selected);
   const activeCount = selected.length;
@@ -149,7 +151,7 @@ export function ColumnCheckboxFilterHeader({
   const clearAll = () => onChange([]);
 
   return (
-    <th className="align-top px-1 text-center">
+    <th className={["align-top px-1 text-center", className].filter(Boolean).join(" ")}>
       <div className="flex min-w-0 flex-col items-center gap-1">
         <SortLabel label={label} sortActive={sortActive} sortDir={sortDir} onSort={onSort} />
         <div className="dropdown dropdown-bottom">
