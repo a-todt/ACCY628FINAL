@@ -273,6 +273,11 @@ export function canViewBidding(role: UserRole): boolean {
   );
 }
 
+/** Deadlines calendar — Owner, Admin, and Project Managers only. */
+export function canViewCalendar(role: UserRole): boolean {
+  return role === "admin" || role === "owner" || role === "project_manager";
+}
+
 export function canViewFieldLogs(role: UserRole): boolean {
   return hasPermission(role, "viewFieldLogs");
 }
@@ -285,6 +290,7 @@ export function canUseMessaging(role: UserRole): boolean {
 export type NavCategoryId =
   | "favorites"
   | "dashboard"
+  | "calendar"
   | "reports"
   | "contracts"
   | "subcontracting"
@@ -413,6 +419,7 @@ export function secondaryNavForCategory(
 export function categoryFromPath(pathname: string): NavCategoryId | null {
   if (pathname.startsWith("/favorites")) return "favorites";
   if (pathname.startsWith("/dashboard")) return "dashboard";
+  if (pathname.startsWith("/calendar")) return "calendar";
   if (pathname.startsWith("/reports")) return "reports";
   if (pathname.startsWith("/admin")) return "reports";
   if (pathname.startsWith("/audit-log") || pathname.startsWith("/management")) return "management";
@@ -445,6 +452,7 @@ export function isNavItemActive(
 ): boolean {
   if (href === "/favorites") return pathname.startsWith("/favorites");
   if (href === "/dashboard") return pathname === "/dashboard";
+  if (href === "/calendar") return pathname.startsWith("/calendar");
   if (href === "/management" || href.startsWith("/management?")) {
     const onManagement =
       pathname.startsWith("/management") || pathname.startsWith("/audit-log");
