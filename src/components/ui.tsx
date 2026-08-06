@@ -153,6 +153,52 @@ export function ReportPane({
   );
 }
 
+export function ReportDetailsModal({
+  open,
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="modal modal-open z-50">
+      <div className="modal-box w-11/12 max-w-6xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-base-300 shrink-0">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-lg leading-tight">{title}</h3>
+            {subtitle ? (
+              <p className="mt-1 text-sm opacity-70 line-clamp-2">{subtitle}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm btn-circle shrink-0"
+            aria-label="Close details"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+        <div className="px-5 py-4 overflow-y-auto flex-1 min-h-0">{children}</div>
+        <div className="modal-action px-5 py-3 mt-0 border-t border-base-300 shrink-0">
+          <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+      <button type="button" className="modal-backdrop" aria-label="Close" onClick={onClose} />
+    </div>
+  );
+}
+
 export function FormField({
   label,
   children,

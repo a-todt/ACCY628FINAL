@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { AlertBanner, ReportPane, StatCard } from "@/components/ui";
+import { AlertBanner, ReportDetailsModal, ReportPane, StatCard } from "@/components/ui";
 import { money } from "@/lib/metrics";
 import {
   buildPeriodRows,
@@ -427,10 +427,6 @@ export function ProjectPeriodReportsSection({
     }
   }, [report.availableYears, year]);
 
-  useEffect(() => {
-    setShowDetails(false);
-  }, [year, contractId, activityOnly]);
-
   const showProject = !contractId;
 
   function exportCsv() {
@@ -480,77 +476,76 @@ export function ProjectPeriodReportsSection({
   }
 
   return (
-    <ReportPane
-      title="Project Period Reports"
-      subtitle="Monthly billed, earned, and cost activity by project. WIP columns appear when a Projects row matches the contract name."
-      onExportCsv={exportCsv}
-      onExportPdf={exportPdf}
-      footerStart={
-        !wipLoading ? (
-          <button
-            type="button"
-            className="btn btn-primary btn-xs"
-            onClick={() => setShowDetails((open) => !open)}
-            aria-expanded={showDetails}
-          >
-            {showDetails ? "Hide details" : "Show details"}
-          </button>
-        ) : null
-      }
-    >
-      {wipError ? <AlertBanner type="warning">{wipError}</AlertBanner> : null}
+    <>
+      <ReportPane
+        title="Project Period Reports"
+        subtitle="Monthly billed, earned, and cost activity by project. WIP columns appear when a Projects row matches the contract name."
+        onExportCsv={exportCsv}
+        onExportPdf={exportPdf}
+        footerStart={
+          !wipLoading ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-xs"
+              onClick={() => setShowDetails(true)}
+            >
+              Show details
+            </button>
+          ) : null
+        }
+      >
+        {wipError ? <AlertBanner type="warning">{wipError}</AlertBanner> : null}
 
-      <div className="grid grid-cols-1 gap-1 sm:grid-cols-3 mb-1">
-        <label className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-xs font-medium">Year</span>
-          <select
-            className="select select-bordered select-xs w-full min-h-8 h-8"
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
-          >
-            {report.availableYears.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-xs font-medium">Project</span>
-          <select
-            className="select select-bordered select-xs w-full min-h-8 h-8"
-            value={contractId}
-            onChange={(e) => setContractId(e.target.value)}
-          >
-            <option value="">All contracts</option>
-            {contracts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.contract_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-xs font-medium">Filters</span>
-          <label className="label h-8 min-h-8 cursor-pointer justify-start gap-2 py-0">
-            <input
-              type="checkbox"
-              className="checkbox checkbox-xs"
-              checked={activityOnly}
-              disabled={Boolean(contractId)}
-              onChange={(e) => setActivityOnly(e.target.checked)}
-            />
-            <span className="label-text text-xs">Only periods with activity</span>
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-3 mb-1">
+          <label className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-xs font-medium">Year</span>
+            <select
+              className="select select-bordered select-xs w-full min-h-8 h-8"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+            >
+              {report.availableYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
           </label>
+          <label className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-xs font-medium">Project</span>
+            <select
+              className="select select-bordered select-xs w-full min-h-8 h-8"
+              value={contractId}
+              onChange={(e) => setContractId(e.target.value)}
+            >
+              <option value="">All contracts</option>
+              {contracts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.contract_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-xs font-medium">Filters</span>
+            <label className="label h-8 min-h-8 cursor-pointer justify-start gap-2 py-0">
+              <input
+                type="checkbox"
+                className="checkbox checkbox-xs"
+                checked={activityOnly}
+                disabled={Boolean(contractId)}
+                onChange={(e) => setActivityOnly(e.target.checked)}
+              />
+              <span className="label-text text-xs">Only periods with activity</span>
+            </label>
+          </div>
         </div>
-      </div>
 
-      {wipLoading ? (
-        <div className="flex justify-center py-4">
-          <span className="loading loading-spinner loading-sm text-primary" />
-        </div>
-      ) : (
-        <>
+        {wipLoading ? (
+          <div className="flex justify-center py-4">
+            <span className="loading loading-spinner loading-sm text-primary" />
+          </div>
+        ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mb-1">
             <StatCard compact title="Expenses" value={money(report.totals.expenses)} />
             <StatCard compact title="Billed" value={money(report.totals.billed)} />
@@ -563,19 +558,24 @@ export function ProjectPeriodReportsSection({
               tone={report.totals.grossBilled < 0 ? "error" : "default"}
             />
           </div>
+        )}
+      </ReportPane>
 
-          {showDetails ? (
-            <PeriodTable
-              rows={report.rows}
-              totals={report.totals}
-              unspecified={report.unspecified}
-              showProject={showProject}
-              groupByMonth={showProject}
-            />
-          ) : null}
-        </>
-      )}
-    </ReportPane>
+      <ReportDetailsModal
+        open={showDetails}
+        title="Project Period Reports"
+        subtitle="Monthly billed, earned, and cost activity by project. WIP columns appear when a Projects row matches the contract name."
+        onClose={() => setShowDetails(false)}
+      >
+        <PeriodTable
+          rows={report.rows}
+          totals={report.totals}
+          unspecified={report.unspecified}
+          showProject={showProject}
+          groupByMonth={showProject}
+        />
+      </ReportDetailsModal>
+    </>
   );
 }
 

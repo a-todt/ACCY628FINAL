@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
-import { ReportPane, StatCard } from "@/components/ui";
+import { ReportDetailsModal, ReportPane, StatCard } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { money, percent } from "@/lib/metrics";
 import type { Contract, ContractMetrics } from "@/lib/types";
@@ -113,48 +113,56 @@ export function ContractProfitabilitySection({ rows }: Props) {
     ]);
   }
 
-  return (
-    <ReportPane
-      title="Contract Profitability"
-      subtitle="Portfolio margin by contract—revised value, billed, costs, and gross profit at a glance."
-      onExportCsv={exportCsv}
-      onExportPdf={exportPdf}
-      footerStart={
-        <button
-          type="button"
-          className="btn btn-primary btn-xs"
-          onClick={() => {
-            setShowDetails((open) => {
-              if (open) setExpandedIds(new Set());
-              return !open;
-            });
-          }}
-          aria-expanded={showDetails}
-        >
-          {showDetails ? "Hide details" : "Show details"}
-        </button>
-      }
-    >
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mb-1">
-        <StatCard compact title="Revised value" value={money(totals.revisedValue)} />
-        <StatCard compact title="Billed" value={money(totals.totalBilled)} />
-        <StatCard compact title="Costs" value={money(totals.totalCosts)} />
-        <StatCard
-          compact
-          title="Gross profit"
-          value={money(totals.grossProfit)}
-          tone={totals.grossProfit < 0 ? "error" : "default"}
-        />
-        <StatCard
-          compact
-          title="Margin"
-          value={percent(totals.grossMargin)}
-          tone={marginTone(totals.grossMargin, totals.grossProfit)}
-        />
-      </div>
+  const title = "Contract Profitability";
+  const subtitle =
+    "Portfolio margin by contract—revised value, billed, costs, and gross profit at a glance.";
 
-      {showDetails ? (
-        sorted.length === 0 ? (
+  return (
+    <>
+      <ReportPane
+        title={title}
+        subtitle={subtitle}
+        onExportCsv={exportCsv}
+        onExportPdf={exportPdf}
+        footerStart={
+          <button
+            type="button"
+            className="btn btn-primary btn-xs"
+            onClick={() => setShowDetails(true)}
+          >
+            Show details
+          </button>
+        }
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mb-1">
+          <StatCard compact title="Revised value" value={money(totals.revisedValue)} />
+          <StatCard compact title="Billed" value={money(totals.totalBilled)} />
+          <StatCard compact title="Costs" value={money(totals.totalCosts)} />
+          <StatCard
+            compact
+            title="Gross profit"
+            value={money(totals.grossProfit)}
+            tone={totals.grossProfit < 0 ? "error" : "default"}
+          />
+          <StatCard
+            compact
+            title="Margin"
+            value={percent(totals.grossMargin)}
+            tone={marginTone(totals.grossMargin, totals.grossProfit)}
+          />
+        </div>
+      </ReportPane>
+
+      <ReportDetailsModal
+        open={showDetails}
+        title={title}
+        subtitle={subtitle}
+        onClose={() => {
+          setShowDetails(false);
+          setExpandedIds(new Set());
+        }}
+      >
+        {sorted.length === 0 ? (
           <p className="text-sm opacity-60 py-4 text-center">No contracts to report.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -281,8 +289,8 @@ export function ContractProfitabilitySection({ rows }: Props) {
               </tfoot>
             </table>
           </div>
-        )
-      ) : null}
-    </ReportPane>
+        )}
+      </ReportDetailsModal>
+    </>
   );
 }

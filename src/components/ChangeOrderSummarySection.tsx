@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
-import { ReportPane, StatCard } from "@/components/ui";
+import { ReportDetailsModal, ReportPane, StatCard } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { labelize, money } from "@/lib/metrics";
 import type { ChangeOrder, Contract } from "@/lib/types";
@@ -137,161 +137,171 @@ export function ChangeOrderSummarySection({ overall, byContract, changeOrders }:
     ]);
   }
 
-  return (
-    <ReportPane
-      title="Change Order Summary"
-      subtitle="Pending, approved, and rejected change orders by contract, including approved value impact."
-      onExportCsv={exportCsv}
-      onExportPdf={exportPdf}
-      footerStart={
-        byContract.length > 0 ? (
-          <button
-            type="button"
-            className="btn btn-primary btn-xs"
-            onClick={() => {
-              setShowDetails((open) => {
-                if (open) setExpandedIds(new Set());
-                return !open;
-              });
-            }}
-            aria-expanded={showDetails}
-          >
-            {showDetails ? "Hide details" : "Show details"}
-          </button>
-        ) : null
-      }
-    >
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 mb-1">
-        {overall.map((row) => (
-          <StatCard
-            compact
-            key={row.status}
-            title={labelize(row.status)}
-            value={String(row.count)}
-            hint={money(row.total)}
-            tone={statusTone(row.status)}
-          />
-        ))}
-      </div>
+  const title = "Change Order Summary";
+  const subtitle =
+    "Pending, approved, and rejected change orders by contract, including approved value impact.";
 
-      {byContract.length === 0 ? (
-        <p className="text-sm opacity-60 py-4 text-center">No contracts to report.</p>
-      ) : showDetails ? (
-            activeRows.length === 0 ? (
-              <p className="text-sm opacity-60 py-4 text-center">No change orders yet.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="table table-sm">
-                  <thead>
-                    <tr>
-                      <th className="w-28">
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-xs"
-                          onClick={toggleAll}
-                          aria-expanded={allExpanded}
-                        >
-                          {allExpanded ? "Hide all" : "Show all"}
-                        </button>
-                      </th>
-                      <th>Contract</th>
-                      <th className="text-right">Pending</th>
-                      <th className="text-right">Approved Value</th>
-                      <th className="text-right">Rejected</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayRows.map((row) => {
-                      const open = expandedIds.has(row.contract.id);
-                      const related = ordersByContract.get(row.contract.id) ?? [];
-                      return (
-                        <Fragment key={row.contract.id}>
-                          <tr className="font-medium bg-base-200/50">
-                            <td className="whitespace-nowrap">
-                              <button
-                                type="button"
-                                className={`btn btn-ghost btn-xs ${open ? "btn-active" : ""}`}
-                                onClick={() => toggleRow(row.contract.id)}
-                                aria-expanded={open}
-                              >
-                                {open ? "Hide" : "Details"}
-                              </button>
-                            </td>
-                            <td className="whitespace-nowrap">
-                              <Link
-                                href={`/contracts/${row.contract.id}`}
-                                className="link link-primary font-medium"
-                              >
-                                {row.contract.contract_name}
-                              </Link>
-                            </td>
-                            <td className="text-right whitespace-nowrap">{row.pending}</td>
-                            <td className="text-right whitespace-nowrap">{money(row.approved)}</td>
-                            <td className="text-right whitespace-nowrap">{row.rejected}</td>
-                          </tr>
-                          {open ? (
-                            <tr className="bg-base-100">
-                              <td />
-                              <td colSpan={4} className="py-3">
-                                {related.length === 0 ? (
-                                  <p className="text-sm opacity-60 pl-2">No change orders on this contract.</p>
-                                ) : (
-                                  <div className="pl-2 border-l-2 border-primary/30 space-y-2">
-                                    {related.map((co) => (
-                                      <div
-                                        key={co.id}
-                                        className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-sm"
-                                      >
-                                        <div>
-                                          <div className="opacity-60 text-xs">CO #</div>
-                                          <div className="font-medium">
-                                            {co.change_order_number ?? "—"}
-                                          </div>
-                                        </div>
-                                        <div>
-                                          <div className="opacity-60 text-xs">Status</div>
-                                          <span className={`badge badge-sm ${statusBadge(co.status)}`}>
-                                            {labelize(co.status)}
-                                          </span>
-                                        </div>
-                                        <div>
-                                          <div className="opacity-60 text-xs">Amount</div>
-                                          <div className="font-medium">{money(Number(co.amount ?? 0))}</div>
-                                        </div>
-                                        <div>
-                                          <div className="opacity-60 text-xs">Submitted</div>
-                                          <div className="font-medium">{co.date_submitted ?? "—"}</div>
-                                        </div>
-                                        {co.description ? (
-                                          <div className="col-span-2 sm:col-span-4">
-                                            <div className="opacity-60 text-xs">Description</div>
-                                            <div className="font-medium">{co.description}</div>
-                                          </div>
-                                        ) : null}
+  return (
+    <>
+      <ReportPane
+        title={title}
+        subtitle={subtitle}
+        onExportCsv={exportCsv}
+        onExportPdf={exportPdf}
+        footerStart={
+          byContract.length > 0 ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-xs"
+              onClick={() => setShowDetails(true)}
+            >
+              Show details
+            </button>
+          ) : null
+        }
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 mb-1">
+          {overall.map((row) => (
+            <StatCard
+              compact
+              key={row.status}
+              title={labelize(row.status)}
+              value={String(row.count)}
+              hint={money(row.total)}
+              tone={statusTone(row.status)}
+            />
+          ))}
+        </div>
+
+        {byContract.length === 0 ? (
+          <p className="text-sm opacity-60 py-4 text-center">No contracts to report.</p>
+        ) : null}
+      </ReportPane>
+
+      <ReportDetailsModal
+        open={showDetails}
+        title={title}
+        subtitle={subtitle}
+        onClose={() => {
+          setShowDetails(false);
+          setExpandedIds(new Set());
+        }}
+      >
+        {activeRows.length === 0 ? (
+          <p className="text-sm opacity-60 py-4 text-center">No change orders yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th className="w-28">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-xs"
+                      onClick={toggleAll}
+                      aria-expanded={allExpanded}
+                    >
+                      {allExpanded ? "Hide all" : "Show all"}
+                    </button>
+                  </th>
+                  <th>Contract</th>
+                  <th className="text-right">Pending</th>
+                  <th className="text-right">Approved Value</th>
+                  <th className="text-right">Rejected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayRows.map((row) => {
+                  const open = expandedIds.has(row.contract.id);
+                  const related = ordersByContract.get(row.contract.id) ?? [];
+                  return (
+                    <Fragment key={row.contract.id}>
+                      <tr className="font-medium bg-base-200/50">
+                        <td className="whitespace-nowrap">
+                          <button
+                            type="button"
+                            className={`btn btn-ghost btn-xs ${open ? "btn-active" : ""}`}
+                            onClick={() => toggleRow(row.contract.id)}
+                            aria-expanded={open}
+                          >
+                            {open ? "Hide" : "Details"}
+                          </button>
+                        </td>
+                        <td className="whitespace-nowrap">
+                          <Link
+                            href={`/contracts/${row.contract.id}`}
+                            className="link link-primary font-medium"
+                          >
+                            {row.contract.contract_name}
+                          </Link>
+                        </td>
+                        <td className="text-right whitespace-nowrap">{row.pending}</td>
+                        <td className="text-right whitespace-nowrap">{money(row.approved)}</td>
+                        <td className="text-right whitespace-nowrap">{row.rejected}</td>
+                      </tr>
+                      {open ? (
+                        <tr className="bg-base-100">
+                          <td />
+                          <td colSpan={4} className="py-3">
+                            {related.length === 0 ? (
+                              <p className="text-sm opacity-60 pl-2">No change orders on this contract.</p>
+                            ) : (
+                              <div className="pl-2 border-l-2 border-primary/30 space-y-2">
+                                {related.map((co) => (
+                                  <div
+                                    key={co.id}
+                                    className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-sm"
+                                  >
+                                    <div>
+                                      <div className="opacity-60 text-xs">CO #</div>
+                                      <div className="font-medium">
+                                        {co.change_order_number ?? "—"}
                                       </div>
-                                    ))}
+                                    </div>
+                                    <div>
+                                      <div className="opacity-60 text-xs">Status</div>
+                                      <span className={`badge badge-sm ${statusBadge(co.status)}`}>
+                                        {labelize(co.status)}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <div className="opacity-60 text-xs">Amount</div>
+                                      <div className="font-medium">{money(Number(co.amount ?? 0))}</div>
+                                    </div>
+                                    <div>
+                                      <div className="opacity-60 text-xs">Submitted</div>
+                                      <div className="font-medium">{co.date_submitted ?? "—"}</div>
+                                    </div>
+                                    {co.description ? (
+                                      <div className="col-span-2 sm:col-span-4">
+                                        <div className="opacity-60 text-xs">Description</div>
+                                        <div className="font-medium">{co.description}</div>
+                                      </div>
+                                    ) : null}
                                   </div>
-                                )}
-                              </td>
-                            </tr>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="font-semibold bg-base-200">
-                      <td />
-                      <td>TOTALS</td>
-                      <td className="text-right whitespace-nowrap">{totals.pending}</td>
-                      <td className="text-right whitespace-nowrap">{money(totals.approved)}</td>
-                      <td className="text-right whitespace-nowrap">{totals.rejected}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )
-          ) : null}
-    </ReportPane>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="font-semibold bg-base-200">
+                  <td />
+                  <td>TOTALS</td>
+                  <td className="text-right whitespace-nowrap">{totals.pending}</td>
+                  <td className="text-right whitespace-nowrap">{money(totals.approved)}</td>
+                  <td className="text-right whitespace-nowrap">{totals.rejected}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </ReportDetailsModal>
+    </>
   );
 }
