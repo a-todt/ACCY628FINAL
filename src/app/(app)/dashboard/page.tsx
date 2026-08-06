@@ -29,7 +29,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
-import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
@@ -59,7 +58,6 @@ import type {
   Payment,
   Subcontractor,
 } from "@/lib/types";
-import type { ContractInsuranceRequirement, InsurancePolicy } from "@/lib/types";
 
 interface DashboardData {
   contracts: Contract[];
@@ -70,8 +68,6 @@ interface DashboardData {
   payments: Payment[];
   fieldLogs: FieldLog[];
   milestones: Milestone[];
-  insurancePolicies?: InsurancePolicy[];
-  insuranceRequirements?: ContractInsuranceRequirement[];
 }
 
 function chartHasValues(
@@ -84,7 +80,6 @@ function chartHasValues(
 export default function DashboardPage() {
   const { effectiveRole, profile, user } = useAuth();
   const data = useContractData();
-  const insurance = useInsuranceData();
 
   const subScopeUserId = useMemo(
     () =>
@@ -108,7 +103,7 @@ export default function DashboardPage() {
     [effectiveRole, profile?.role, user?.id, data.userProfiles]
   );
 
-  if (data.loading || insurance.loading) {
+  if (data.loading) {
     return <PageSkeleton rows={6} />;
   }
 
@@ -125,8 +120,6 @@ export default function DashboardPage() {
     payments: data.payments,
     fieldLogs: data.fieldLogs,
     milestones: data.milestones,
-    insurancePolicies: insurance.policies,
-    insuranceRequirements: insurance.requirements,
   };
 
   return (
@@ -138,13 +131,6 @@ export default function DashboardPage() {
       />
 
       <DashboardQuickActions role={effectiveRole} />
-
-      {insurance.error ? (
-        <AlertBanner type="warning">
-          Insurance data could not be loaded ({insurance.error}). Alerts that depend on
-          insurance may be incomplete.
-        </AlertBanner>
-      ) : null}
 
       {effectiveRole === "admin" ||
       effectiveRole === "owner" ||
@@ -163,9 +149,6 @@ export default function DashboardPage() {
         invoices={data.invoices}
         fieldLogs={data.fieldLogs}
         changeOrders={data.changeOrders}
-        insurancePolicies={insurance.policies}
-        insuranceRequirements={insurance.requirements}
-        subcontractors={data.subcontractors}
       />
     </div>
   );
@@ -248,17 +231,11 @@ function DashboardAlertsPreview({
   invoices,
   fieldLogs,
   changeOrders,
-  insurancePolicies,
-  insuranceRequirements,
-  subcontractors,
 }: {
   role: UserRole;
   invoices: Invoice[];
   fieldLogs: FieldLog[];
   changeOrders: ChangeOrder[];
-  insurancePolicies: InsurancePolicy[];
-  insuranceRequirements: ContractInsuranceRequirement[];
-  subcontractors: Subcontractor[];
 }) {
   const alerts = useMemo(
     () =>
@@ -266,19 +243,8 @@ function DashboardAlertsPreview({
         invoices,
         fieldLogs,
         changeOrders,
-        insurancePolicies,
-        insuranceRequirements,
-        subcontractors,
       }),
-    [
-      role,
-      invoices,
-      fieldLogs,
-      changeOrders,
-      insurancePolicies,
-      insuranceRequirements,
-      subcontractors,
-    ]
+    [role, invoices, fieldLogs, changeOrders]
   );
 
   if (alerts.length === 0) return null;
@@ -340,6 +306,7 @@ function AlertPreviewRow({ alert }: { alert: AlertItem }) {
         <div className="min-w-0 flex-1">
           <p className="font-medium leading-tight text-sm">{alert.title}</p>
           <p className="text-xs opacity-70 mt-0.5 line-clamp-1">{alert.detail}</p>
+          <p className="text-xs text-primary mt-0.5 line-clamp-1">{alert.action}</p>
         </div>
         <ChevronRight className="h-4 w-4 opacity-40 shrink-0 mt-0.5" />
       </Link>

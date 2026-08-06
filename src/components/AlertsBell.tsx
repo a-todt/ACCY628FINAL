@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Bell, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
-import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { buildAlertsForRole } from "@/lib/alerts";
 import { labelize } from "@/lib/metrics";
 
@@ -14,17 +13,13 @@ const PREVIEW_LIMIT = 5;
 export function AlertsBell() {
   const { effectiveRole } = useAuth();
   const data = useContractData();
-  const insurance = useInsuranceData();
 
   const alerts = useMemo(() => {
-    if (data.loading || insurance.loading) return [];
+    if (data.loading) return [];
     return buildAlertsForRole(effectiveRole, {
       invoices: data.invoices,
       fieldLogs: data.fieldLogs,
       changeOrders: data.changeOrders,
-      insurancePolicies: insurance.policies,
-      insuranceRequirements: insurance.requirements,
-      subcontractors: data.subcontractors,
     });
   }, [
     effectiveRole,
@@ -32,10 +27,6 @@ export function AlertsBell() {
     data.invoices,
     data.fieldLogs,
     data.changeOrders,
-    data.subcontractors,
-    insurance.loading,
-    insurance.policies,
-    insurance.requirements,
   ]);
 
   const count = alerts.length;
@@ -92,6 +83,7 @@ export function AlertsBell() {
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium leading-tight line-clamp-1">{alert.title}</span>
                     <span className="block text-xs opacity-60 mt-0.5 line-clamp-1">{alert.detail}</span>
+                    <span className="block text-xs text-primary mt-0.5 line-clamp-1">{alert.action}</span>
                   </span>
                   <ChevronRight className="h-4 w-4 opacity-40 shrink-0 mt-0.5" />
                 </Link>

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Bell, ChevronRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
-import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 import {
   buildAlertsForRole,
@@ -17,31 +16,17 @@ import { labelize } from "@/lib/metrics";
 export default function AlertsPage() {
   const { effectiveRole } = useAuth();
   const data = useContractData();
-  const insurance = useInsuranceData();
   const [severity, setSeverity] = useState<AlertSeverity | "all">("all");
   const [category, setCategory] = useState<AlertCategory | "all">("all");
 
   const alerts = useMemo(() => {
-    if (data.loading || insurance.loading) return [];
+    if (data.loading) return [];
     return buildAlertsForRole(effectiveRole, {
       invoices: data.invoices,
       fieldLogs: data.fieldLogs,
       changeOrders: data.changeOrders,
-      insurancePolicies: insurance.policies,
-      insuranceRequirements: insurance.requirements,
-      subcontractors: data.subcontractors,
     });
-  }, [
-    effectiveRole,
-    data.loading,
-    data.invoices,
-    data.fieldLogs,
-    data.changeOrders,
-    data.subcontractors,
-    insurance.loading,
-    insurance.policies,
-    insurance.requirements,
-  ]);
+  }, [effectiveRole, data.loading, data.invoices, data.fieldLogs, data.changeOrders]);
 
   const filtered = useMemo(
     () =>
@@ -53,7 +38,7 @@ export default function AlertsPage() {
     [alerts, severity, category]
   );
 
-  if (data.loading || insurance.loading) {
+  if (data.loading) {
     return (
       <div className="grid place-items-center py-24">
         <span className="loading loading-spinner loading-lg text-primary" />
@@ -69,9 +54,13 @@ export default function AlertsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Alerts"
-        subtitle="Role-aware warnings for invoices, insurance, weather, and change orders."
+        subtitle="Actionable warnings for overdue invoices, weather delays, and pending change orders."
         actions={
-          <span className={`badge badge-lg gap-1.5 font-medium tabular-nums ${alerts.length > 0 ? "badge-error" : "badge-ghost"}`}>
+          <span
+            className={`badge badge-lg gap-1.5 font-medium tabular-nums ${
+              alerts.length > 0 ? "badge-error" : "badge-ghost"
+            }`}
+          >
             <Bell className="h-3.5 w-3.5" />
             {alerts.length} open
           </span>
@@ -96,7 +85,6 @@ export default function AlertsPage() {
         >
           <option value="all">All categories</option>
           <option value="invoice">Invoices</option>
-          <option value="insurance">Insurance</option>
           <option value="weather">Weather</option>
           <option value="change_order">Change orders</option>
         </select>
@@ -136,6 +124,7 @@ export default function AlertsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="font-medium leading-tight">{alert.title}</p>
                     <p className="text-sm opacity-70 mt-0.5">{alert.detail}</p>
+                    <p className="text-sm text-primary mt-1">{alert.action}</p>
                     <p className="text-xs opacity-50 mt-1">{labelize(alert.category)}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 opacity-40 shrink-0 mt-1" />

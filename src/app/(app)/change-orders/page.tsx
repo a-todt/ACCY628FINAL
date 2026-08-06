@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Building2, ChevronDown, ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
 import {
@@ -69,6 +70,7 @@ function editFormFromChangeOrder(co: ChangeOrder): EditForm {
 
 export default function ChangeOrdersPage() {
   const { effectiveRole } = useAuth();
+  const searchParams = useSearchParams();
   const { contracts, changeOrders, loading, error, refresh } = useContractData();
   const canCreate = canCreateChangeOrders(effectiveRole);
   const canMutate = canCreate;
@@ -97,6 +99,11 @@ export default function ChangeOrdersPage() {
 
   const isClient = effectiveRole === "client";
 
+  useEffect(() => {
+    const q = searchParams.get("q");
+    if (q) setNumberFilter(q);
+  }, [searchParams]);
+
   const baseList = useMemo(
     () => (isClient ? changeOrders.filter((co) => co.status === "approved") : changeOrders),
     [changeOrders, isClient]
@@ -105,7 +112,12 @@ export default function ChangeOrdersPage() {
   const filtered = useMemo(() => {
     const next = baseList.filter((co) => {
       if (!matchesColumnFilter(co.contracts?.contract_name, projectFilter)) return false;
-      if (!matchesColumnFilter(co.change_order_number, numberFilter)) return false;
+      if (
+        !matchesColumnFilter(co.change_order_number, numberFilter) &&
+        !matchesColumnFilter(co.description, numberFilter)
+      ) {
+        return false;
+      }
       if (statusChip !== "all" && co.status !== statusChip) return false;
       return true;
     });

@@ -78,7 +78,7 @@ That seeds contracts and related demo data and confirms roles.
 - Contracts, change orders, subcontractors, costs, invoices/payments, field logs
 - Reports (admin / PM) with CSV / PDF export
 - Finance overview CSV / PDF export
-- Role-aware Alerts inbox (invoices, insurance, weather, change orders)
+- Role-aware Alerts inbox (invoices, weather, change orders)
 - File attachments on field logs, invoices, change orders, and insurance policies (Supabase Storage)
 - Theme selector (daisyUI)
 - Demo role switcher in the header (preview only)
