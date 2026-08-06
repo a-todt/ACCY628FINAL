@@ -562,3 +562,76 @@ begin
     (pm_ids[1], 'contract_created', 'contract', null, jsonb_build_object('source', 'seed')),
     (pm_ids[2], 'contract_created', 'contract', null, jsonb_build_object('source', 'seed'));
 end $$;
+
+-- ----------------------------------------------------------------------------
+-- Fraud / dual-approval demo datasets (Owner + Admin Alerts → Fraud / controls)
+-- ----------------------------------------------------------------------------
+insert into public.invoices (
+  id, contract_id, invoice_number, invoice_date, due_date, description,
+  invoice_amount, retainage_percent, retainage_amount, net_amount_due,
+  amount_paid, status, notes
+) values (
+  'b0000000-0000-4000-8000-0000000000f1',
+  'a0000000-0000-4000-8000-000000000002',
+  'INV-01-1',
+  current_date - 12,
+  current_date + 18,
+  'DEMO FRAUD — duplicate invoice number reused on a second project',
+  50000.00, 10, 5000.00, 45000.00, 0, 'unpaid',
+  'Seeded fraud demo: same invoice # as Lakeshore INV-01-1'
+)
+on conflict (id) do update set
+  invoice_number = excluded.invoice_number,
+  description = excluded.description,
+  notes = excluded.notes;
+
+insert into public.payments (
+  id, invoice_id, payment_amount, payment_date, payment_method,
+  reference_number, notes, approval_status, submitted_by, submitted_at
+)
+select
+  'b0000000-0000-4000-8000-0000000000f2',
+  i.id,
+  25000.00,
+  current_date - 1,
+  'ACH',
+  'FRAUD-PMT-DEMO-01',
+  'DEMO FRAUD — PM-submitted payment waiting for owner approval',
+  'pending_approval',
+  p.id,
+  now() - interval '1 day'
+from public.invoices i
+cross join public.user_profiles p
+where i.invoice_number = 'INV-01-3'
+  and i.contract_id = 'a0000000-0000-4000-8000-000000000001'
+  and p.email = 'pm@gcmanager.demo'
+limit 1
+on conflict (id) do update set
+  approval_status = 'pending_approval',
+  notes = excluded.notes;
+
+insert into public.change_orders (
+  id, contract_id, change_order_number, description, reason, amount,
+  status, date_submitted, notes
+) values (
+  'b0000000-0000-4000-8000-0000000000f3',
+  'a0000000-0000-4000-8000-000000000001',
+  'CO-FRAUD-01',
+  'DEMO FRAUD — unusually large pending change order',
+  'Scope expansion with weak supporting docs (demo)',
+  78500.00,
+  'pending',
+  current_date - 3,
+  'Seeded fraud demo for owner Alerts'
+)
+on conflict (id) do update set amount = excluded.amount, status = 'pending';
+
+update public.invoices
+set amount_paid = net_amount_due + 12500.00,
+    notes = case
+      when notes like '%DEMO FRAUD — amount_paid exceeds net due%' then notes
+      else coalesce(notes, '') || ' | DEMO FRAUD — amount_paid exceeds net due'
+    end,
+    status = 'paid'
+where invoice_number = 'INV-02-1'
+  and contract_id = 'a0000000-0000-4000-8000-000000000002';

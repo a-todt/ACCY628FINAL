@@ -40,7 +40,15 @@ import { ExpandableChart } from "@/components/ExpandableChart";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
-import { buildAlertsForRole, type AlertItem } from "@/lib/alerts";
+import {
+  buildAlertsForRole,
+  alertBadgeClass,
+  alertBadgeLabel,
+  alertRowClass,
+  alertTitleClass,
+  alertDetailClass,
+  type AlertItem,
+} from "@/lib/alerts";
 import { withoutDismissedAlerts } from "@/lib/dismissedAlerts";
 import { CHART_COLORS } from "@/lib/chartColors";
 import { chartPanelHeight, panesForRole, type DashboardLayoutPrefs } from "@/lib/dashboardLayout";
@@ -395,33 +403,20 @@ function DashboardAlertsPreview({
 }
 
 function AlertPreviewRow({ alert }: { alert: AlertItem }) {
-  const badgeLabel =
-    alert.category === "fraud"
-      ? "Fraud"
-      : alert.category === "invoice" && alert.severity === "critical"
-        ? "Overdue"
-        : labelize(alert.severity);
-
   return (
-    <li>
+    <li className={alertRowClass(alert)}>
       <Link
         href={alert.href}
         className="flex items-start gap-3 py-2.5 hover:bg-base-200/60 px-1 rounded-lg transition-colors"
       >
-        <span
-          className={`badge badge-sm mt-0.5 ${
-            alert.severity === "critical"
-              ? "badge-error"
-              : alert.severity === "warning"
-                ? "badge-warning"
-                : "badge-info"
-          }`}
-        >
-          {badgeLabel}
+        <span className={`badge mt-0.5 ${alertBadgeClass(alert, "sm")}`}>
+          {alertBadgeLabel(alert)}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium leading-tight text-sm">{alert.title}</p>
-          <p className="text-xs opacity-70 mt-0.5 line-clamp-1">{alert.detail}</p>
+          <p className={`font-medium leading-tight text-sm ${alertTitleClass(alert)}`}>
+            {alert.title}
+          </p>
+          <p className={`text-xs mt-0.5 line-clamp-1 ${alertDetailClass(alert)}`}>{alert.detail}</p>
           <p className="text-xs text-primary mt-0.5 line-clamp-1">{alert.action}</p>
         </div>
         <ChevronRight className="h-4 w-4 opacity-40 shrink-0 mt-0.5" />
