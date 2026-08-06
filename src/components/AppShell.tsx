@@ -18,6 +18,7 @@ import { NailItLogo } from "@/components/NailItLogo";
 import { AlertsBell } from "@/components/AlertsBell";
 import { AccessGate } from "@/components/AccessGate";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import { MessagesInboxButton } from "@/components/MessagesInboxButton";
 import { UserMenu } from "@/components/UserMenu";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ProjectFavoritesProvider } from "@/hooks/useProjectFavorites";
@@ -123,6 +124,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         </div>
         {!locked ? <GlobalSearch /> : <div className="flex-1" />}
         <div className="ml-auto flex-none flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {!locked ? <MessagesInboxButton /> : null}
           {!locked ? <AlertsBell /> : null}
           <UserMenu />
         </div>
