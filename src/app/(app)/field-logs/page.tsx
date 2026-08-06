@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode, Fragment } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Building2, ClipboardList, ExternalLink, Paperclip, Plus, Trash2 } from "lucide-react";
+import { Building2, ClipboardList, ExternalLink, Paperclip, Pencil, Plus, Trash2 } from "lucide-react";
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
 import {
@@ -86,6 +86,7 @@ export default function FieldLogsPage() {
     canManage || effectiveRole === "admin" || effectiveRole === "owner";
 
   const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -176,10 +177,34 @@ export default function FieldLogsPage() {
 
   const canActOnLog = (log: FieldLog) => {
     if (!canManage || !user) return false;
-    if (effectiveRole === "admin" || effectiveRole === "owner" || effectiveRole === "project_manager") {
-      return true;
-    }
+    if (effectiveRole === "admin") return true;
     return log.user_id === user.id;
+  };
+
+  const startEdit = (log: FieldLog) => {
+    setFormError(null);
+    setSuccess(null);
+    setEditingId(log.id);
+    setForm({
+      contract_id: log.contract_id ?? "",
+      log_date: log.log_date ?? "",
+      work_performed: log.work_performed ?? "",
+      hours_worked: log.hours_worked != null ? String(log.hours_worked) : "",
+      workers_on_site: log.workers_on_site != null ? String(log.workers_on_site) : "",
+      weather_conditions: log.weather_conditions ?? "",
+      equipment_used: log.equipment_used ?? "",
+      materials_used: log.materials_used ?? "",
+      issues_or_delays: log.issues_or_delays ?? "",
+      notes: log.notes ?? "",
+    });
+    setShowForm(true);
+  };
+
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFormError(null);
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -201,7 +226,6 @@ export default function FieldLogsPage() {
       const supabase = createClient();
       const payload = {
         contract_id: form.contract_id,
-        user_id: user.id,
         log_date: form.log_date || null,
         work_performed: form.work_performed.trim() || null,
         hours_worked: form.hours_worked ? Number(form.hours_worked) : null,
@@ -212,23 +236,43 @@ export default function FieldLogsPage() {
         issues_or_delays: form.issues_or_delays.trim() || null,
         notes: form.notes.trim() || null,
       };
-      const { data, error: insertError } = await supabase
-        .from("field_logs")
-        .insert(payload)
-        .select("id")
-        .single();
-      if (insertError) throw insertError;
 
-      await writeAuditLog("field_log_created", "field_log", data?.id, {
-        contract_id: form.contract_id,
-        work_performed: payload.work_performed,
-        log_date: payload.log_date,
-      });
+      if (editingId) {
+        const { error: updateError } = await supabase
+          .from("field_logs")
+          .update(payload)
+          .eq("id", editingId);
+        if (updateError) throw updateError;
 
-      setSuccess("Field log submitted successfully. You can attach files below.");
+        await writeAuditLog("field_log_updated", "field_log", editingId, {
+          contract_id: form.contract_id,
+          work_performed: payload.work_performed,
+          log_date: payload.log_date,
+        });
+
+        setSuccess("Field log updated.");
+        setExpandedLogId(editingId);
+      } else {
+        const { data, error: insertError } = await supabase
+          .from("field_logs")
+          .insert({ ...payload, user_id: user.id })
+          .select("id")
+          .single();
+        if (insertError) throw insertError;
+
+        await writeAuditLog("field_log_created", "field_log", data?.id, {
+          contract_id: form.contract_id,
+          work_performed: payload.work_performed,
+          log_date: payload.log_date,
+        });
+
+        setSuccess("Field log submitted successfully. You can attach files below.");
+        if (data?.id) setExpandedLogId(data.id);
+      }
+
       setForm(EMPTY_FORM);
+      setEditingId(null);
       setShowForm(false);
-      if (data?.id) setExpandedLogId(data.id);
       setLogRefreshKey((k) => k + 1);
       await refresh();
     } catch (err) {
@@ -284,10 +328,25 @@ export default function FieldLogsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Field Logs"
-        subtitle="Daily site activity across your projects."
+        subtitle={
+          canCreate
+            ? "Daily site activity across your projects."
+            : "Submitted site activity across your projects (view only)."
+        }
         actions={
           canCreate ? (
-            <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                if (showForm) {
+                  cancelForm();
+                } else {
+                  setEditingId(null);
+                  setForm(EMPTY_FORM);
+                  setShowForm(true);
+                }
+              }}
+            >
               <Plus className="h-4 w-4" /> {showForm ? "Close" : "Add Field Log"}
             </button>
           ) : undefined
@@ -299,7 +358,7 @@ export default function FieldLogsPage() {
       </StickyToolbar>
 
       {canCreate && showForm ? (
-        <SectionCard title="New Field Log">
+        <SectionCard title={editingId ? "Edit Field Log" : "New Field Log"}>
           {formError ? <AlertBanner type="error">{formError}</AlertBanner> : null}
           {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
           <form onSubmit={onSubmit} className="mt-4 space-y-4">
@@ -310,6 +369,7 @@ export default function FieldLogsPage() {
                   value={form.contract_id}
                   onChange={(e) => updateField("contract_id", e.target.value)}
                   required
+                  disabled={Boolean(editingId)}
                 >
                   <option value="">Select a project…</option>
                   {contracts.map((contract) => (
@@ -408,9 +468,12 @@ export default function FieldLogsPage() {
               </FormField>
             </div>
             <div className="flex justify-end gap-2">
+              <button type="button" className="btn btn-ghost" onClick={cancelForm} disabled={saving}>
+                Cancel
+              </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? <span className="loading loading-spinner loading-sm" /> : null}
-                Save Field Log
+                {editingId ? "Save Changes" : "Save Field Log"}
               </button>
             </div>
           </form>
@@ -443,14 +506,14 @@ export default function FieldLogsPage() {
               <colgroup>
                 <col className="w-[7rem]" />
                 <col className="w-[14%]" />
-                <col className="w-[11%] hidden xl:table-column" />
+                <col className="w-[11%]" />
                 <col />
                 <col className="w-[5.5rem]" />
                 <col className="w-[5rem] hidden xl:table-column" />
                 <col className="w-[7rem] hidden xl:table-column" />
                 <col className="w-[12%] hidden xl:table-column" />
                 <col className="w-[3.5rem]" />
-                {canManage ? <col className="w-[3.5rem]" /> : null}
+                {canManage ? <col className="w-[5rem]" /> : null}
               </colgroup>
               <thead>
                 <tr className="bg-base-200/80">
@@ -479,11 +542,10 @@ export default function FieldLogsPage() {
                     sortActive={sortKey === "submitter"}
                     sortDir={sortDir}
                     onSort={() => onSort("submitter")}
-                    className="hidden xl:table-cell"
                   />
                   <th className="align-middle px-1 text-center">Work Performed</th>
                   <ColumnSortHeader
-                    label="Est. Hours"
+                    label="Hours"
                     sortActive={sortKey === "hours"}
                     sortDir={sortDir}
                     onSort={() => onSort("hours")}
@@ -536,7 +598,7 @@ export default function FieldLogsPage() {
                         )}
                       </td>
                       <td
-                        className="truncate px-1 text-center hidden xl:table-cell"
+                        className="truncate px-1 text-center"
                         title={submitter}
                       >
                         {profile ? (
@@ -590,15 +652,26 @@ export default function FieldLogsPage() {
                       {canManage ? (
                         <td className="px-1 text-center">
                           {canActOnLog(log) ? (
-                            <button
-                              type="button"
-                              className="btn btn-ghost h-6 min-h-6 gap-0 px-1 text-error"
-                              title="Delete entry"
-                              disabled={busyId === log.id}
-                              onClick={() => void deleteLog(log)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            <div className="inline-flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                className="btn btn-ghost h-6 min-h-6 gap-0 px-1"
+                                title="Edit entry"
+                                disabled={busyId === log.id}
+                                onClick={() => startEdit(log)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost h-6 min-h-6 gap-0 px-1 text-error"
+                                title="Delete entry"
+                                disabled={busyId === log.id}
+                                onClick={() => void deleteLog(log)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           ) : (
                             "—"
                           )}

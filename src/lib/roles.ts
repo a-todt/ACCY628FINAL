@@ -73,7 +73,12 @@ const FULL_ACCESS: RolePermissions = {
  */
 export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: { ...FULL_ACCESS },
-  owner: { ...FULL_ACCESS },
+  owner: {
+    ...FULL_ACCESS,
+    // Owners review submitted field logs but do not create or edit them.
+    createFieldLogs: false,
+    manageFieldLogEntries: false,
+  },
   project_manager: {
     manageCompany: false,
     manageRoles: false,
@@ -84,8 +89,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     approveChangeOrders: true,
     manageSubcontractors: true,
     enterCosts: true,
-    createFieldLogs: true,
-    manageFieldLogEntries: true,
+    createFieldLogs: false,
+    manageFieldLogEntries: false,
     viewCosts: true,
     viewReports: true,
     viewAuditLog: false,
