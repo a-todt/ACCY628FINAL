@@ -6,6 +6,7 @@ import { Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { RevenueRecognitionDashboard } from "@/components/RevenueRecognitionDashboard";
 import {
+  ColumnAutocompleteHeader,
   ColumnSortHeader,
   type ColumnSortDir,
 } from "@/components/ColumnAutocompleteHeader";
@@ -86,6 +87,7 @@ export default function WIPSchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<ColumnSortDir>("asc");
+  const [projectFilter, setProjectFilter] = useState("");
 
   const allowed = canViewCosts(effectiveRole);
 
@@ -206,8 +208,27 @@ export default function WIPSchedulePage() {
     [projects, costsByProject, billedByProject, retainageByProject]
   );
 
+  const projectNameOptions = useMemo(() => {
+    const names = rows
+      .map(({ project }) => colStr(project, P.name).trim())
+      .filter(Boolean);
+    return Array.from(new Set(names)).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    const q = projectFilter.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(({ project }) => {
+      const name = colStr(project, P.name).toLowerCase();
+      const client = colStr(project, P.clientName).toLowerCase();
+      return name.includes(q) || client.includes(q);
+    });
+  }, [rows, projectFilter]);
+
   const sortedRows = useMemo(() => {
-    const next = [...rows];
+    const next = [...filteredRows];
     next.sort((a, b) => {
       switch (sortKey) {
         case "health":
@@ -253,10 +274,10 @@ export default function WIPSchedulePage() {
       }
     });
     return next;
-  }, [rows, sortKey, sortDir]);
+  }, [filteredRows, sortKey, sortDir]);
 
   const totals = useMemo(() => {
-    return rows.reduce(
+    return filteredRows.reduce(
       (acc, { project, calcs }) => {
         acc.contractValue += colNum(project, P.contractValue);
         acc.estimatedCost += colNum(project, P.estimatedCost);
@@ -275,7 +296,7 @@ export default function WIPSchedulePage() {
         retainageHeld: 0,
       }
     );
-  }, [rows]);
+  }, [filteredRows]);
 
   const totalsCompletion =
     totals.estimatedCost > 0
@@ -387,8 +408,13 @@ export default function WIPSchedulePage() {
                   sortDir={sortDir}
                   onSort={() => onSort("health")}
                 />
-                <ColumnSortHeader
+                <ColumnAutocompleteHeader
                   label="Project Name"
+                  listId="wip-filter-project"
+                  value={projectFilter}
+                  onChange={setProjectFilter}
+                  options={projectNameOptions}
+                  placeholder="Search…"
                   sortActive={sortKey === "name"}
                   sortDir={sortDir}
                   onSort={() => onSort("name")}
@@ -468,7 +494,14 @@ export default function WIPSchedulePage() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.map(({ project, projectId, calcs, health }) => (
+              {sortedRows.length === 0 ? (
+                <tr>
+                  <td colSpan={13} className="text-center py-8 opacity-60">
+                    No projects match “{projectFilter.trim()}”.
+                  </td>
+                </tr>
+              ) : (
+                sortedRows.map(({ project, projectId, calcs, health }) => (
                 <tr key={projectId} className="hover:bg-base-200/50">
                   <td>{healthBadge(health)}</td>
                   <td className="font-medium whitespace-nowrap">{colStr(project, P.name)}</td>
@@ -537,7 +570,8 @@ export default function WIPSchedulePage() {
                     {percent(calcs.projectedMargin / 100)}
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
             <tfoot>
               <tr className="font-semibold bg-base-200">
