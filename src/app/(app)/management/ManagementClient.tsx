@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { Pencil, Plus, Users, ClipboardList, Building2, ShieldAlert } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Users,
+  ClipboardList,
+  Building2,
+  ShieldAlert,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminData } from "@/hooks/useAdminData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
@@ -119,6 +128,8 @@ export default function ManagementPage() {
   const [subTradeFilter, setSubTradeFilter] = useState("");
   const [subSortKey, setSubSortKey] = useState<SubSortKey>("company");
   const [subSortDir, setSubSortDir] = useState<ColumnSortDir>("asc");
+  const [clientsSectionOpen, setClientsSectionOpen] = useState(false);
+  const [subsSectionOpen, setSubsSectionOpen] = useState(false);
 
   const staffProfiles = useMemo(
     () =>
@@ -2179,208 +2190,243 @@ export default function ManagementPage() {
           <SectionCard
             title="Client Project Invites"
             actions={
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => setAddingCustomer(true)}
-              >
-                <Plus className="h-4 w-4" />
-                Invite Client
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setClientsSectionOpen((open) => !open)}
+                  aria-expanded={clientsSectionOpen}
+                  aria-label={clientsSectionOpen ? "Collapse client invites" : "Expand client invites"}
+                >
+                  {clientsSectionOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  {clientsSectionOpen ? "Collapse" : "Expand"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setAddingCustomer(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Invite Client
+                </button>
+              </div>
             }
           >
-            {admin.customers.length === 0 ? (
-              <EmptyState title="No client invites" message="Invite a client to a specific project." />
-            ) : (
-              <div className="w-full min-w-0 overflow-hidden">
-                <table className="table table-xs table-fixed w-full text-[11px]">
-                  <colgroup>
-                    <col className="w-[14%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[16%]" />
-                    <col className="w-[15%]" />
-                    <col className="w-[11%]" />
-                    <col className="w-[9%]" />
-                    <col className="w-[12%]" />
-                    <col className="w-[7%]" />
-                  </colgroup>
-                  <thead>
-                    <tr className="bg-base-200/80">
-                      <ColumnAutocompleteHeader
-                        label="Project"
-                        listId="client-filter-project"
-                        value={clientProjectFilter}
-                        onChange={setClientProjectFilter}
-                        options={clientProjectOptions}
-                        sortActive={clientSortKey === "project"}
-                        sortDir={clientSortDir}
-                        onSort={() => onClientSort("project")}
-                      />
-                      <ColumnAutocompleteHeader
-                        label="Client"
-                        listId="client-filter-name"
-                        value={clientNameFilter}
-                        onChange={setClientNameFilter}
-                        options={clientNameOptions}
-                        sortActive={clientSortKey === "client"}
-                        sortDir={clientSortDir}
-                        onSort={() => onClientSort("client")}
-                      />
-                      <ColumnAutocompleteHeader
-                        label="Contact"
-                        listId="client-filter-email"
-                        value={clientEmailFilter}
-                        onChange={setClientEmailFilter}
-                        options={clientEmailOptions}
-                        placeholder="Search email…"
-                        sortActive={clientSortKey === "contact"}
-                        sortDir={clientSortDir}
-                        onSort={() => onClientSort("contact")}
-                      />
-                      <ColumnSortHeader
-                        label="Billing Address"
-                        sortActive={clientSortKey === "billing"}
-                        sortDir={clientSortDir}
-                        onSort={() => onClientSort("billing")}
-                      />
-                      <ColumnSortHeader
-                        label="Client ID"
-                        sortActive={clientSortKey === "client_id"}
-                        sortDir={clientSortDir}
-                        onSort={() => onClientSort("client_id")}
-                      />
-                      <ColumnSortHeader
-                        label="Status"
-                        sortActive={clientSortKey === "status"}
-                        sortDir={clientSortDir}
-                        onSort={() => onClientSort("status")}
-                      />
-                      <th className="px-1 text-center align-middle">Access</th>
-                      <th className="px-1 text-center align-middle">Edit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCustomers.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="py-10 text-center opacity-60">
-                          No clients match the column filters.
-                        </td>
+            {clientsSectionOpen ? (
+              admin.customers.length === 0 ? (
+                <EmptyState title="No client invites" message="Invite a client to a specific project." />
+              ) : (
+                <div className="w-full min-w-0 overflow-hidden">
+                  <table className="table table-xs table-fixed w-full text-[11px]">
+                    <colgroup>
+                      <col className="w-[14%]" />
+                      <col className="w-[16%]" />
+                      <col className="w-[16%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[11%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[7%]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="bg-base-200/80">
+                        <ColumnAutocompleteHeader
+                          label="Project"
+                          listId="client-filter-project"
+                          value={clientProjectFilter}
+                          onChange={setClientProjectFilter}
+                          options={clientProjectOptions}
+                          sortActive={clientSortKey === "project"}
+                          sortDir={clientSortDir}
+                          onSort={() => onClientSort("project")}
+                        />
+                        <ColumnAutocompleteHeader
+                          label="Client"
+                          listId="client-filter-name"
+                          value={clientNameFilter}
+                          onChange={setClientNameFilter}
+                          options={clientNameOptions}
+                          sortActive={clientSortKey === "client"}
+                          sortDir={clientSortDir}
+                          onSort={() => onClientSort("client")}
+                        />
+                        <ColumnAutocompleteHeader
+                          label="Contact"
+                          listId="client-filter-email"
+                          value={clientEmailFilter}
+                          onChange={setClientEmailFilter}
+                          options={clientEmailOptions}
+                          placeholder="Search email…"
+                          sortActive={clientSortKey === "contact"}
+                          sortDir={clientSortDir}
+                          onSort={() => onClientSort("contact")}
+                        />
+                        <ColumnSortHeader
+                          label="Billing Address"
+                          sortActive={clientSortKey === "billing"}
+                          sortDir={clientSortDir}
+                          onSort={() => onClientSort("billing")}
+                        />
+                        <ColumnSortHeader
+                          label="Client ID"
+                          sortActive={clientSortKey === "client_id"}
+                          sortDir={clientSortDir}
+                          onSort={() => onClientSort("client_id")}
+                        />
+                        <ColumnSortHeader
+                          label="Status"
+                          sortActive={clientSortKey === "status"}
+                          sortDir={clientSortDir}
+                          onSort={() => onClientSort("status")}
+                        />
+                        <th className="px-1 text-center align-middle">Access</th>
+                        <th className="px-1 text-center align-middle">Edit</th>
                       </tr>
-                    ) : (
-                      filteredCustomers.map((customer) => (
-                        <tr key={customer.id} className="hover:bg-base-200/60">
-                          <td className="px-1 break-words">
-                            {customer.contracts?.contract_name ||
-                              (customer.contract_id
-                                ? "Linked project"
-                                : customer.user_id
-                                  ? "Prospect (no contract yet)"
-                                  : "No project")}
+                    </thead>
+                    <tbody>
+                      {filteredCustomers.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-10 text-center opacity-60">
+                            No clients match the column filters.
                           </td>
-                          <td className="px-1 break-words">
-                            <div className="font-medium">{customer.company_name}</div>
-                            <div className="opacity-60">{customer.contact_name || "—"}</div>
-                            {customer.secondary_name ? (
-                              <div className="opacity-60">Partner: {customer.secondary_name}</div>
-                            ) : null}
-                          </td>
-                          <td className="px-1 break-all">
-                            <div>{customer.contact_email || "—"}</div>
-                            <div className="opacity-60">{customer.contact_phone || "—"}</div>
-                          </td>
-                          <td className="px-1 break-words">
-                            <div>{customer.billing_address || "—"}</div>
-                            <div className="opacity-60">
-                              {[customer.city, customer.state].filter(Boolean).join(", ") || "—"}
-                            </div>
-                          </td>
-                          <td className="px-1 break-all font-mono">{customer.client_id || "—"}</td>
-                          <td className="px-1 text-center">
-                            <span
-                              className={`badge badge-xs h-auto whitespace-normal text-center ${
-                                customer.user_id && !customer.contract_id
-                                  ? "badge-info"
+                        </tr>
+                      ) : (
+                        filteredCustomers.map((customer) => (
+                          <tr key={customer.id} className="hover:bg-base-200/60">
+                            <td className="px-1 break-words">
+                              {customer.contracts?.contract_name ||
+                                (customer.contract_id
+                                  ? "Linked project"
+                                  : customer.user_id
+                                    ? "Prospect (no contract yet)"
+                                    : "No project")}
+                            </td>
+                            <td className="px-1 break-words">
+                              <div className="font-medium">{customer.company_name}</div>
+                              <div className="opacity-60">{customer.contact_name || "—"}</div>
+                              {customer.secondary_name ? (
+                                <div className="opacity-60">Partner: {customer.secondary_name}</div>
+                              ) : null}
+                            </td>
+                            <td className="px-1 break-all">
+                              <div>{customer.contact_email || "—"}</div>
+                              <div className="opacity-60">{customer.contact_phone || "—"}</div>
+                            </td>
+                            <td className="px-1 break-words">
+                              <div>{customer.billing_address || "—"}</div>
+                              <div className="opacity-60">
+                                {[customer.city, customer.state].filter(Boolean).join(", ") || "—"}
+                              </div>
+                            </td>
+                            <td className="px-1 break-all font-mono">{customer.client_id || "—"}</td>
+                            <td className="px-1 text-center">
+                              <span
+                                className={`badge badge-xs h-auto whitespace-normal text-center ${
+                                  customer.user_id && !customer.contract_id
+                                    ? "badge-info"
+                                    : customer.claimed_at || customer.user_id
+                                      ? "badge-success"
+                                      : "badge-warning"
+                                }`}
+                              >
+                                {customer.user_id && !customer.contract_id
+                                  ? "Prospect"
                                   : customer.claimed_at || customer.user_id
-                                    ? "badge-success"
-                                    : "badge-warning"
-                              }`}
-                            >
-                              {customer.user_id && !customer.contract_id
-                                ? "Prospect"
-                                : customer.claimed_at || customer.user_id
-                                  ? "Linked"
-                                  : "Pending setup"}
-                            </span>
-                            {customer.is_active === false ? (
-                              <div className="mt-1 text-error">Inactive</div>
-                            ) : null}
-                          </td>
-                          <td className="px-1">
-                            <div className="flex flex-wrap justify-center gap-0.5">
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs h-6 min-h-6 px-1"
-                                disabled={busy}
-                                onClick={() => onProvisionCustomer(customer.id)}
-                              >
-                                New ID
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs h-6 min-h-6 px-1"
-                                disabled={busy || !customer.contact_email}
-                                onClick={() => onEmailCustomerAccess(customer.id)}
-                                title={customer.contact_email ? "Email Client ID" : "Add email first"}
-                              >
-                                Email ID
-                              </button>
-                              {customer.contact_email ? (
+                                    ? "Linked"
+                                    : "Pending setup"}
+                              </span>
+                              {customer.is_active === false ? (
+                                <div className="mt-1 text-error">Inactive</div>
+                              ) : null}
+                            </td>
+                            <td className="px-1">
+                              <div className="flex flex-wrap justify-center gap-0.5">
                                 <button
                                   type="button"
                                   className="btn btn-ghost btn-xs h-6 min-h-6 px-1"
                                   disabled={busy}
-                                  onClick={() => onSendPasswordReset(customer.contact_email)}
+                                  onClick={() => onProvisionCustomer(customer.id)}
                                 >
-                                  Reset pw
+                                  New ID
                                 </button>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className="px-1 text-center">
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-xs h-7 min-h-7 px-1"
-                              onClick={() => setEditingCustomer(customer)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                              Edit
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs h-6 min-h-6 px-1"
+                                  disabled={busy || !customer.contact_email}
+                                  onClick={() => onEmailCustomerAccess(customer.id)}
+                                  title={customer.contact_email ? "Email Client ID" : "Add email first"}
+                                >
+                                  Email ID
+                                </button>
+                                {customer.contact_email ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs h-6 min-h-6 px-1"
+                                    disabled={busy}
+                                    onClick={() => onSendPasswordReset(customer.contact_email)}
+                                  >
+                                    Reset pw
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="px-1 text-center">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs h-7 min-h-7 px-1"
+                                onClick={() => setEditingCustomer(customer)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : null}
           </SectionCard>
 
           <SectionCard
             title="Subcontractors"
             actions={
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => setAddingSubcontractor(true)}
-              >
-                <Plus className="h-4 w-4" />
-                Add Subcontractor
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setSubsSectionOpen((open) => !open)}
+                  aria-expanded={subsSectionOpen}
+                  aria-label={subsSectionOpen ? "Collapse subcontractors" : "Expand subcontractors"}
+                >
+                  {subsSectionOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  {subsSectionOpen ? "Collapse" : "Expand"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setAddingSubcontractor(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Subcontractor
+                </button>
+              </div>
             }
           >
-            {admin.subcontractors.length === 0 ? (
-              <EmptyState title="No subcontractors" message="Add a subcontractor to a project." />
-            ) : (
+            {subsSectionOpen ? (
+              admin.subcontractors.length === 0 ? (
+                <EmptyState title="No subcontractors" message="Add a subcontractor to a project." />
+              ) : (
               <div className="w-full min-w-0 overflow-hidden">
                 <table className="table table-xs table-fixed w-full text-[11px]">
                   <colgroup>
@@ -2506,7 +2552,8 @@ export default function ManagementPage() {
                 </tbody>
               </table>
               </div>
-            )}
+            )
+            ) : null}
           </SectionCard>
 
           {admin.invites.length > 0 ? (
