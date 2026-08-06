@@ -422,3 +422,30 @@ export interface Attachment {
   uploaded_by: string | null;
   created_at: string;
 }
+
+export interface MessageThread {
+  id: string;
+  contract_id: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  contracts?: { contract_name: string; client_name: string | null } | null;
+}
+
+export interface MessageThreadParticipant {
+  thread_id: string;
+  user_id: string;
+  last_read_at: string | null;
+  created_at: string;
+}
+
+export interface Message {
+  id: string;
+  thread_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+  /** Role the sender was acting as when posting (supports demo role preview). */
+  sender_role?: UserRole | null;
+  user_profiles?: { full_name: string | null; email: string | null; role: UserRole } | null;
+}

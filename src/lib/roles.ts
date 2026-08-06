@@ -277,6 +277,11 @@ export function canViewFieldLogs(role: UserRole): boolean {
   return hasPermission(role, "viewFieldLogs");
 }
 
+/** Client ↔ PM messaging hub (inbox icon). Admin, owner, field, and subs are excluded. */
+export function canUseMessaging(role: UserRole): boolean {
+  return role === "client" || role === "project_manager";
+}
+
 export type NavCategoryId =
   | "favorites"
   | "dashboard"
