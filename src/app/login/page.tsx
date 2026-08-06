@@ -11,9 +11,12 @@ import { passwordResetRedirectTo } from "@/lib/authUrls";
 import { loadUserPreferences } from "@/lib/userPreferences";
 import type { UserRole } from "@/lib/types";
 
-type Mode = "login" | "signup" | "forgot";
+type Mode = "login" | "signup" | "client_signup" | "forgot";
 
-const SIGNUP_ROLES: UserRole[] = COMPANY_ROLES.filter((r) => r !== "owner");
+/** Staff / sub signup only — clients use the separate “Register as a client” flow. */
+const SIGNUP_ROLES: UserRole[] = COMPANY_ROLES.filter(
+  (r) => r !== "owner" && r !== "client"
+);
 
 const FEATURES = [
   "Built specifically for general contractors",
@@ -53,6 +56,9 @@ function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const isSignup = mode === "signup" || mode === "client_signup";
+  const isClientSignup = mode === "client_signup";
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", "jobsite");
   }, []);
@@ -61,6 +67,14 @@ function LoginPage() {
     const fromLink = searchParams.get("error");
     if (fromLink) setError(fromLink);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (mode === "client_signup") {
+      setAccountType("client");
+    } else if (mode === "signup") {
+      setAccountType((prev) => (prev === "client" ? "field_supervisor" : prev));
+    }
+  }, [mode]);
 
   const looksLikeClientId = (value: string) => {
     const v = value.trim();
@@ -120,10 +134,12 @@ function LoginPage() {
         return;
       }
 
+      const signupRole: UserRole = isClientSignup ? "client" : accountType;
+
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName, intended_role: accountType } },
+        options: { data: { full_name: fullName, intended_role: signupRole } },
       });
       if (signUpError) throw signUpError;
 
@@ -133,8 +149,8 @@ function LoginPage() {
           .from("user_profiles")
           .update({
             full_name: fullName.trim() || null,
-            secondary_name: secondaryName.trim() || null,
-            role: accountType,
+            secondary_name: isClientSignup ? null : secondaryName.trim() || null,
+            role: signupRole,
             onboarding_complete: false,
             email,
           })
@@ -145,7 +161,7 @@ function LoginPage() {
       }
 
       let clientNote = "";
-      if (accountType === "client") {
+      if (signupRole === "client") {
         if (data.session) {
           try {
             const prospect = await registerClientProspect({
@@ -168,9 +184,9 @@ function LoginPage() {
       }
 
       setMessage(
-        accountType === "client"
+        signupRole === "client"
           ? `Account created.${clientNote}`
-          : accountType === "subcontractor"
+          : signupRole === "subcontractor"
             ? "Account created. Sign in, then enter your invite code from your GC."
             : "Account created. Sign in — your Owner must assign you to a project before you can work."
       );
@@ -232,16 +248,20 @@ function LoginPage() {
                 <h2 className="text-2xl font-display font-semibold uppercase tracking-wide">
                   {mode === "login"
                     ? "Sign in"
-                    : mode === "signup"
-                      ? "Create account"
-                      : "Reset password"}
+                    : mode === "client_signup"
+                      ? "Register as a client"
+                      : mode === "signup"
+                        ? "Create account"
+                        : "Reset password"}
                 </h2>
                 <p className="text-sm opacity-65 mt-0.5">
                   {mode === "forgot"
                     ? "Reset via email or Client ID"
                     : mode === "login"
                       ? "Use your email or Client ID"
-                      : "Secure access for project stakeholders"}
+                      : mode === "client_signup"
+                        ? "Tell us about your project — no invite needed"
+                        : "Staff and subcontractor access"}
                 </p>
               </div>
 
@@ -249,12 +269,12 @@ function LoginPage() {
               {message ? <AlertBanner type="success">{message}</AlertBanner> : null}
 
               <form className="space-y-4" onSubmit={onSubmit}>
-                {mode === "signup" ? (
+                {isSignup ? (
                   <>
                     <FormField
                       label="Full name or business name"
                       hint={
-                        accountType === "client"
+                        isClientSignup
                           ? "Your name as you’d like our team to see it."
                           : "Use your personal name or business name — whichever your GC listed on the project invite."
                       }
@@ -268,7 +288,7 @@ function LoginPage() {
                         placeholder="Joe Durrett or Acme LLC"
                       />
                     </FormField>
-                    {accountType === "client" ? (
+                    {isClientSignup ? (
                       <>
                         <FormField
                           label="Company / organization (optional)"
@@ -303,34 +323,36 @@ function LoginPage() {
                         </FormField>
                       </>
                     ) : (
-                      <FormField
-                        label="Spouse / partner name (optional)"
-                        hint="If your GC listed a spouse/partner on this project, either of you can match and get that project's Client ID."
-                      >
-                        <input
-                          className="input input-bordered"
-                          value={secondaryName}
-                          onChange={(e) => setSecondaryName(e.target.value)}
-                          autoComplete="nickname"
-                        />
-                      </FormField>
+                      <>
+                        <FormField
+                          label="Spouse / partner name (optional)"
+                          hint="If your GC listed a spouse/partner on this project, either of you can match and get that project's Client ID."
+                        >
+                          <input
+                            className="input input-bordered"
+                            value={secondaryName}
+                            onChange={(e) => setSecondaryName(e.target.value)}
+                            autoComplete="nickname"
+                          />
+                        </FormField>
+                        <FormField
+                          label="Account type"
+                          hint="Subcontractors need an invite code after sign-in. PMs and field staff wait for project assignment."
+                        >
+                          <select
+                            className="select select-bordered"
+                            value={accountType}
+                            onChange={(e) => setAccountType(e.target.value as UserRole)}
+                          >
+                            {SIGNUP_ROLES.map((role) => (
+                              <option key={role} value={role}>
+                                {ROLE_LABELS[role]}
+                              </option>
+                            ))}
+                          </select>
+                        </FormField>
+                      </>
                     )}
-                    <FormField
-                      label="Account type"
-                      hint="Clients can register without a prior invite, then message us. Subcontractors need an invite code after sign-in."
-                    >
-                      <select
-                        className="select select-bordered"
-                        value={accountType}
-                        onChange={(e) => setAccountType(e.target.value as UserRole)}
-                      >
-                        {SIGNUP_ROLES.map((role) => (
-                          <option key={role} value={role}>
-                            {ROLE_LABELS[role]}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
                     <FormField label="Email">
                       <input
                         type="email"
@@ -378,7 +400,13 @@ function LoginPage() {
 
                 <button className="btn btn-primary w-full" disabled={loading}>
                   {loading ? <span className="loading loading-spinner loading-sm" /> : null}
-                  {mode === "login" ? "Sign in" : mode === "signup" ? "Sign up" : "Send reset link"}
+                  {mode === "login"
+                    ? "Sign in"
+                    : mode === "client_signup"
+                      ? "Register as a client"
+                      : mode === "signup"
+                        ? "Sign up"
+                        : "Send reset link"}
                 </button>
               </form>
 
@@ -401,12 +429,13 @@ function LoginPage() {
               <p className="text-sm text-center opacity-80">
                 {mode === "login" ? (
                   <>
-                    Need an account?{" "}
+                    Need a staff account?{" "}
                     <button
                       className="link link-primary"
                       type="button"
                       onClick={() => {
                         setMode("signup");
+                        setAccountType("field_supervisor");
                         setError(null);
                         setMessage(null);
                       }}
@@ -431,6 +460,26 @@ function LoginPage() {
                   </>
                 )}
               </p>
+
+              {mode === "login" || mode === "signup" ? (
+                <div className="text-center pt-1 border-t border-base-300">
+                  <button
+                    type="button"
+                    className="link link-primary text-sm font-medium"
+                    onClick={() => {
+                      setMode("client_signup");
+                      setAccountType("client");
+                      setError(null);
+                      setMessage(null);
+                    }}
+                  >
+                    Register as a client
+                  </button>
+                  <p className="text-xs opacity-60 mt-1">
+                    Request a project with us — no Client ID needed
+                  </p>
+                </div>
+              ) : null}
 
               <div className="bg-base-200/80 rounded-box border border-base-300 p-3 text-xs space-y-1">
                 <p className="font-semibold tracking-tight">Demo logins (password: Demo123!)</p>
