@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProjectSelect } from "@/components/ProjectSelect";
 import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
-import { moneyExact } from "@/lib/metrics";
-import { canEnterCosts, canViewCosts } from "@/lib/roles";
+import { moneyExact, labelize } from "@/lib/metrics";
+import { canEnterCosts, canViewCosts, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import { WIP_DB, colNum, colStr, selectList, type DbRow } from "@/lib/wipSchema";
 
@@ -398,8 +398,10 @@ export default function ProjectsPage() {
                     <tr key={id}>
                       <td className="font-medium">{colStr(p, P.name)}</td>
                       <td>
-                        <span className="badge badge-ghost badge-sm">
-                          {colStr(p, P.status, "active")}
+                        <span
+                          className={`badge badge-sm ${statusBadgeClass(colStr(p, P.status, "active"))}`}
+                        >
+                          {labelize(colStr(p, P.status, "active"))}
                         </span>
                       </td>
                       <td className="text-right">{moneyExact(colNum(p, P.contractValue))}</td>
