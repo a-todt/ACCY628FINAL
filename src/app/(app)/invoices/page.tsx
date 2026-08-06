@@ -536,7 +536,11 @@ export default function InvoicesPage() {
                     onChange={(e) => updateInvoiceField("retainage_percent", e.target.value)}
                   />
                 </FormField>
-                <FormField stacked label="Retainage Amount">
+                <FormField
+                  stacked
+                  label="Retainage Amount"
+                  hint="ASC 606 retainage receivable (contract asset), not current AR."
+                >
                   <input
                     className="input input-bordered w-full"
                     value={money(computedRetainageAmount)}
@@ -544,7 +548,11 @@ export default function InvoicesPage() {
                     readOnly
                   />
                 </FormField>
-                <FormField stacked label="Net Amount Due" hint="Invoice amount less retainage withheld.">
+                <FormField
+                  stacked
+                  label="Net Amount Due"
+                  hint="Current AR — invoice amount less retainage receivable."
+                >
                   <input
                     className="input input-bordered font-medium w-full"
                     value={money(computedNetAmountDue)}

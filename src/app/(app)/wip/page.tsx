@@ -320,7 +320,7 @@ export default function WIPSchedulePage() {
         "Billed to Date": calcs.billedToDate,
         Overbilling: calcs.overbilling,
         Underbilling: calcs.underbilling,
-        "Retainage Held": calcs.retainageHeld,
+        "Retainage Receivable": calcs.retainageHeld,
         "Projected Profit": Number(calcs.projectedProfit.toFixed(2)),
         "Projected Margin %": Number(calcs.projectedMargin.toFixed(1)),
         Health: health,
@@ -335,7 +335,7 @@ export default function WIPSchedulePage() {
         "Billed to Date": totals.billedToDate,
         Overbilling: totalsOverbilling,
         Underbilling: totalsUnderbilling,
-        "Retainage Held": totals.retainageHeld,
+        "Retainage Receivable": totals.retainageHeld,
         "Projected Profit": Number(totalsProjectedProfit.toFixed(2)),
         "Projected Margin %": Number((totalsMarginPct * 100).toFixed(1)),
         Health: "",
@@ -472,7 +472,7 @@ export default function WIPSchedulePage() {
                   className="hidden xl:table-cell"
                 />
                 <ColumnSortHeader
-                  label="Retainage Held"
+                  label="Retainage Receivable"
                   sortActive={sortKey === "retainageHeld"}
                   sortDir={sortDir}
                   onSort={() => onSort("retainageHeld")}
@@ -529,7 +529,7 @@ export default function WIPSchedulePage() {
                   <td className="text-right whitespace-nowrap">{moneyExact(calcs.revenueEarned)}</td>
                   <td
                     className="text-right whitespace-nowrap"
-                    title={`Over: ${calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"} · Under: ${calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"} · Retainage: ${moneyExact(calcs.retainageHeld)}`}
+                    title={`Over: ${calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"} · Under: ${calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"} · Retainage receivable: ${moneyExact(calcs.retainageHeld)}`}
                   >
                     {moneyExact(calcs.billedToDate)}
                   </td>

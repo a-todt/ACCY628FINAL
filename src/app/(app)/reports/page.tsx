@@ -14,7 +14,7 @@ import {
 import { RetainageSummarySection } from "@/components/RetainageSummarySection";
 import { ChangeOrderSummarySection } from "@/components/ChangeOrderSummarySection";
 import { AlertBanner, PageHeader } from "@/components/ui";
-import { computeContractMetrics, daysPastDue, labelize } from "@/lib/metrics";
+import { computeContractMetrics, daysPastDue, invoiceRetainageReceivable, labelize } from "@/lib/metrics";
 import { canViewReports } from "@/lib/roles";
 
 function agingBucket(days: number): ArAgingBucket {
@@ -92,7 +92,7 @@ export default function ReportsPage() {
       contracts.map((contract) => {
         const contractInvoices = invoices.filter((i) => i.contract_id === contract.id);
         const invoiceRetainage = contractInvoices.reduce(
-          (sum, i) => sum + Number(i.retainage_amount ?? 0),
+          (sum, i) => sum + invoiceRetainageReceivable(i),
           0
         );
         const contractSubs = subcontractors.filter((s) => s.contract_id === contract.id);

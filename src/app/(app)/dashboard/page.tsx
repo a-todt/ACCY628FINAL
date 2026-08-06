@@ -456,11 +456,20 @@ function AdminDashboard({
       acc.totalBilled += metrics.totalBilled;
       acc.totalCollected += metrics.totalCollected;
       acc.outstanding += metrics.outstanding;
+      acc.retainageHeld += metrics.retainageHeld;
       acc.totalCosts += metrics.totalCosts;
       acc.grossProfit += metrics.grossProfit;
       return acc;
     },
-    { revisedValue: 0, totalBilled: 0, totalCollected: 0, outstanding: 0, totalCosts: 0, grossProfit: 0 }
+    {
+      revisedValue: 0,
+      totalBilled: 0,
+      totalCollected: 0,
+      outstanding: 0,
+      retainageHeld: 0,
+      totalCosts: 0,
+      grossProfit: 0,
+    }
   );
 
   const activeContracts = contracts.filter((c) => c.status === "active").length;
@@ -587,8 +596,16 @@ function AdminDashboard({
             compact
             title="Outstanding AR"
             value={money(totals.outstanding)}
+            hint="Net due · excludes retainage"
             tone={totals.outstanding > 0 ? "warning" : "default"}
             href="/invoices"
+          />
+          <StatCard
+            compact
+            title="Retainage Receivable"
+            value={money(totals.retainageHeld)}
+            hint="ASC 606 contract asset"
+            href="/reports"
           />
           <StatCard
             compact
@@ -1360,6 +1377,10 @@ function ClientDashboard({
   const totalInvoiced = perContract.reduce((sum, { metrics }) => sum + metrics.totalBilled, 0);
   const totalPaid = perContract.reduce((sum, { metrics }) => sum + metrics.totalCollected, 0);
   const totalOutstanding = perContract.reduce((sum, { metrics }) => sum + metrics.outstanding, 0);
+  const totalRetainageReceivable = perContract.reduce(
+    (sum, { metrics }) => sum + metrics.retainageHeld,
+    0
+  );
   const behindCount = perContract.filter((row) => row.schedule.health === "behind").length;
   const onTrackCount = perContract.filter(
     (row) =>
@@ -1383,7 +1404,7 @@ function ClientDashboard({
 
   const panes: Record<string, ReactNode> = {
     kpi_stats: (
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <StatCard
           compact
           title="Active Projects"
@@ -1412,7 +1433,15 @@ function ClientDashboard({
           compact
           title="Outstanding Balance"
           value={money(totalOutstanding)}
+          hint="Current AR · net due"
           tone={totalOutstanding > 0 ? "warning" : "default"}
+          href="/invoices"
+        />
+        <StatCard
+          compact
+          title="Retainage Receivable"
+          value={money(totalRetainageReceivable)}
+          hint="ASC 606 contract asset"
           href="/invoices"
         />
       </div>
