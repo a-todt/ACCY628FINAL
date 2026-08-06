@@ -133,6 +133,41 @@ function ContractDetailContent() {
   const contractFieldLogs = isClient ? [] : fieldLogs.filter((f) => f.contract_id === contract.id);
   const contractMilestones = milestones.filter((m) => m.contract_id === contract.id);
 
+  const milestonesSection = (
+    <SectionCard title={`Milestones (${contractMilestones.length})`}>
+      {contractMilestones.length === 0 ? (
+        <p className="text-sm opacity-60 py-4 text-center">No milestones defined yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="table table-sm">
+            <thead>
+              <tr>
+                <th>Milestone</th>
+                <th className="text-right">Value</th>
+                <th>Due Date</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contractMilestones.map((milestone) => (
+                <tr key={milestone.id}>
+                  <td>{milestone.milestone_name ?? "—"}</td>
+                  <td className="text-right">{money(milestone.milestone_value)}</td>
+                  <td className="whitespace-nowrap">{milestone.due_date ?? "—"}</td>
+                  <td>
+                    <span className={`badge badge-sm ${statusBadgeClass(milestone.status)}`}>
+                      {labelize(milestone.status)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </SectionCard>
+  );
+
   const contractRequirements = insuranceRequirements.filter((r) => r.contract_id === contract.id);
   const contractSubIds = new Set(contractSubs.map((s) => s.id));
   const contractPolicies = insurancePolicies.filter((p) => {
@@ -377,6 +412,8 @@ function ContractDetailContent() {
         ) : null}
       </SectionCard>
 
+      {isClient ? milestonesSection : null}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         {showFinancials ? (
           <>
@@ -598,38 +635,7 @@ function ContractDetailContent() {
         </SectionCard>
       ) : null}
 
-      <SectionCard title={`Milestones (${contractMilestones.length})`}>
-        {contractMilestones.length === 0 ? (
-          <p className="text-sm opacity-60 py-4 text-center">No milestones defined yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Milestone</th>
-                  <th className="text-right">Value</th>
-                  <th>Due Date</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contractMilestones.map((milestone) => (
-                  <tr key={milestone.id}>
-                    <td>{milestone.milestone_name ?? "—"}</td>
-                    <td className="text-right">{money(milestone.milestone_value)}</td>
-                    <td className="whitespace-nowrap">{milestone.due_date ?? "—"}</td>
-                    <td>
-                      <span className={`badge badge-sm ${statusBadgeClass(milestone.status)}`}>
-                        {labelize(milestone.status)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
+      {!isClient ? milestonesSection : null}
 
       {canMutate ? (
         <ActivityLogPanel
