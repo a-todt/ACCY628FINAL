@@ -97,7 +97,7 @@ export function ArAgingSection({ rows, totals }: Props) {
   }
 
   function exportPdf() {
-    downloadPdfTables("ar-aging.pdf", "GC Contract Manager — AR Aging", [
+    downloadPdfTables("ar-aging.pdf", "General Contract Management — AR Aging", [
       {
         title: "AR Aging",
         columns: ["Invoice #", "Project", "Due Date", "Bucket", "Outstanding"],

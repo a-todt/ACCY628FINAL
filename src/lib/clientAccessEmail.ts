@@ -10,11 +10,11 @@ export function buildClientAccessEmail(payload: ClientAccessEmailPayload) {
   const company = payload.companyName?.trim() || "your project";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-  const subject = `Your GC Contract Manager Client ID for ${company}`;
+  const subject = `Your General Contract Management Client ID for ${company}`;
   const text = [
     `Hi ${name},`,
     "",
-    "Your general contractor created client access for you in GC Contract Manager.",
+    "Your general contractor created client access for you in General Contract Management.",
     "",
     `Client ID: ${payload.clientId}`,
     "",
@@ -31,7 +31,7 @@ export function buildClientAccessEmail(payload: ClientAccessEmailPayload) {
     <div style="font-family:Segoe UI,Arial,sans-serif;line-height:1.5;color:#1f2937">
       <h2 style="margin:0 0 12px">Your Client ID</h2>
       <p>Hi ${escapeHtml(name)},</p>
-      <p>Your general contractor created client access for <strong>${escapeHtml(company)}</strong> in GC Contract Manager.</p>
+      <p>Your general contractor created client access for <strong>${escapeHtml(company)}</strong> in General Contract Management.</p>
       <table style="border-collapse:collapse;margin:16px 0">
         <tr><td style="padding:6px 12px;background:#f3f4f6"><strong>Client ID</strong></td><td style="padding:6px 12px;font-family:monospace">${escapeHtml(payload.clientId)}</td></tr>
       </table>
@@ -74,7 +74,7 @@ export async function sendClientAccessEmail(payload: ClientAccessEmailPayload): 
   }
 
   const from =
-    process.env.RESEND_FROM_EMAIL || "GC Contract Manager <onboarding@resend.dev>";
+    process.env.RESEND_FROM_EMAIL || "General Contract Management <onboarding@resend.dev>";
   const { subject, text, html } = buildClientAccessEmail(payload);
 
   const res = await fetch("https://api.resend.com/emails", {

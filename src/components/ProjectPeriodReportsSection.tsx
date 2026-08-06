@@ -464,7 +464,7 @@ export function ProjectPeriodReportsSection({
       wipExpenses: report.totals.wipExpenses ?? 0,
       wipBilled: report.totals.wipBilled ?? 0,
     });
-    downloadPdfTables("project-period-reports.pdf", "GC Contract Manager — Project Period Reports", [
+    downloadPdfTables("project-period-reports.pdf", "General Contract Management — Project Period Reports", [
       {
         title: "Project Period Reports",
         columns: ["Project", "Period", "Expenses", "Billed", "Collected", "Earned", "Gross Billed"],

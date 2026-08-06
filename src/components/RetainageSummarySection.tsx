@@ -79,7 +79,7 @@ export function RetainageSummarySection({ rows }: Props) {
   }
 
   function exportPdf() {
-    downloadPdfTables("retainage-summary.pdf", "GC Contract Manager — Retainage Summary", [
+    downloadPdfTables("retainage-summary.pdf", "General Contract Management — Retainage Summary", [
       {
         title: "Retainage Summary",
         columns: ["Contract", "Invoice Retainage", "Sub Retainage Est"],

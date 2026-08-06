@@ -22,7 +22,7 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nail It | GC Contract Manager",
+  title: "Nail It | General Contract Management",
   description: "Know exactly where every project stands — WIP, billing, and change orders for general contractors.",
 };
 

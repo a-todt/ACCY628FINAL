@@ -123,7 +123,7 @@ export function ChangeOrderSummarySection({ overall, byContract, changeOrders }:
   }
 
   function exportPdf() {
-    downloadPdfTables("change-order-summary.pdf", "GC Contract Manager — Change Order Summary", [
+    downloadPdfTables("change-order-summary.pdf", "General Contract Management — Change Order Summary", [
       {
         title: "Change Order Summary",
         columns: ["Contract", "Pending", "Approved Value", "Rejected"],
