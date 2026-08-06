@@ -9,7 +9,9 @@ import type { Contract } from "@/lib/types";
 
 export type RetainageRow = {
   contract: Contract;
+  /** ASC 606 retainage receivable (contract asset) from owner billings. */
   invoiceRetainage: number;
+  /** Estimated retainage payable withheld from subcontractors (liability). */
   subRetainage: number;
 };
 
@@ -23,20 +25,18 @@ export function RetainageSummarySection({ rows }: Props) {
 
   const sorted = useMemo(
     () =>
-      [...rows]
-        .map((row) => ({
-          ...row,
-          total: row.invoiceRetainage + row.subRetainage,
-        }))
-        .sort((a, b) => {
-          const byTotal = b.total - a.total;
-          if (byTotal !== 0) return byTotal;
-          return (a.contract.contract_name ?? "").localeCompare(b.contract.contract_name ?? "");
-        }),
+      [...rows].sort((a, b) => {
+        const byAsset = b.invoiceRetainage - a.invoiceRetainage;
+        if (byAsset !== 0) return byAsset;
+        return (a.contract.contract_name ?? "").localeCompare(b.contract.contract_name ?? "");
+      }),
     [rows]
   );
 
-  const activeRows = useMemo(() => sorted.filter((row) => row.total > 0.005), [sorted]);
+  const activeRows = useMemo(
+    () => sorted.filter((row) => row.invoiceRetainage > 0.005 || row.subRetainage > 0.005),
+    [sorted]
+  );
 
   const totals = useMemo(() => {
     const invoiceRetainage = sorted.reduce((s, r) => s + r.invoiceRetainage, 0);
@@ -44,7 +44,6 @@ export function RetainageSummarySection({ rows }: Props) {
     return {
       invoiceRetainage,
       subRetainage,
-      combined: invoiceRetainage + subRetainage,
       contractsWithRetainage: activeRows.length,
     };
   }, [sorted, activeRows]);
@@ -72,17 +71,17 @@ export function RetainageSummarySection({ rows }: Props) {
       "retainage-summary.csv",
       rows.map((row) => ({
         Contract: row.contract.contract_name,
-        "Invoice Retainage": row.invoiceRetainage,
-        "Sub Retainage Est": row.subRetainage,
+        "Retainage Receivable (Asset)": row.invoiceRetainage,
+        "Retainage Payable Est (Liability)": row.subRetainage,
       }))
     );
   }
 
   function exportPdf() {
-    downloadPdfTables("retainage-summary.pdf", "General Contract Management — Retainage Summary", [
+    downloadPdfTables("retainage-summary.pdf", "General Contract Management — Retainage (ASC 606)", [
       {
-        title: "Retainage Summary",
-        columns: ["Contract", "Invoice Retainage", "Sub Retainage Est"],
+        title: "Retainage — GAAP Classification",
+        columns: ["Contract", "Receivable (Asset)", "Payable Est (Liability)"],
         rows: rows.map((row) => [
           row.contract.contract_name ?? "",
           money(row.invoiceRetainage),
@@ -92,8 +91,9 @@ export function RetainageSummarySection({ rows }: Props) {
     ]);
   }
 
-  const title = "Retainage Summary";
-  const subtitle = "Invoice retainage held and estimated subcontractor retainage by contract.";
+  const title = "Retainage (ASC 606)";
+  const subtitle =
+    "Owner retainage receivable is a contract asset; sub retainage withheld is a liability — not combined.";
 
   return (
     <>
@@ -114,11 +114,24 @@ export function RetainageSummarySection({ rows }: Props) {
           ) : null
         }
       >
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-1">
-          <StatCard compact title="Invoice retainage" value={money(totals.invoiceRetainage)} />
-          <StatCard compact title="Sub retainage est." value={money(totals.subRetainage)} />
-          <StatCard compact title="Combined" value={money(totals.combined)} />
-          <StatCard compact title="Contracts with retainage" value={String(totals.contractsWithRetainage)} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mb-1">
+          <StatCard
+            compact
+            title="Retainage receivable"
+            value={money(totals.invoiceRetainage)}
+            hint="Contract asset"
+          />
+          <StatCard
+            compact
+            title="Retainage payable est."
+            value={money(totals.subRetainage)}
+            hint="Liability to subs"
+          />
+          <StatCard
+            compact
+            title="Contracts with retainage"
+            value={String(totals.contractsWithRetainage)}
+          />
         </div>
 
         {sorted.length === 0 ? (
@@ -135,7 +148,7 @@ export function RetainageSummarySection({ rows }: Props) {
           setExpandedIds(new Set());
         }}
       >
-        {displayRows.every((r) => r.total <= 0.005) ? (
+        {displayRows.every((r) => r.invoiceRetainage <= 0.005 && r.subRetainage <= 0.005) ? (
           <p className="text-sm opacity-60 py-4 text-center">No retainage recorded yet.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -153,7 +166,8 @@ export function RetainageSummarySection({ rows }: Props) {
                     </button>
                   </th>
                   <th>Contract</th>
-                  <th className="text-right">Combined</th>
+                  <th className="text-right">Receivable (Asset)</th>
+                  <th className="text-right">Payable Est (Liability)</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,27 +194,24 @@ export function RetainageSummarySection({ rows }: Props) {
                             {row.contract.contract_name}
                           </Link>
                         </td>
-                        <td className="text-right whitespace-nowrap">{money(row.total)}</td>
+                        <td className="text-right whitespace-nowrap">{money(row.invoiceRetainage)}</td>
+                        <td className="text-right whitespace-nowrap">{money(row.subRetainage)}</td>
                       </tr>
                       {open ? (
                         <tr className="bg-base-100">
                           <td />
-                          <td colSpan={2} className="py-3">
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm pl-2 border-l-2 border-primary/30">
+                          <td colSpan={3} className="py-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm pl-2 border-l-2 border-primary/30">
                               <div>
-                                <div className="opacity-60 text-xs">Invoice retainage</div>
-                                <div className="font-medium">{money(row.invoiceRetainage)}</div>
-                              </div>
-                              <div>
-                                <div className="opacity-60 text-xs">Sub retainage est.</div>
-                                <div className="font-medium">{money(row.subRetainage)}</div>
-                              </div>
-                              <div>
-                                <div className="opacity-60 text-xs">Share of portfolio</div>
+                                <div className="opacity-60 text-xs">ASC 606 classification</div>
                                 <div className="font-medium">
-                                  {totals.combined > 0
-                                    ? `${((row.total / totals.combined) * 100).toFixed(1)}%`
-                                    : "—"}
+                                  Owner withholdings → contract asset; sub withholdings → liability
+                                </div>
+                              </div>
+                              <div>
+                                <div className="opacity-60 text-xs">Not netted</div>
+                                <div className="font-medium">
+                                  Receivable and payable are presented separately under GAAP
                                 </div>
                               </div>
                             </div>
@@ -215,7 +226,8 @@ export function RetainageSummarySection({ rows }: Props) {
                 <tr className="font-semibold bg-base-200">
                   <td />
                   <td>TOTALS</td>
-                  <td className="text-right whitespace-nowrap">{money(totals.combined)}</td>
+                  <td className="text-right whitespace-nowrap">{money(totals.invoiceRetainage)}</td>
+                  <td className="text-right whitespace-nowrap">{money(totals.subRetainage)}</td>
                 </tr>
               </tfoot>
             </table>

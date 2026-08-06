@@ -321,9 +321,16 @@ export function RevenueRecognitionDashboard() {
           <div className="stat-desc">Revenue in excess of billings</div>
         </div>
         <div className="stat">
-          <div className="stat-title">Retainage Held</div>
+          <div className="stat-title">Retainage Receivable</div>
           <div className="stat-value text-xl sm:text-2xl">{moneyExact(totals.retainageHeld)}</div>
-          <div className="stat-desc">Column {B.retainageHeld}</div>
+          <div className="stat-desc">ASC 606 contract asset</div>
+        </div>
+        <div className="stat">
+          <div className="stat-title">Total Contract Assets</div>
+          <div className="stat-value text-xl sm:text-2xl">
+            {moneyExact(totals.underbilling + totals.retainageHeld)}
+          </div>
+          <div className="stat-desc">Underbilling + retainage</div>
         </div>
       </div>
 

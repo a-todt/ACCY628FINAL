@@ -259,7 +259,7 @@ export default function ProjectsPage() {
       return;
     }
     if (billingForm.retainage_held && Number.isNaN(retainage)) {
-      setBillingError("Retainage held must be a valid number.");
+      setBillingError("Retainage receivable must be a valid number.");
       return;
     }
     const retainageHeld = retainage ?? 0;
@@ -614,7 +614,10 @@ export default function ProjectsPage() {
                     required
                   />
                 </FormField>
-                <FormField label="Retainage held">
+                <FormField
+                  label="Retainage receivable"
+                  hint="ASC 606 contract asset — billed but withheld until conditions are met."
+                >
                   <input
                     className="input input-bordered"
                     inputMode="decimal"

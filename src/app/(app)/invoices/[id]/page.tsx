@@ -439,8 +439,12 @@ function InvoiceDetailContent() {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <StatCard title="Invoice Amount" value={money(invoice.invoice_amount)} />
-        <StatCard title="Retainage Held" value={money(invoice.retainage_amount)} />
-        <StatCard title="Net Amount Due" value={money(netDue)} />
+        <StatCard
+          title="Retainage Receivable"
+          value={money(invoice.retainage_amount)}
+          hint="ASC 606 contract asset"
+        />
+        <StatCard title="Net Amount Due" value={money(netDue)} hint="Current AR when unpaid" />
         <StatCard title="Amount Paid" value={money(amountPaid)} tone="success" />
         <StatCard
           title="Balance Remaining"

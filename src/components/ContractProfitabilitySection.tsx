@@ -243,11 +243,11 @@ export function ContractProfitabilitySection({ rows }: Props) {
                                 <div className="font-medium">{money(metrics.totalCosts)}</div>
                               </div>
                               <div>
-                                <div className="opacity-60 text-xs">Outstanding</div>
+                                <div className="opacity-60 text-xs">Outstanding AR</div>
                                 <div className="font-medium">{money(metrics.outstanding)}</div>
                               </div>
                               <div>
-                                <div className="opacity-60 text-xs">Retainage held</div>
+                                <div className="opacity-60 text-xs">Retainage receivable</div>
                                 <div className="font-medium">{money(metrics.retainageHeld)}</div>
                               </div>
                               <div>

@@ -17,7 +17,7 @@ export interface WIPCalculations {
   revenueEarned: number;
   /** Billings in excess of earned revenue (GAAP contract liability). */
   overbilling: number;
-  /** Earned revenue in excess of billings (GAAP contract asset). */
+  /** Earned revenue in excess of billings (GAAP contract asset — excluding retainage). */
   underbilling: number;
   /** Alias of underbilling for GAAP presentation. */
   contractAsset: number;
@@ -25,7 +25,13 @@ export interface WIPCalculations {
   contractLiability: number;
   projectedProfit: number;
   projectedMargin: number;
+  /**
+   * ASC 606 retainage receivable (contract asset): amounts billed to the owner
+   * but withheld until contractual conditions are satisfied.
+   */
   retainageHeld: number;
+  /** Underbilling + retainage receivable (total related contract assets). */
+  totalContractAssets: number;
   costToComplete: number;
   actualCostsToDate: number;
   billedToDate: number;
@@ -41,6 +47,7 @@ const EMPTY_CALCS: WIPCalculations = {
   projectedProfit: 0,
   projectedMargin: 0,
   retainageHeld: 0,
+  totalContractAssets: 0,
   costToComplete: 0,
   actualCostsToDate: 0,
   billedToDate: 0,
@@ -95,6 +102,7 @@ export function computeWIP(
     projectedProfit,
     projectedMargin,
     retainageHeld,
+    totalContractAssets: underbilling + retainageHeld,
     costToComplete,
     actualCostsToDate,
     billedToDate,

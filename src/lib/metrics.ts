@@ -40,6 +40,25 @@ export function labelize(value: string | null | undefined): string {
     .join(" ");
 }
 
+/**
+ * ASC 606 retainage receivable (contract asset): billed amount withheld until
+ * contractual conditions are met (e.g. substantial completion). Not current AR.
+ */
+export function invoiceRetainageReceivable(invoice: Invoice): number {
+  const retainage = Number(invoice.retainage_amount ?? 0);
+  const remainingOnInvoice = Math.max(
+    Number(invoice.invoice_amount ?? 0) - Number(invoice.amount_paid ?? 0),
+    0
+  );
+  return Math.max(0, Math.min(retainage, remainingOnInvoice));
+}
+
+/** Current amount due on an invoice (net of retainage). */
+export function invoiceOpenAr(invoice: Invoice): number {
+  const net = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
+  return Math.max(net - Number(invoice.amount_paid ?? 0), 0);
+}
+
 export function computeContractMetrics(
   contract: Contract,
   changeOrders: ChangeOrder[],
@@ -74,23 +93,16 @@ export function computeContractMetrics(
     0
   );
   const totalCollected = Math.max(totalCollectedFromInvoices, totalCollectedFromPayments);
-  const retainageHeld = relatedInvoices.reduce((sum, i) => {
-    const retainage = Number(i.retainage_amount ?? 0);
-    const remaining = Math.max(
-      Number(i.invoice_amount ?? 0) - Number(i.amount_paid ?? 0),
-      0
-    );
-    return sum + Math.max(0, Math.min(retainage, remaining));
-  }, 0);
+  // GAAP: retainage receivable (contract asset), separate from current AR.
+  const retainageHeld = relatedInvoices.reduce(
+    (sum, i) => sum + invoiceRetainageReceivable(i),
+    0
+  );
   const totalCosts = relatedCosts.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
   const grossProfit = totalBilled - totalCosts;
   const grossMargin = totalBilled > 0 ? grossProfit / totalBilled : 0;
-  // Current AR = unpaid net due only. Retainage is tracked separately in retainageHeld.
-  const outstanding = relatedInvoices.reduce((sum, i) => {
-    const net = Number(i.net_amount_due ?? i.invoice_amount ?? 0);
-    const paid = Number(i.amount_paid ?? 0);
-    return sum + Math.max(net - paid, 0);
-  }, 0);
+  // Current AR = unpaid net due only (excludes retainage receivable).
+  const outstanding = relatedInvoices.reduce((sum, i) => sum + invoiceOpenAr(i), 0);
 
   let completionPercent = 0;
   if (relatedMilestones.length > 0) {

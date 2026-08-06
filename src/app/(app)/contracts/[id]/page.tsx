@@ -426,8 +426,8 @@ function ContractDetailContent() {
             <StatCard title="Revised Value" value={money(metrics.revisedValue)} hint={`${money(metrics.approvedChangeOrders)} approved COs`} />
             <StatCard title="Total Billed" value={money(metrics.totalBilled)} />
             <StatCard title="Total Collected" value={money(metrics.totalCollected)} tone="success" />
-            <StatCard title="Outstanding" value={money(metrics.outstanding)} tone={metrics.outstanding > 0 ? "warning" : "default"} />
-            <StatCard title="Retainage Held" value={money(metrics.retainageHeld)} />
+            <StatCard title="Outstanding" value={money(metrics.outstanding)} hint="Current AR · net due" tone={metrics.outstanding > 0 ? "warning" : "default"} />
+            <StatCard title="Retainage Receivable" value={money(metrics.retainageHeld)} hint="ASC 606 contract asset" />
           </>
         ) : null}
         <StatCard title="Completion" value={percent(metrics.completionPercent)} />

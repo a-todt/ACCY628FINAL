@@ -418,7 +418,12 @@ export interface ContractMetrics {
   revisedValue: number;
   totalBilled: number;
   totalCollected: number;
+  /** Unpaid net amount due (current AR). Excludes retainage. */
   outstanding: number;
+  /**
+   * ASC 606 retainage receivable — billed but withheld pending contract conditions.
+   * Presented as a contract asset, not current AR. Field name kept for compatibility.
+   */
   retainageHeld: number;
   totalCosts: number;
   grossProfit: number;

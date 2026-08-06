@@ -8,7 +8,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
-import { daysPastDue, labelize, money } from "@/lib/metrics";
+import { daysPastDue, invoiceRetainageReceivable, labelize, money } from "@/lib/metrics";
 import { canViewCosts, canViewInvoices, statusBadgeClass } from "@/lib/roles";
 
 type Section = "costs" | "invoices";
@@ -100,6 +100,10 @@ export default function FinanceOverviewPage() {
   const totalCollected = invoices.reduce((sum, i) => sum + Number(i.amount_paid ?? 0), 0);
   const totalPayments = payments.reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0);
   const overdueCount = invoiceRows.filter((r) => r.status === "overdue").length;
+  const retainageReceivable = invoices.reduce(
+    (sum, i) => sum + invoiceRetainageReceivable(i),
+    0
+  );
 
   if (loading) {
     return (
@@ -155,6 +159,7 @@ export default function FinanceOverviewPage() {
                         ? [
                             ["Total Billed", money(totalBilled)],
                             ["Collected", money(Math.max(totalCollected, totalPayments))],
+                            ["Retainage Receivable", money(retainageReceivable)],
                             ["Overdue Invoices", String(overdueCount)],
                           ]
                         : []),
@@ -182,7 +187,7 @@ export default function FinanceOverviewPage() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         {showCosts ? (
           <StatCard title="Total Costs" value={money(totalCosts)} hint={`${costEntries.length} entries`} icon={CircleDollarSign} />
         ) : null}
@@ -191,6 +196,13 @@ export default function FinanceOverviewPage() {
         ) : null}
         {showInvoices ? (
           <StatCard title="Collected" value={money(Math.max(totalCollected, totalPayments))} />
+        ) : null}
+        {showInvoices ? (
+          <StatCard
+            title="Retainage Receivable"
+            value={money(retainageReceivable)}
+            hint="ASC 606 contract asset"
+          />
         ) : null}
         {showInvoices ? (
           <StatCard
