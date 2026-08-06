@@ -1,17 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { Star } from "lucide-react";
-import { useNavFavorites } from "@/hooks/useNavFavorites";
-import { useToast } from "@/components/ToastProvider";
+import { Building2, Star } from "lucide-react";
+import { FavoriteProjectButton } from "@/components/FavoriteProjectButton";
+import { useContractData } from "@/hooks/useContractData";
+import { useProjectFavorites } from "@/hooks/useProjectFavorites";
 import { AlertBanner, EmptyState, PageHeader, SectionCard } from "@/components/ui";
+import { labelize, money, percent, computeContractMetrics } from "@/lib/metrics";
+import { statusBadgeClass } from "@/lib/roles";
 
 export default function FavoritesPage() {
-  const { favorites, favoritableItems, isFavorite, toggleFavorite, ready } =
-    useNavFavorites();
-  const { toast } = useToast();
+  const { favorites, ready } = useProjectFavorites();
+  const {
+    contracts,
+    changeOrders,
+    invoices,
+    costEntries,
+    milestones,
+    payments,
+    loading,
+    error,
+  } = useContractData();
 
-  if (!ready) {
+  if (!ready || loading) {
     return (
       <div className="grid place-items-center py-24">
         <span className="loading loading-spinner loading-lg text-primary" />
@@ -19,89 +30,96 @@ export default function FavoritesPage() {
     );
   }
 
+  if (error) {
+    return <AlertBanner type="error">{error}</AlertBanner>;
+  }
+
+  const contractById = new Map(contracts.map((c) => [c.id, c]));
+  const rows = favorites.map((fav) => {
+    const contract = contractById.get(fav.id);
+    const metrics = contract
+      ? computeContractMetrics(
+          contract,
+          changeOrders,
+          invoices,
+          costEntries,
+          milestones,
+          payments
+        )
+      : null;
+    return {
+      id: fav.id,
+      name: contract?.contract_name ?? fav.name,
+      status: contract?.status ?? null,
+      clientName: contract?.client_name ?? null,
+      metrics,
+      missing: !contract,
+    };
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Favorites"
-        subtitle="Pin the tabs you use most. Use the Favorites dropdown in the secondary nav, or manage them here."
+        subtitle="Your starred projects. Star a project from All Contracts or a project detail page."
       />
 
-      {favorites.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState
-          title="No favorites yet"
-          message="Open any section (Contracts, Costing, Subcontracting…) and use the Favorites dropdown to pin tabs here."
+          title="No favorite projects yet"
+          message="Go to Contracts → All Contracts and click the star next to a project to pin it here."
+          action={
+            <Link href="/contracts" className="btn btn-primary btn-sm mt-2">
+              Browse projects
+            </Link>
+          }
         />
       ) : (
-        <SectionCard title="Your pinned tabs">
+        <SectionCard title="Favorite projects">
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {favorites.map((item) => (
+            {rows.map((row) => (
               <div
-                key={item.href}
-                className="flex items-center gap-2 rounded-xl border border-base-300 bg-base-100 px-3 py-2.5"
+                key={row.id}
+                className="rounded-xl border border-base-300 bg-base-100 px-3 py-3 space-y-2"
               >
-                <Link href={item.href} className="flex-1 font-medium link link-hover min-w-0 truncate">
-                  {item.label}
-                </Link>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm btn-square text-warning"
-                  aria-label={`Unpin ${item.label}`}
-                  onClick={() => {
-                    toggleFavorite(item);
-                    toast(`Removed ${item.label} from favorites`, "info");
-                  }}
-                >
-                  <Star className="h-4 w-4 fill-current" />
-                </button>
+                <div className="flex items-start gap-2">
+                  <Link
+                    href={`/contracts/${row.id}`}
+                    className="flex-1 min-w-0 link link-hover font-medium"
+                  >
+                    <span className="inline-flex items-center gap-1.5 max-w-full">
+                      <Building2 className="h-4 w-4 shrink-0 opacity-50" />
+                      <span className="truncate">{row.name}</span>
+                    </span>
+                  </Link>
+                  <FavoriteProjectButton projectId={row.id} projectName={row.name} />
+                </div>
+                {row.status ? (
+                  <span className={`badge badge-sm ${statusBadgeClass(row.status)}`}>
+                    {labelize(row.status)}
+                  </span>
+                ) : null}
+                {row.clientName ? (
+                  <p className="text-xs opacity-60 truncate">{row.clientName}</p>
+                ) : null}
+                {row.metrics ? (
+                  <p className="text-sm tabular-nums">
+                    {money(row.metrics.revisedValue)}
+                    <span className="opacity-50"> · </span>
+                    {percent(row.metrics.completionPercent)} complete
+                  </p>
+                ) : null}
+                {row.missing ? (
+                  <p className="text-xs text-warning flex items-center gap-1">
+                    <Star className="h-3 w-3" />
+                    Project no longer available to your account
+                  </p>
+                ) : null}
               </div>
             ))}
           </div>
         </SectionCard>
       )}
-
-      <SectionCard title="Add favorites">
-        <p className="text-sm opacity-70 mb-4">
-          Click a star to pin or unpin a tab. Favorites stay on this device for your account.
-        </p>
-        <ul className="grid sm:grid-cols-2 gap-2">
-          {favoritableItems.map((item) => {
-            const pinned = isFavorite(item.href);
-            return (
-              <li key={item.href}>
-                <div className="flex items-center gap-2 rounded-lg border border-base-300 px-3 py-2">
-                  <Link href={item.href} className="flex-1 text-sm link link-hover truncate">
-                    {item.label}
-                  </Link>
-                  <button
-                    type="button"
-                    className={`btn btn-ghost btn-xs btn-square ${
-                      pinned ? "text-warning" : "opacity-50 hover:opacity-100"
-                    }`}
-                    aria-label={pinned ? `Unpin ${item.label}` : `Pin ${item.label}`}
-                    aria-pressed={pinned}
-                    onClick={() => {
-                      const added = toggleFavorite(item);
-                      toast(
-                        added
-                          ? `Added ${item.label} to favorites`
-                          : `Removed ${item.label} from favorites`,
-                        "success"
-                      );
-                    }}
-                  >
-                    <Star className={`h-4 w-4 ${pinned ? "fill-current" : ""}`} />
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </SectionCard>
-
-      <AlertBanner type="info">
-        Tip: use the Favorites dropdown at the end of the secondary nav bar under Contracts, Costing,
-        and other sections to pin or unpin tabs quickly.
-      </AlertBanner>
     </div>
   );
 }

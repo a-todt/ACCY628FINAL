@@ -6,7 +6,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Building2,
-  ChevronDown,
   HardHat,
   LayoutDashboard,
   Menu,
@@ -20,16 +19,15 @@ import { AlertsBell } from "@/components/AlertsBell";
 import { AccessGate } from "@/components/AccessGate";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { UserMenu } from "@/components/UserMenu";
-import { ToastProvider, useToast } from "@/components/ToastProvider";
+import { ToastProvider } from "@/components/ToastProvider";
+import { ProjectFavoritesProvider } from "@/hooks/useProjectFavorites";
 import { useAccessStatus } from "@/hooks/useAccessStatus";
-import { useNavFavorites } from "@/hooks/useNavFavorites";
 import {
   categoryFromPath,
   isNavItemActive,
   primaryNavForRole,
   secondaryNavForCategory,
   type NavCategoryId,
-  type NavItem,
 } from "@/lib/roles";
 
 const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
@@ -42,79 +40,16 @@ const NAV_ICONS: Record<NavCategoryId, LucideIcon> = {
   management: Settings2,
 };
 
-function FavoritesPinDropdown({
-  items,
-  isFavorite,
-  onToggle,
-}: {
-  items: NavItem[];
-  isFavorite: (href: string) => boolean;
-  onToggle: (item: NavItem) => void;
-}) {
-  if (items.length === 0) return null;
-
-  return (
-    <div className="dropdown dropdown-end shrink-0">
-      <div
-        tabIndex={0}
-        role="button"
-        className="btn btn-ghost btn-xs gap-1 opacity-80 hover:opacity-100"
-        aria-label="Pin tabs to favorites"
-      >
-        <Star className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Favorites</span>
-        <ChevronDown className="h-3 w-3 opacity-60" />
-      </div>
-      <ul
-        tabIndex={0}
-        className="dropdown-content menu bg-base-100 rounded-box z-50 w-56 p-2 shadow-lg border border-base-300"
-      >
-        <li className="menu-title px-2 py-1">
-          <span className="text-[11px] uppercase tracking-wide opacity-60">Pin tabs</span>
-        </li>
-        {items.map((item) => {
-          const pinned = isFavorite(item.href);
-          return (
-            <li key={item.href}>
-              <button
-                type="button"
-                className="justify-between gap-2"
-                onClick={() => onToggle(item)}
-              >
-                <span className="truncate">{item.label}</span>
-                <Star
-                  className={`h-3.5 w-3.5 shrink-0 ${
-                    pinned ? "fill-current text-warning" : "opacity-40"
-                  }`}
-                />
-              </button>
-            </li>
-          );
-        })}
-        <li className="border-t border-base-300 mt-1 pt-1">
-          <Link href="/favorites">Manage all favorites…</Link>
-        </li>
-      </ul>
-    </div>
-  );
-}
-
 function AppShellInner({ children }: { children: React.ReactNode }) {
   const { effectiveRole, loading } = useAuth();
   const access = useAccessStatus();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const search = searchParams.toString();
-  const { toast } = useToast();
-  const { favorites, favoritableItems, isFavorite, toggleFavorite } = useNavFavorites();
 
   const primary = primaryNavForRole(effectiveRole);
   const activeCategory = categoryFromPath(pathname);
-  const catalogSecondary = secondaryNavForCategory(activeCategory, effectiveRole);
-  const secondary: NavItem[] =
-    activeCategory === "favorites" ? favorites : catalogSecondary;
-  const pinOptions: NavItem[] =
-    activeCategory === "favorites" ? favoritableItems : catalogSecondary;
+  const secondary = secondaryNavForCategory(activeCategory, effectiveRole);
 
   if (loading || access.loading) {
     return (
@@ -129,14 +64,6 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     access.status === "needs_invite" ||
     access.status === "needs_client_setup" ||
     access.status === "needs_email";
-
-  const onToggleFavorite = (item: NavItem) => {
-    const added = toggleFavorite(item);
-    toast(
-      added ? `Added ${item.label} to favorites` : `Removed ${item.label} from favorites`,
-      "success"
-    );
-  };
 
   return (
     <div className="min-h-screen bg-base-200">
@@ -184,37 +111,6 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     );
                   })
                 : null}
-              {!locked && pinOptions.length > 0 ? (
-                <>
-                  <li className="menu-title px-2 pt-2">
-                    <span className="text-[11px] uppercase tracking-wide opacity-60">
-                      Pin tabs
-                    </span>
-                  </li>
-                  {pinOptions.map((item) => {
-                    const pinned = isFavorite(item.href);
-                    return (
-                      <li key={`pin-${item.href}`}>
-                        <button
-                          type="button"
-                          className="justify-between"
-                          onClick={() => onToggleFavorite(item)}
-                        >
-                          <span className="truncate">{item.label}</span>
-                          <Star
-                            className={`h-3.5 w-3.5 ${
-                              pinned ? "fill-current text-warning" : "opacity-40"
-                            }`}
-                          />
-                        </button>
-                      </li>
-                    );
-                  })}
-                  <li>
-                    <Link href="/favorites">Manage all favorites…</Link>
-                  </li>
-                </>
-              ) : null}
             </ul>
           </div>
           <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 shrink-0 group">
@@ -258,13 +154,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          {secondary.length > 0 || pinOptions.length > 0 ? (
+          {secondary.length > 0 ? (
             <div className="hidden lg:block border-b border-base-300 bg-base-200/70">
-              <div className="px-6 max-w-[1400px] mx-auto flex items-center gap-2 min-h-9">
-                <div
-                  role="tablist"
-                  className="tabs tabs-sm items-center flex-1 overflow-x-auto min-w-0"
-                >
+              <div className="px-6 max-w-[1400px] mx-auto overflow-x-auto">
+                <div role="tablist" className="tabs tabs-sm items-center">
                   {secondary.map((item) => (
                     <Link
                       key={item.href}
@@ -279,17 +172,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                       {item.label}
                     </Link>
                   ))}
-                  {activeCategory === "favorites" && secondary.length === 0 ? (
-                    <span className="tab text-xs opacity-60 pointer-events-none normal-case">
-                      No pinned tabs yet
-                    </span>
-                  ) : null}
                 </div>
-                <FavoritesPinDropdown
-                  items={pinOptions}
-                  isFavorite={isFavorite}
-                  onToggle={onToggleFavorite}
-                />
               </div>
             </div>
           ) : null}
@@ -306,7 +189,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
-      <AppShellInner>{children}</AppShellInner>
+      <ProjectFavoritesProvider>
+        <AppShellInner>{children}</AppShellInner>
+      </ProjectFavoritesProvider>
     </ToastProvider>
   );
 }

@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronDown, Paperclip, Pencil, Trash2 } from "lucide-react"
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { ContractEditForm } from "@/components/ContractEditForm";
+import { FavoriteProjectButton } from "@/components/FavoriteProjectButton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
@@ -265,7 +266,12 @@ function ContractDetailContent() {
         title={contract.contract_name}
         subtitle={contract.client_name ?? undefined}
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
+            <FavoriteProjectButton
+              projectId={contract.id}
+              projectName={contract.contract_name}
+              size="sm"
+            />
             {canMutate ? (
               <>
                 <div className="dropdown dropdown-end">
