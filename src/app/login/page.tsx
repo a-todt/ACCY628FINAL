@@ -148,40 +148,49 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden bg-base-200">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-base-200 to-secondary/20" />
+    <div className="min-h-screen relative overflow-hidden app-enter">
+      {/* Edge-to-edge construction site — soft fade into the form, no hard split */}
       <div
-        className="absolute inset-0 opacity-40"
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"
+        style={{ backgroundImage: "url(/images/jobsite-hero.jpg)" }}
+        role="img"
+        aria-label="Active construction site"
+      />
+      <div className="absolute inset-0 bg-black/35" />
+      <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-black/15 sm:to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/25" />
+      <div
+        className="absolute inset-y-0 right-0 w-full lg:w-[58%] pointer-events-none"
         style={{
-          backgroundImage:
-            "radial-gradient(circle at 18% 22%, color-mix(in oklch, var(--color-primary) 55%, transparent) 0, transparent 34%), radial-gradient(circle at 82% 8%, color-mix(in oklch, var(--color-secondary) 45%, transparent) 0, transparent 32%)",
+          background:
+            "linear-gradient(90deg, transparent 0%, color-mix(in oklch, var(--color-base-200) 35%, transparent) 38%, color-mix(in oklch, var(--color-base-200) 78%, transparent) 72%, var(--color-base-200) 100%)",
         }}
       />
 
-      <div className="relative z-10 min-h-screen grid lg:grid-cols-2 app-enter">
-        <div className="flex flex-col min-h-[42vh] lg:min-h-screen p-6 sm:p-10 lg:p-12 text-base-content">
-          <div className="w-fit rounded-2xl shadow-xl ring-4 ring-base-100/50">
+      <div className="relative z-10 min-h-screen grid lg:grid-cols-[1.05fr_0.95fr] items-stretch">
+        <div className="flex flex-col p-6 sm:p-10 lg:p-14 min-h-[38vh] lg:min-h-screen">
+          <div className="w-fit">
             <NailItLogo size="xl" />
           </div>
 
-          <div className="flex-1 flex flex-col justify-center max-w-lg space-y-6 pb-6 lg:pb-8">
-            <p className="text-xl sm:text-2xl font-display font-semibold uppercase leading-snug tracking-wide">
+          <div className="flex-1 flex flex-col justify-center max-w-lg space-y-6 py-8 lg:py-0">
+            <p className="text-xl sm:text-2xl lg:text-3xl font-display font-semibold uppercase leading-snug tracking-wide text-white drop-shadow">
               Know exactly where every project stands
             </p>
-            <ul className="list-disc list-inside space-y-3 text-base sm:text-lg font-medium marker:text-primary opacity-90">
+            <ul className="list-disc list-inside space-y-3 text-base sm:text-lg font-medium marker:text-primary text-white/90">
               {FEATURES.map((feature) => (
                 <li key={feature}>{feature}</li>
               ))}
             </ul>
           </div>
 
-          <p className="text-sm opacity-55 max-w-md">
+          <p className="text-sm text-white/55 max-w-md">
             Your data is private. Only you can see your projects.
           </p>
         </div>
 
-        <div className="flex items-center justify-center p-4 sm:p-8 lg:py-12">
-          <div className="card w-full max-w-md bg-base-100 shadow-2xl border border-base-300">
+        <div className="flex items-center justify-center p-4 sm:p-8 lg:p-12">
+          <div className="card w-full max-w-md bg-base-100/95 backdrop-blur-md shadow-2xl border border-base-100/40">
             <div className="card-body gap-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
