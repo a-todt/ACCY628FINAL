@@ -202,11 +202,10 @@ function NewContractPage() {
   const selectClass = "select select-bordered select-sm w-full";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <PageHeader
         compact
         title="Add Contract"
-        subtitle="Create a new project contract and its schedule of values."
         actions={
           <Link href="/contracts" className="btn btn-ghost btn-sm">
             Back to Contracts
@@ -217,9 +216,9 @@ function NewContractPage() {
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}
       {success ? <AlertBanner type="success">{success}</AlertBanner> : null}
 
-      <form onSubmit={onSubmit} className="space-y-2.5">
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-2.5 items-start">
-          <SectionCard compact title="Project & Client">
+      <form onSubmit={onSubmit} className="space-y-3 pb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+          <SectionCard compact title="Project & Terms">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="sm:col-span-2">
                 <FormField stacked label="Contract Name">
@@ -245,21 +244,20 @@ function NewContractPage() {
                   onChange={(e) => updateField("client_phone", e.target.value)}
                 />
               </FormField>
-              <FormField stacked label="Client Email">
-                <input
-                  type="email"
-                  className={fieldClass}
-                  value={form.client_email}
-                  onChange={(e) => updateField("client_email", e.target.value)}
-                />
-              </FormField>
-              <FormField
-                stacked
-                label="Link prospect / client record"
-                hint="Self-serve inquiries and existing client rows. Links login access after create."
-              >
+              <div className="sm:col-span-2">
+                <FormField stacked label="Client Email">
+                  <input
+                    type="email"
+                    className={fieldClass}
+                    value={form.client_email}
+                    onChange={(e) => updateField("client_email", e.target.value)}
+                  />
+                </FormField>
+              </div>
+              <FormField stacked label="Link prospect / client record">
                 <select
                   className={selectClass}
+                  title="Self-serve inquiries and existing client rows. Links login access after create."
                   value={form.customer_id}
                   onChange={(e) => {
                     const id = e.target.value;
@@ -294,13 +292,10 @@ function NewContractPage() {
                     ))}
                 </select>
               </FormField>
-              <FormField
-                stacked
-                label="Linked Client User"
-                hint="Optional — grants that client login access to this contract."
-              >
+              <FormField stacked label="Linked Client User">
                 <select
                   className={selectClass}
+                  title="Optional — grants that client login access to this contract."
                   value={form.client_user_id}
                   onChange={(e) => updateField("client_user_id", e.target.value)}
                 >
@@ -312,34 +307,6 @@ function NewContractPage() {
                   ))}
                 </select>
               </FormField>
-              <div className="sm:col-span-2">
-                <FormField stacked label="Project Address">
-                  <input
-                    className={fieldClass}
-                    value={form.project_address}
-                    onChange={(e) => updateField("project_address", e.target.value)}
-                  />
-                </FormField>
-              </div>
-              <FormField stacked label="City">
-                <input
-                  className={fieldClass}
-                  value={form.city}
-                  onChange={(e) => updateField("city", e.target.value)}
-                />
-              </FormField>
-              <FormField stacked label="State">
-                <input
-                  className={fieldClass}
-                  value={form.state}
-                  onChange={(e) => updateField("state", e.target.value)}
-                />
-              </FormField>
-            </div>
-          </SectionCard>
-
-          <SectionCard compact title="Terms & Dates">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <FormField stacked label="Contract Type">
                 <select
                   className={selectClass}
@@ -406,12 +373,35 @@ function NewContractPage() {
             </div>
           </SectionCard>
 
-          <SectionCard compact title="Scope & Terms">
-            <div className="space-y-2">
+          <SectionCard compact title="Location & Scope">
+            <div className="grid grid-cols-1 gap-2">
+              <FormField stacked label="Project Address">
+                <input
+                  className={fieldClass}
+                  value={form.project_address}
+                  onChange={(e) => updateField("project_address", e.target.value)}
+                />
+              </FormField>
+              <div className="grid grid-cols-[1fr_5.5rem] gap-2">
+                <FormField stacked label="City">
+                  <input
+                    className={fieldClass}
+                    value={form.city}
+                    onChange={(e) => updateField("city", e.target.value)}
+                  />
+                </FormField>
+                <FormField stacked label="State">
+                  <input
+                    className={fieldClass}
+                    value={form.state}
+                    onChange={(e) => updateField("state", e.target.value)}
+                  />
+                </FormField>
+              </div>
               <FormField stacked label="Scope Description">
                 <textarea
                   className="textarea textarea-bordered textarea-sm w-full leading-snug"
-                  rows={3}
+                  rows={4}
                   value={form.scope_description}
                   onChange={(e) => updateField("scope_description", e.target.value)}
                 />
@@ -499,14 +489,16 @@ function NewContractPage() {
           </div>
         </SectionCard>
 
-        <div className="flex justify-end gap-2">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={resetForm} disabled={saving}>
-            Clear
-          </button>
-          <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
-            {saving ? <span className="loading loading-spinner loading-sm" /> : null}
-            Save Contract
-          </button>
+        <div className="sticky bottom-0 z-20 -mx-1 px-1 pt-2 pb-2 bg-base-100/90 backdrop-blur-sm border-t border-base-300">
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={resetForm} disabled={saving}>
+              Clear
+            </button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+              {saving ? <span className="loading loading-spinner loading-sm" /> : null}
+              Save Contract
+            </button>
+          </div>
         </div>
       </form>
     </div>

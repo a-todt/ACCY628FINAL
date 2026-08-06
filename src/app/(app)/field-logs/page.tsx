@@ -21,7 +21,7 @@ import { useOpenCreateFromQuery } from "@/hooks/useOpenCreateFromQuery";
 import { compareValues } from "@/components/FilterSortBar";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { StickyToolbar } from "@/components/StickyToolbar";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { WeatherBadge } from "@/components/WeatherBadge";
 import { writeAuditLog } from "@/lib/audit";
 import {
@@ -101,6 +101,7 @@ export default function FieldLogsPage() {
   const [logRefreshKey, setLogRefreshKey] = useState(0);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [viewingStaff, setViewingStaff] = useState<UserProfile | null>(null);
+  const [showAllRows, setShowAllRows] = useState(false);
 
   const openCreateForm = useCallback(() => {
     setEditingId(null);
@@ -116,6 +117,10 @@ export default function FieldLogsPage() {
     const id = searchParams.get("id");
     if (id) setExpandedLogId(id);
   }, [searchParams]);
+
+  useEffect(() => {
+    setShowAllRows(false);
+  }, [projectFilter, submitterFilter, weatherSelected]);
 
   const filtered = useMemo(() => {
     const next = fieldLogs.filter((log) => {
@@ -333,15 +338,16 @@ export default function FieldLogsPage() {
     return <AlertBanner type="error">{error}</AlertBanner>;
   }
 
+  /** Viewport ≈ tall filter header + 10 body rows; remaining rows scroll inside. */
+  const tableScrollClass = showAllRows
+    ? "overflow-visible table-sticky-head table-freeze-first"
+    : "overflow-auto max-h-[calc(4.5rem+10*1.85rem)] table-sticky-head table-freeze-first";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title="Field Logs"
-        subtitle={
-          canCreate
-            ? "Daily site activity across your projects."
-            : "Submitted site activity across your projects (view only)."
-        }
+        compact
         actions={
           canCreate ? (
             <button
@@ -510,7 +516,8 @@ export default function FieldLogsPage() {
           }
         />
       ) : (
-        <TableShell freezeFirst>
+        <>
+        <div className={`rounded-box border border-base-300 bg-base-100 ${tableScrollClass}`}>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 <col className="w-[7rem]" />
@@ -701,7 +708,19 @@ export default function FieldLogsPage() {
                 })}
               </tbody>
             </table>
-        </TableShell>
+        </div>
+        {filtered.length > 10 ? (
+          <div className="flex justify-center pt-2 pb-1">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => setShowAllRows((v) => !v)}
+            >
+              {showAllRows ? "Show less" : `Show all (${filtered.length})`}
+            </button>
+          </div>
+        ) : null}
+        </>
       )}
 
       <ActivityLogPanel

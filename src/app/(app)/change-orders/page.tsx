@@ -20,7 +20,7 @@ import { PageSkeleton } from "@/components/PageSkeleton";
 import { StatusFilterChips } from "@/components/StatusFilterChips";
 import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
 import { useToast } from "@/components/ToastProvider";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize, money } from "@/lib/metrics";
 import { canCreateChangeOrders, statusBadgeClass } from "@/lib/roles";
@@ -96,6 +96,7 @@ export default function ChangeOrdersPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [viewing, setViewing] = useState<ChangeOrder | null>(null);
   const [statusChip, setStatusChip] = useState("all");
+  const [showAllRows, setShowAllRows] = useState(false);
   const { toast } = useToast();
 
   const isClient = effectiveRole === "client";
@@ -107,6 +108,10 @@ export default function ChangeOrdersPage() {
     const q = searchParams.get("q");
     if (q) setNumberFilter(q);
   }, [searchParams]);
+
+  useEffect(() => {
+    setShowAllRows(false);
+  }, [projectFilter, numberFilter, statusChip]);
 
   const baseList = useMemo(
     () => (isClient ? changeOrders.filter((co) => co.status === "approved") : changeOrders),
@@ -431,6 +436,10 @@ export default function ChangeOrdersPage() {
   }
 
   const colCount = (isClient ? 8 : 9) + (canMutate ? 2 : 0);
+  /** Viewport ≈ tall filter header + 10 body rows; remaining rows scroll inside. */
+  const tableScrollClass = showAllRows
+    ? "overflow-visible table-sticky-head table-freeze-first"
+    : "overflow-auto max-h-[calc(4.5rem+10*1.85rem)] table-sticky-head table-freeze-first";
 
   return (
     <div className="space-y-6">
@@ -628,7 +637,8 @@ export default function ChangeOrdersPage() {
           }
         />
       ) : (
-        <TableShell freezeFirst>
+        <>
+        <div className={`rounded-box border border-base-300 bg-base-100 ${tableScrollClass}`}>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
@@ -867,7 +877,19 @@ export default function ChangeOrdersPage() {
                 )}
               </tbody>
             </table>
-        </TableShell>
+        </div>
+        {filtered.length > 10 ? (
+          <div className="flex justify-center pt-2 pb-1">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => setShowAllRows((v) => !v)}
+            >
+              {showAllRows ? "Show less" : `Show all (${filtered.length})`}
+            </button>
+          </div>
+        ) : null}
+        </>
       )}
 
       {viewing ? (

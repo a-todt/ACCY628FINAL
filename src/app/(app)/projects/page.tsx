@@ -21,7 +21,7 @@ import {
 import { compareValues } from "@/components/FilterSortBar";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProjectSelect } from "@/components/ProjectSelect";
-import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { AlertBanner, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { moneyExact, labelize } from "@/lib/metrics";
 import { canEnterCosts, canViewCosts, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
@@ -744,6 +744,7 @@ export default function ProjectsPage() {
             No projects yet.{canEdit ? " Use Add → Project above to create one." : ""}
           </p>
         ) : (
+          <TableShell freezeFirst>
           <table className="table table-xs table-fixed w-full text-[11px]">
             <colgroup>
               {canEdit ? <col className="w-[5%]" /> : null}
@@ -922,6 +923,7 @@ export default function ProjectsPage() {
               )}
             </tbody>
           </table>
+          </TableShell>
         )}
       </SectionCard>
 

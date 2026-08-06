@@ -55,6 +55,7 @@ export default function SafetyIncidentsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | SafetyIncidentStatus>("all");
+  const [showAllRows, setShowAllRows] = useState(false);
 
   const load = useCallback(async () => {
     if (!canView) {
@@ -77,6 +78,10 @@ export default function SafetyIncidentsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setShowAllRows(false);
+  }, [statusFilter]);
 
   const filtered = useMemo(
     () =>
@@ -177,15 +182,20 @@ export default function SafetyIncidentsPage() {
     );
   }
 
+  const lockViewport = !showForm && !showAllRows;
+
   return (
-    <div className="space-y-6">
+    <div
+      className={
+        lockViewport
+          ? "flex min-h-0 flex-col gap-3 overflow-hidden h-[calc(100dvh-5.5rem)] lg:h-[calc(100dvh-10.5rem)]"
+          : "space-y-4"
+      }
+    >
+      <div className={lockViewport ? "shrink-0 space-y-3" : "contents"}>
       <PageHeader
         title="Safety / Incidents"
-        subtitle={
-          effectiveRole === "owner" || effectiveRole === "admin"
-            ? "Company-wide injury, near-miss, and site damage reports from project managers and field."
-            : "Log injuries and near misses on your projects so ownership can review them."
-        }
+        compact
         actions={
           canCreate ? (
             <button
@@ -332,122 +342,153 @@ export default function SafetyIncidentsPage() {
           </form>
         </SectionCard>
       ) : null}
+      </div>
 
-      <SectionCard
-        title={`Incident log (${filtered.length})`}
-        actions={
-          <div className="join">
-            {(["all", "open", "closed"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={`btn btn-xs join-item ${statusFilter === value ? "btn-active" : ""}`}
-                onClick={() => setStatusFilter(value)}
-              >
-                {labelize(value)}
-              </button>
-            ))}
-          </div>
-        }
+      <div
+        className={`card bg-base-100 border border-base-300 shadow-sm ${
+          lockViewport ? "flex min-h-0 flex-1 flex-col overflow-hidden" : ""
+        }`}
       >
-        {filtered.length === 0 ? (
-          <EmptyState
-            title="No incidents"
-            message={
-              canCreate
-                ? "No safety incidents match this filter. Log one if something happened on site."
-                : "No safety incidents have been reported yet."
-            }
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Project</th>
-                  <th>Type</th>
-                  <th>Severity</th>
-                  <th>Status</th>
-                  <th>Reported by</th>
-                  <th>Summary</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((incident) => (
-                  <tr key={incident.id} className="align-top">
-                    <td className="whitespace-nowrap">{incident.incident_date}</td>
-                    <td>
-                      <Link
-                        href={`/contracts/${incident.contract_id}`}
-                        className="link link-hover font-medium"
-                      >
-                        {incident.contracts?.contract_name ?? "Project"}
-                      </Link>
-                    </td>
-                    <td>{labelize(incident.incident_type)}</td>
-                    <td>
-                      <span className={`badge badge-sm ${severityBadgeClass(incident.severity)}`}>
-                        {labelize(incident.severity)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`badge badge-sm ${statusBadgeClass(incident.status)}`}>
-                        {labelize(incident.status)}
-                      </span>
-                    </td>
-                    <td className="text-xs">
-                      {incident.user_profiles?.full_name ||
-                        incident.user_profiles?.email ||
-                        "—"}
-                    </td>
-                    <td className="max-w-sm">
-                      <p className="text-sm">{incident.description}</p>
-                      {incident.injured_party ? (
-                        <p className="text-xs opacity-60 mt-0.5">
-                          Party: {incident.injured_party}
-                        </p>
-                      ) : null}
-                      {incident.corrective_action ? (
-                        <p className="text-xs opacity-60 mt-0.5">
-                          Fix: {incident.corrective_action}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="text-right whitespace-nowrap">
-                      {incident.status === "open" &&
-                      (effectiveRole === "admin" ||
-                        effectiveRole === "owner" ||
-                        effectiveRole === "project_manager") ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-xs"
-                          disabled={busy}
-                          onClick={() => onSetStatus(incident.id, "closed")}
-                        >
-                          Close
-                        </button>
-                      ) : null}
-                      {incident.status === "closed" &&
-                      (effectiveRole === "admin" || effectiveRole === "owner") ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-xs"
-                          disabled={busy}
-                          onClick={() => onSetStatus(incident.id, "open")}
-                        >
-                          Reopen
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div
+          className={`card-body gap-2 p-3 sm:p-3.5 ${
+            lockViewport ? "flex min-h-0 flex-1 flex-col overflow-hidden" : ""
+          }`}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 min-w-0">
+            <h2 className="card-title text-sm sm:text-base font-display font-semibold uppercase tracking-wide min-w-0 truncate">
+              Incident log ({filtered.length})
+            </h2>
+            <div className="join shrink-0">
+              {(["all", "open", "closed"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`btn btn-xs join-item ${statusFilter === value ? "btn-active" : ""}`}
+                  onClick={() => setStatusFilter(value)}
+                >
+                  {labelize(value)}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-      </SectionCard>
+          {filtered.length === 0 ? (
+            <EmptyState
+              title="No incidents"
+              message={
+                canCreate
+                  ? "No safety incidents match this filter. Log one if something happened on site."
+                  : "No safety incidents have been reported yet."
+              }
+            />
+          ) : (
+            <>
+            <div
+              className={`rounded-box border border-base-300 bg-base-100 table-sticky-head ${
+                lockViewport
+                  ? "min-h-0 flex-1 overflow-auto"
+                  : showAllRows
+                    ? "overflow-visible"
+                    : "overflow-auto max-h-[calc(2.5rem+5*1.85rem)]"
+              }`}
+            >
+              <table className="table table-xs table-fixed w-full text-[11px]">
+                <thead>
+                  <tr className="bg-base-200/80">
+                    <th>Date</th>
+                    <th>Project</th>
+                    <th>Type</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Reported by</th>
+                    <th>Summary</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((incident) => (
+                    <tr key={incident.id} className="align-top hover:bg-base-200/60">
+                      <td className="whitespace-nowrap">{incident.incident_date}</td>
+                      <td>
+                        <Link
+                          href={`/contracts/${incident.contract_id}`}
+                          className="link link-primary font-medium"
+                        >
+                          {incident.contracts?.contract_name ?? "Project"}
+                        </Link>
+                      </td>
+                      <td>{labelize(incident.incident_type)}</td>
+                      <td>
+                        <span className={`badge badge-sm ${severityBadgeClass(incident.severity)}`}>
+                          {labelize(incident.severity)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`badge badge-sm ${statusBadgeClass(incident.status)}`}>
+                          {labelize(incident.status)}
+                        </span>
+                      </td>
+                      <td className="text-xs">
+                        {incident.user_profiles?.full_name ||
+                          incident.user_profiles?.email ||
+                          "—"}
+                      </td>
+                      <td className="max-w-sm">
+                        <p className="text-sm">{incident.description}</p>
+                        {incident.injured_party ? (
+                          <p className="text-xs opacity-60 mt-0.5">
+                            Party: {incident.injured_party}
+                          </p>
+                        ) : null}
+                        {incident.corrective_action ? (
+                          <p className="text-xs opacity-60 mt-0.5">
+                            Fix: {incident.corrective_action}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="text-right whitespace-nowrap">
+                        {incident.status === "open" &&
+                        (effectiveRole === "admin" ||
+                          effectiveRole === "owner" ||
+                          effectiveRole === "project_manager") ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            disabled={busy}
+                            onClick={() => onSetStatus(incident.id, "closed")}
+                          >
+                            Close
+                          </button>
+                        ) : null}
+                        {incident.status === "closed" &&
+                        (effectiveRole === "admin" || effectiveRole === "owner") ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            disabled={busy}
+                            onClick={() => onSetStatus(incident.id, "open")}
+                          >
+                            Reopen
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex shrink-0 justify-center pt-2 pb-0.5">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setShowAllRows((v) => !v)}
+              >
+                {showAllRows ? "Show less" : `Show all (${filtered.length})`}
+              </button>
+            </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

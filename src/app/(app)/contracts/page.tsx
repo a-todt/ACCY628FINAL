@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Ban,
@@ -86,6 +86,11 @@ export default function ContractsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [logRefreshKey, setLogRefreshKey] = useState(0);
+  const [showAllRows, setShowAllRows] = useState(false);
+
+  useEffect(() => {
+    setShowAllRows(false);
+  }, [filters.name, filters.client, filters.location]);
 
   const setFilter = (key: keyof typeof filters, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -379,6 +384,11 @@ export default function ContractsPage() {
     return <AlertBanner type="error">{error}</AlertBanner>;
   }
 
+  /** Viewport ≈ tall filter header + 10 body rows; remaining rows scroll inside. */
+  const tableScrollClass = showAllRows
+    ? "overflow-visible table-sticky-head table-freeze-first"
+    : "overflow-auto max-h-[calc(4.5rem+10*1.85rem)] table-sticky-head table-freeze-first";
+
   return (
     <div>
       <PageHeader
@@ -535,6 +545,7 @@ export default function ContractsPage() {
           </div>
 
           <div className="hidden md:block rounded-box border border-base-300 bg-base-100">
+            <div className={tableScrollClass}>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
@@ -802,6 +813,18 @@ export default function ContractsPage() {
                 )}
               </tbody>
             </table>
+            </div>
+            {filtered.length > 10 ? (
+              <div className="flex justify-center border-t border-base-300 pt-2 pb-1">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setShowAllRows((v) => !v)}
+                >
+                  {showAllRows ? "Show less" : `Show all (${filtered.length})`}
+                </button>
+              </div>
+            ) : null}
             <div className="px-4 py-2 text-xs opacity-60 border-t border-base-300">
               Showing {filtered.length} of {contracts.length} contracts
               {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
