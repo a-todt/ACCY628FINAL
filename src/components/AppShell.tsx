@@ -107,7 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 shrink-0 group">
               <NailItLogo size="sm" />
               <span className="text-[11px] leading-tight opacity-50 truncate hidden xl:block max-w-[120px] group-hover:opacity-70 transition-opacity">
-                GC Contract Manager
+                General Contract Managing
               </span>
             </Link>
           </div>
