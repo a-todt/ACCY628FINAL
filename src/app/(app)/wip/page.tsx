@@ -7,11 +7,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { RevenueRecognitionDashboard } from "@/components/RevenueRecognitionDashboard";
 import {
   ColumnAutocompleteHeader,
+  ColumnCheckboxFilterHeader,
   ColumnSortHeader,
+  matchesCheckboxFilter,
   type ColumnSortDir,
 } from "@/components/ColumnAutocompleteHeader";
 import { compareValues } from "@/components/FilterSortBar";
-import { AlertBanner, EmptyState, PageHeader } from "@/components/ui";
+import { AlertBanner, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 import { downloadCsv } from "@/lib/export";
 import { moneyExact, percent } from "@/lib/metrics";
 import { canViewCosts } from "@/lib/roles";
@@ -61,6 +63,12 @@ const HEALTH_RANK: Record<WIPRow["health"], number> = {
   at_risk: 2,
 };
 
+const HEALTH_FILTER_OPTIONS = [
+  { value: "healthy", label: "Healthy" },
+  { value: "watch", label: "Watch" },
+  { value: "at_risk", label: "At Risk" },
+];
+
 function healthFromMargin(marginPct: number): WIPRow["health"] {
   if (marginPct < 0) return "at_risk";
   if (marginPct <= 10) return "watch";
@@ -88,8 +96,14 @@ export default function WIPSchedulePage() {
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<ColumnSortDir>("asc");
   const [projectFilter, setProjectFilter] = useState("");
+  const [healthSelected, setHealthSelected] = useState<string[]>([]);
+  const [showAllRows, setShowAllRows] = useState(false);
 
   const allowed = canViewCosts(effectiveRole);
+
+  useEffect(() => {
+    setShowAllRows(false);
+  }, [projectFilter, healthSelected]);
 
   const onSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -219,13 +233,16 @@ export default function WIPSchedulePage() {
 
   const filteredRows = useMemo(() => {
     const q = projectFilter.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(({ project }) => {
-      const name = colStr(project, P.name).toLowerCase();
-      const client = colStr(project, P.clientName).toLowerCase();
-      return name.includes(q) || client.includes(q);
+    return rows.filter(({ project, health }) => {
+      if (q) {
+        const name = colStr(project, P.name).toLowerCase();
+        const client = colStr(project, P.clientName).toLowerCase();
+        if (!name.includes(q) && !client.includes(q)) return false;
+      }
+      if (!matchesCheckboxFilter(health, healthSelected)) return false;
+      return true;
     });
-  }, [rows, projectFilter]);
+  }, [rows, projectFilter, healthSelected]);
 
   const sortedRows = useMemo(() => {
     const next = [...filteredRows];
@@ -347,7 +364,7 @@ export default function WIPSchedulePage() {
   if (!allowed) {
     return (
       <div>
-        <PageHeader title="WIP Schedule" subtitle="Work in Progress" />
+        <PageHeader compact title="WIP Schedule" />
         <AlertBanner type="error">
           Access denied. Cost-based WIP metrics are only available to internal roles.
         </AlertBanner>
@@ -367,11 +384,15 @@ export default function WIPSchedulePage() {
     return <AlertBanner type="error">{error}</AlertBanner>;
   }
 
+  const tableScrollClass = showAllRows
+    ? "overflow-visible table-sticky-head table-freeze-first"
+    : "overflow-auto max-h-[calc(4.5rem+10*1.85rem)] table-sticky-head table-freeze-first";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <PageHeader
+        compact
         title="WIP Schedule"
-        subtitle={`Work in Progress from ${P.table} · costs via ${C.table}.${C.fk} · billings via ${B.table}.${B.fk}`}
         actions={
           <button
             type="button"
@@ -385,7 +406,12 @@ export default function WIPSchedulePage() {
         }
       />
 
-      <RevenueRecognitionDashboard />
+      <RevenueRecognitionDashboard
+        projects={projects}
+        costsByProject={costsByProject}
+        billedByProject={billedByProject}
+        retainageByProject={retainageByProject}
+      />
 
       {rows.length === 0 ? (
         <EmptyState
@@ -398,12 +424,16 @@ export default function WIPSchedulePage() {
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-box border border-base-300 bg-base-100">
-          <table className="table table-sm">
+        <SectionCard compact title="WIP Schedule">
+        <div className={`rounded-box border border-base-300 bg-base-100 ${tableScrollClass}`}>
+          <table className="table table-xs table-fixed w-full text-[11px]">
             <thead>
-              <tr>
-                <ColumnSortHeader
+              <tr className="bg-base-200/80">
+                <ColumnCheckboxFilterHeader
                   label="Health"
+                  options={HEALTH_FILTER_OPTIONS}
+                  selected={healthSelected}
+                  onChange={setHealthSelected}
                   sortActive={sortKey === "health"}
                   sortDir={sortDir}
                   onSort={() => onSort("health")}
@@ -497,21 +527,23 @@ export default function WIPSchedulePage() {
               {sortedRows.length === 0 ? (
                 <tr>
                   <td colSpan={13} className="text-center py-8 opacity-60">
-                    No projects match “{projectFilter.trim()}”.
+                    {projectFilter.trim() || healthSelected.length > 0
+                      ? "No projects match the current filters."
+                      : "No projects to show."}
                   </td>
                 </tr>
               ) : (
                 sortedRows.map(({ project, projectId, calcs, health }) => (
-                <tr key={projectId} className="hover:bg-base-200/50">
-                  <td>{healthBadge(health)}</td>
-                  <td className="font-medium whitespace-nowrap">{colStr(project, P.name)}</td>
-                  <td className="text-right whitespace-nowrap">
+                <tr key={projectId} className="hover:bg-base-200/60">
+                  <td className="text-center">{healthBadge(health)}</td>
+                  <td className="font-medium truncate">{colStr(project, P.name)}</td>
+                  <td className="text-right whitespace-nowrap tabular-nums">
                     {moneyExact(colNum(project, P.contractValue))}
                   </td>
-                  <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                  <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
                     {moneyExact(colNum(project, P.estimatedCost))}
                   </td>
-                  <td className="text-right whitespace-nowrap">
+                  <td className="text-right whitespace-nowrap tabular-nums">
                     {moneyExact(calcs.actualCostsToDate)}
                   </td>
                   <td>
@@ -526,32 +558,32 @@ export default function WIPSchedulePage() {
                       </span>
                     </div>
                   </td>
-                  <td className="text-right whitespace-nowrap">{moneyExact(calcs.revenueEarned)}</td>
+                  <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(calcs.revenueEarned)}</td>
                   <td
-                    className="text-right whitespace-nowrap"
+                    className="text-right whitespace-nowrap tabular-nums"
                     title={`Over: ${calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"} · Under: ${calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"} · Retainage receivable: ${moneyExact(calcs.retainageHeld)}`}
                   >
                     {moneyExact(calcs.billedToDate)}
                   </td>
                   <td
-                    className={`text-right whitespace-nowrap hidden xl:table-cell ${
+                    className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
                       calcs.overbilling > 0 ? "text-error font-semibold" : ""
                     }`}
                   >
                     {calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"}
                   </td>
                   <td
-                    className={`text-right whitespace-nowrap hidden xl:table-cell ${
+                    className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
                       calcs.underbilling > 0 ? "text-success font-semibold" : ""
                     }`}
                   >
                     {calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"}
                   </td>
-                  <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                  <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
                     {moneyExact(calcs.retainageHeld)}
                   </td>
                   <td
-                    className={`text-right whitespace-nowrap ${
+                    className={`text-right whitespace-nowrap tabular-nums ${
                       calcs.projectedProfit < 0 ? "text-error" : ""
                     }`}
                     title={`Margin: ${percent(calcs.projectedMargin / 100)} · Est. cost: ${moneyExact(colNum(project, P.estimatedCost))}`}
@@ -559,7 +591,7 @@ export default function WIPSchedulePage() {
                     {moneyExact(calcs.projectedProfit)}
                   </td>
                   <td
-                    className={`text-right whitespace-nowrap hidden xl:table-cell ${
+                    className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
                       calcs.projectedMargin < 0
                         ? "text-error"
                         : calcs.projectedMargin <= 10
@@ -574,14 +606,14 @@ export default function WIPSchedulePage() {
               )}
             </tbody>
             <tfoot>
-              <tr className="font-semibold bg-base-200">
+              <tr className="font-semibold bg-base-200/50">
                 <td />
                 <td>TOTALS</td>
-                <td className="text-right whitespace-nowrap">{moneyExact(totals.contractValue)}</td>
-                <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(totals.contractValue)}</td>
+                <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
                   {moneyExact(totals.estimatedCost)}
                 </td>
-                <td className="text-right whitespace-nowrap">{moneyExact(totals.costsToDate)}</td>
+                <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(totals.costsToDate)}</td>
                 <td>
                   <div className="flex items-center gap-2 min-w-[120px]">
                     <progress
@@ -594,39 +626,51 @@ export default function WIPSchedulePage() {
                     </span>
                   </div>
                 </td>
-                <td className="text-right whitespace-nowrap">{moneyExact(totals.revenueEarned)}</td>
-                <td className="text-right whitespace-nowrap">{moneyExact(totals.billedToDate)}</td>
+                <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(totals.revenueEarned)}</td>
+                <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(totals.billedToDate)}</td>
                 <td
-                  className={`text-right whitespace-nowrap hidden xl:table-cell ${
+                  className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
                     totalsOverbilling > 0 ? "text-error" : ""
                   }`}
                 >
                   {totalsOverbilling > 0 ? moneyExact(totalsOverbilling) : "—"}
                 </td>
                 <td
-                  className={`text-right whitespace-nowrap hidden xl:table-cell ${
+                  className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
                     totalsUnderbilling > 0 ? "text-success" : ""
                   }`}
                 >
                   {totalsUnderbilling > 0 ? moneyExact(totalsUnderbilling) : "—"}
                 </td>
-                <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
                   {moneyExact(totals.retainageHeld)}
                 </td>
                 <td
-                  className={`text-right whitespace-nowrap ${
+                  className={`text-right whitespace-nowrap tabular-nums ${
                     totalsProjectedProfit < 0 ? "text-error" : ""
                   }`}
                 >
                   {moneyExact(totalsProjectedProfit)}
                 </td>
-                <td className="text-right whitespace-nowrap hidden xl:table-cell">
+                <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
                   {percent(totalsMarginPct)}
                 </td>
               </tr>
             </tfoot>
           </table>
         </div>
+        {sortedRows.length > 10 ? (
+          <div className="flex justify-center pt-2 pb-0.5">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => setShowAllRows((v) => !v)}
+            >
+              {showAllRows ? "Show less" : `Show all (${sortedRows.length})`}
+            </button>
+          </div>
+        ) : null}
+        </SectionCard>
       )}
     </div>
   );

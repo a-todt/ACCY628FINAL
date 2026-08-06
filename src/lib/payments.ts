@@ -21,9 +21,9 @@ export function paymentApprovalBadge(status: PaymentApprovalStatus | undefined):
   }
 }
 
-/** Whether this role's payment should wait for owner approval before updating AR. */
+/** Whether this role's payment should wait for owner/admin approval before updating AR. */
 export function paymentNeedsOwnerApproval(role: string): boolean {
-  return role !== "owner";
+  return role !== "owner" && role !== "admin";
 }
 
 export function invoiceAfterApplyingPayment(

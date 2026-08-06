@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   Cell,
@@ -10,9 +10,12 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { useAuth } from "@/contexts/AuthContext";
+import {
+  ColumnAutocompleteHeader,
+} from "@/components/ColumnAutocompleteHeader";
+import { ExpandableChart } from "@/components/ExpandableChart";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
-import { AlertBanner, EmptyState, SectionCard } from "@/components/ui";
+import { EmptyState, SectionCard } from "@/components/ui";
 import {
   computeWIP,
   projectToWIPInputs,
@@ -20,18 +23,14 @@ import {
 } from "@/hooks/useWIPCalculations";
 import { moneyExact, percent } from "@/lib/metrics";
 import { CHART_SERIES } from "@/lib/chartColors";
-import { createClient } from "@/lib/supabase/client";
 import {
   WIP_DB,
   colNum,
   colStr,
-  selectList,
   type DbRow,
 } from "@/lib/wipSchema";
 
 const P = WIP_DB.projects;
-const C = WIP_DB.projectCosts;
-const B = WIP_DB.billings;
 
 const CHART_COLORS = {
   earned: CHART_SERIES.earned,
@@ -43,6 +42,14 @@ const CHART_COLORS = {
   onHold: CHART_SERIES.onHold,
   atRisk: CHART_SERIES.atRisk,
 };
+
+const CHART_PANEL_H = 180;
+const CHART_PREVIEW_ROWS = 6;
+
+function takeChartPreview<T>(rows: T[], mode: "preview" | "full", limit = CHART_PREVIEW_ROWS): T[] {
+  if (mode === "full" || rows.length <= limit) return rows;
+  return rows.slice(0, limit);
+}
 
 type ProjectStatusBucket = "active" | "completed" | "on_hold" | "other";
 
@@ -81,98 +88,25 @@ function healthBadge(health: ProjectMetrics["health"]) {
   return <span className="badge badge-error badge-sm">At Risk</span>;
 }
 
-export function RevenueRecognitionDashboard() {
-  const { user } = useAuth();
-  const [projects, setProjects] = useState<DbRow[]>([]);
-  const [costsByProject, setCostsByProject] = useState<Record<string, number>>({});
-  const [billedByProject, setBilledByProject] = useState<Record<string, number>>({});
-  const [retainageByProject, setRetainageByProject] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export type WIPDashboardData = {
+  projects: DbRow[];
+  costsByProject: Record<string, number>;
+  billedByProject: Record<string, number>;
+  retainageByProject: Record<string, number>;
+};
 
-  const load = useCallback(async () => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    const supabase = createClient();
-
-    try {
-      const { data: projectRows, error: projectsError } = await supabase
-        .from(P.table)
-        .select(
-          selectList(
-            P.pk,
-            P.name,
-            P.clientName,
-            P.contractValue,
-            P.estimatedCost,
-            P.status
-          )
-        )
-        .eq(P.userId, user.id)
-        .order(P.name, { ascending: true });
-
-      if (projectsError) throw projectsError;
-
-      const list = (projectRows ?? []) as unknown as DbRow[];
-      setProjects(list);
-
-      if (list.length === 0) {
-        setCostsByProject({});
-        setBilledByProject({});
-        setRetainageByProject({});
-        return;
-      }
-
-      const ids = list.map((row) => colStr(row, P.pk));
-      const [costsRes, billingsRes] = await Promise.all([
-        supabase
-          .from(C.table)
-          .select(selectList(C.fk, C.amount))
-          .eq(C.userId, user.id)
-          .in(C.fk, ids),
-        supabase
-          .from(B.table)
-          .select(selectList(B.fk, B.amountBilled, B.retainageHeld))
-          .eq(B.userId, user.id)
-          .in(B.fk, ids),
-      ]);
-
-      if (costsRes.error) throw costsRes.error;
-      if (billingsRes.error) throw billingsRes.error;
-
-      const costs: Record<string, number> = {};
-      for (const row of (costsRes.data ?? []) as unknown as DbRow[]) {
-        const id = colStr(row, C.fk);
-        costs[id] = (costs[id] ?? 0) + colNum(row, C.amount);
-      }
-
-      const billed: Record<string, number> = {};
-      const retainage: Record<string, number> = {};
-      for (const row of (billingsRes.data ?? []) as unknown as DbRow[]) {
-        const id = colStr(row, B.fk);
-        billed[id] = (billed[id] ?? 0) + colNum(row, B.amountBilled);
-        retainage[id] = (retainage[id] ?? 0) + colNum(row, B.retainageHeld);
-      }
-
-      setCostsByProject(costs);
-      setBilledByProject(billed);
-      setRetainageByProject(retainage);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load revenue dashboard");
-      setProjects([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+export function RevenueRecognitionDashboard({
+  projects,
+  costsByProject,
+  billedByProject,
+  retainageByProject,
+}: WIPDashboardData) {
+  const [showAllHealth, setShowAllHealth] = useState(false);
+  const [healthProjectFilter, setHealthProjectFilter] = useState("");
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    setShowAllHealth(false);
+  }, [healthProjectFilter]);
 
   const metrics: ProjectMetrics[] = useMemo(
     () =>
@@ -265,157 +199,235 @@ export function RevenueRecognitionDashboard() {
     ].filter((d) => d.value > 0);
   }, [metrics]);
 
-  if (loading) {
-    return (
-      <div className="grid place-items-center py-16">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
-  }
+  const healthProjectOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const { project } of metrics) {
+      const name = colStr(project, P.name).trim();
+      if (name) names.add(name);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [metrics]);
 
-  if (error) {
-    return <AlertBanner type="error">{error}</AlertBanner>;
-  }
+  const filteredHealthRows = useMemo(() => {
+    const q = healthProjectFilter.trim().toLowerCase();
+    if (!q) return metrics;
+    return metrics.filter(({ project }) =>
+      colStr(project, P.name).toLowerCase().includes(q)
+    );
+  }, [metrics, healthProjectFilter]);
+
+  const healthScrollClass = showAllHealth
+    ? "overflow-visible table-sticky-head table-freeze-first"
+    : "overflow-auto max-h-[calc(4.5rem+10*1.85rem)] table-sticky-head table-freeze-first";
 
   if (metrics.length === 0) {
     return (
       <EmptyState
         title="No revenue recognition data"
-        message={`Add rows to ${P.table} (and related ${C.table} / ${B.table}) to populate this dashboard.`}
+        message={`Add projects (and related costs / billings) to populate this dashboard.`}
       />
     );
   }
 
+  const kpiItems = [
+    {
+      title: "Total Contract Value",
+      value: moneyExact(totals.contractValue),
+      desc: `${metrics.length} projects`,
+      valueClass: "text-primary",
+    },
+    {
+      title: "Revenue Earned to Date",
+      value: moneyExact(totals.revenueEarned),
+      desc: "Cost-to-cost recognition",
+    },
+    {
+      title: "Billed to Date",
+      value: moneyExact(totals.billedToDate),
+      desc: "From billings",
+    },
+    {
+      title: "Overbilling (Liability)",
+      value: moneyExact(totals.overbilling),
+      desc: "Billings in excess of revenue",
+      valueClass: "text-error",
+    },
+    {
+      title: "Underbilling (Asset)",
+      value: moneyExact(totals.underbilling),
+      desc: "Revenue in excess of billings",
+      valueClass: "text-success",
+    },
+    {
+      title: "Retainage Receivable",
+      value: moneyExact(totals.retainageHeld),
+      desc: "ASC 606 contract asset",
+    },
+    {
+      title: "Total Contract Assets",
+      value: moneyExact(totals.underbilling + totals.retainageHeld),
+      desc: "Underbilling + retainage",
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-100 border border-base-300">
-        <div className="stat">
-          <div className="stat-title">Total Contract Value</div>
-          <div className="stat-value text-xl sm:text-2xl text-primary">
-            {moneyExact(totals.contractValue)}
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+        {kpiItems.map((kpi) => (
+          <div
+            key={kpi.title}
+            className="rounded-box border border-base-300 bg-base-100 px-2.5 py-2 min-w-0"
+          >
+            <p className="text-[10px] uppercase tracking-wide opacity-60 leading-tight truncate" title={kpi.title}>
+              {kpi.title}
+            </p>
+            <p className={`text-sm sm:text-base font-semibold tabular-nums truncate ${kpi.valueClass ?? ""}`}>
+              {kpi.value}
+            </p>
+            <p className="text-[10px] opacity-55 truncate">{kpi.desc}</p>
           </div>
-          <div className="stat-desc">{metrics.length} projects</div>
-        </div>
-        <div className="stat">
-          <div className="stat-title">Revenue Earned to Date</div>
-          <div className="stat-value text-xl sm:text-2xl">{moneyExact(totals.revenueEarned)}</div>
-          <div className="stat-desc">Cost-to-cost recognition</div>
-        </div>
-        <div className="stat">
-          <div className="stat-title">Billed to Date</div>
-          <div className="stat-value text-xl sm:text-2xl">{moneyExact(totals.billedToDate)}</div>
-          <div className="stat-desc">From {B.table}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-title">Overbilling (Liability)</div>
-          <div className="stat-value text-xl sm:text-2xl text-error">
-            {moneyExact(totals.overbilling)}
-          </div>
-          <div className="stat-desc">Billings in excess of revenue</div>
-        </div>
-        <div className="stat">
-          <div className="stat-title">Underbilling (Asset)</div>
-          <div className="stat-value text-xl sm:text-2xl text-success">
-            {moneyExact(totals.underbilling)}
-          </div>
-          <div className="stat-desc">Revenue in excess of billings</div>
-        </div>
-        <div className="stat">
-          <div className="stat-title">Retainage Receivable</div>
-          <div className="stat-value text-xl sm:text-2xl">{moneyExact(totals.retainageHeld)}</div>
-          <div className="stat-desc">ASC 606 contract asset</div>
-        </div>
-        <div className="stat">
-          <div className="stat-title">Total Contract Assets</div>
-          <div className="stat-value text-xl sm:text-2xl">
-            {moneyExact(totals.underbilling + totals.retainageHeld)}
-          </div>
-          <div className="stat-desc">Underbilling + retainage</div>
-        </div>
+        ))}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <SectionCard title="Revenue Earned vs Billed to Date">
-          <ScrollableBarChart data={earnedVsBilledData} valueFormatter={(v) => moneyExact(v)}>
-            <Legend verticalAlign="top" height={32} />
-            <Bar dataKey="Earned" fill={CHART_COLORS.earned} radius={[0, 5, 5, 0]} />
-            <Bar dataKey="Billed" fill={CHART_COLORS.billed} radius={[0, 5, 5, 0]} />
-          </ScrollableBarChart>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <SectionCard compact title="Revenue Earned vs Billed">
+          <ExpandableChart
+            title="Revenue Earned vs Billed"
+            actionLabel="Show full graph"
+            previewHeight={CHART_PANEL_H}
+            heightBoost={28}
+            moreCount={Math.max(0, earnedVsBilledData.length - CHART_PREVIEW_ROWS)}
+            hasData={earnedVsBilledData.length > 0}
+            empty={
+              <p className="text-sm opacity-60 py-8 text-center">No earned/billed data to chart yet.</p>
+            }
+          >
+            {(height, mode) => (
+              <ScrollableBarChart
+                data={takeChartPreview(earnedVsBilledData, mode)}
+                panelHeight={height}
+                valueFormatter={(v) => moneyExact(v)}
+              >
+                <Legend verticalAlign="top" height={28} />
+                <Bar dataKey="Earned" fill={CHART_COLORS.earned} radius={[0, 5, 5, 0]} />
+                <Bar dataKey="Billed" fill={CHART_COLORS.billed} radius={[0, 5, 5, 0]} />
+              </ScrollableBarChart>
+            )}
+          </ExpandableChart>
         </SectionCard>
 
-        <SectionCard title="Estimated Cost vs Actual Cost">
-          <ScrollableBarChart data={costData} valueFormatter={(v) => moneyExact(v)}>
-            <Legend verticalAlign="top" height={32} />
-            <Bar dataKey="Estimated" fill={CHART_COLORS.estimated} radius={[0, 5, 5, 0]} />
-            <Bar dataKey="Actual" fill={CHART_COLORS.actual} radius={[0, 5, 5, 0]} />
-          </ScrollableBarChart>
+        <SectionCard compact title="Estimated vs Actual Cost">
+          <ExpandableChart
+            title="Estimated vs Actual Cost"
+            actionLabel="Show full graph"
+            previewHeight={CHART_PANEL_H}
+            heightBoost={28}
+            moreCount={Math.max(0, costData.length - CHART_PREVIEW_ROWS)}
+            hasData={costData.length > 0}
+            empty={
+              <p className="text-sm opacity-60 py-8 text-center">No cost data to chart yet.</p>
+            }
+          >
+            {(height, mode) => (
+              <ScrollableBarChart
+                data={takeChartPreview(costData, mode)}
+                panelHeight={height}
+                valueFormatter={(v) => moneyExact(v)}
+              >
+                <Legend verticalAlign="top" height={28} />
+                <Bar dataKey="Estimated" fill={CHART_COLORS.estimated} radius={[0, 5, 5, 0]} />
+                <Bar dataKey="Actual" fill={CHART_COLORS.actual} radius={[0, 5, 5, 0]} />
+              </ScrollableBarChart>
+            )}
+          </ExpandableChart>
         </SectionCard>
 
-        <div className="lg:col-span-2">
-          <SectionCard title="Project Status Breakdown">
-            <div className="grid md:grid-cols-[1fr_auto] gap-4 items-center">
-              <div className="h-72 w-full min-w-0">
-                {statusPieData.length === 0 ? (
-                  <p className="text-sm opacity-60 py-16 text-center">No status data.</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={288} minWidth={200}>
-                    <PieChart>
-                      <Pie
-                        data={statusPieData}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={95}
-                        label={({ name, percent }) =>
-                          `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                        }
-                      >
-                        {statusPieData.map((entry) => (
-                          <Cell key={entry.name} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value) => [`${Number(value)} project(s)`, "Count"]}
-                      />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-              <ul className="space-y-2 text-sm px-2">
-                {statusPieData.map((entry) => (
-                  <li key={entry.name} className="flex items-center gap-2">
-                    <span
-                      className="inline-block size-3 rounded-sm shrink-0"
-                      style={{ backgroundColor: entry.color }}
-                      aria-hidden
-                    />
-                    <span className="font-medium">{entry.name}</span>
-                    <span className="opacity-70 tabular-nums">{entry.value}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </SectionCard>
-        </div>
+        <SectionCard compact title="Project Status">
+          <ExpandableChart
+            title="Project Status"
+            actionLabel="Show full graph"
+            previewHeight={CHART_PANEL_H}
+            hasData={statusPieData.length > 0}
+            empty={<p className="text-sm opacity-60 py-8 text-center">No status data.</p>}
+          >
+            {(height, mode) => {
+              const radius =
+                mode === "full"
+                  ? Math.min(180, Math.round(height * 0.34))
+                  : Math.min(62, Math.round(height * 0.34));
+              return (
+                <div className="grid grid-cols-[1fr_auto] gap-2 items-center min-h-0" style={{ height }}>
+                  <div className="h-full w-full min-w-0">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={120}>
+                      <PieChart>
+                        <Pie
+                          data={statusPieData}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={radius}
+                          label={({ name, percent: pct }) =>
+                            `${name} ${((pct ?? 0) * 100).toFixed(0)}%`
+                          }
+                        >
+                          {statusPieData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => [`${Number(value)} project(s)`, "Count"]} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ul className="space-y-1.5 text-xs px-1 shrink-0">
+                    {statusPieData.map((entry) => (
+                      <li key={entry.name} className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block size-2.5 rounded-sm shrink-0"
+                          style={{ backgroundColor: entry.color }}
+                          aria-hidden
+                        />
+                        <span className="font-medium">{entry.name}</span>
+                        <span className="opacity-70 tabular-nums">{entry.value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            }}
+          </ExpandableChart>
+        </SectionCard>
       </div>
 
-      <SectionCard title="Project Health">
-        <div className="overflow-x-auto">
-          <table className="table table-sm">
+      <SectionCard compact title="Project Health">
+        <div className={`rounded-box border border-base-300 bg-base-100 ${healthScrollClass}`}>
+          <table className="table table-xs table-fixed w-full text-[11px]">
             <thead>
-              <tr>
-                <th>Project</th>
+              <tr className="bg-base-200/80">
+                <ColumnAutocompleteHeader
+                  label="Project"
+                  listId="wip-health-filter-project"
+                  value={healthProjectFilter}
+                  onChange={setHealthProjectFilter}
+                  options={healthProjectOptions}
+                  placeholder="Search…"
+                />
                 <th className="min-w-[140px]">Completion %</th>
                 <th className="text-right">Margin %</th>
-                <th>Health</th>
+                <th className="text-center">Health</th>
               </tr>
             </thead>
             <tbody>
-              {metrics.map(({ project, projectId, calcs, health }) => (
-                <tr key={projectId}>
-                  <td className="font-medium">{colStr(project, P.name)}</td>
+              {filteredHealthRows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 opacity-60">
+                    No projects match “{healthProjectFilter.trim()}”.
+                  </td>
+                </tr>
+              ) : (
+                filteredHealthRows.map(({ project, projectId, calcs, health }) => (
+                <tr key={projectId} className="hover:bg-base-200/60">
+                  <td className="font-medium truncate">{colStr(project, P.name)}</td>
                   <td>
                     <div className="flex items-center gap-2">
                       <progress
@@ -439,12 +451,24 @@ export function RevenueRecognitionDashboard() {
                   >
                     {percent(calcs.projectedMargin / 100)}
                   </td>
-                  <td>{healthBadge(health)}</td>
+                  <td className="text-center">{healthBadge(health)}</td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>
+        {filteredHealthRows.length > 10 ? (
+          <div className="flex justify-center pt-2 pb-0.5">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => setShowAllHealth((v) => !v)}
+            >
+              {showAllHealth ? "Show less" : `Show all (${filteredHealthRows.length})`}
+            </button>
+          </div>
+        ) : null}
       </SectionCard>
     </div>
   );

@@ -17,7 +17,7 @@ import {
   isPostedPayment,
   paymentApprovalBadge,
 } from "@/lib/payments";
-import { canApprovePayments, canCreateInvoices, statusBadgeClass } from "@/lib/roles";
+import { canApprovePayments, canCreateInvoices, canSelfApprovePayment, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 
@@ -75,6 +75,7 @@ function InvoiceDetailContent() {
   const { contracts, invoices, payments, loading, error, refresh } = useContractData();
   const canEdit = canCreateInvoices(effectiveRole);
   const canApprove = canApprovePayments(effectiveRole);
+  const canSelfApprove = canSelfApprovePayment(effectiveRole);
   const wantsEdit = searchParams.get("edit") === "1";
   const isEditing = canEdit && wantsEdit;
 
@@ -152,7 +153,12 @@ function InvoiceDetailContent() {
   const onApprovePayment = async (paymentId: string) => {
     const payment = invoicePayments.find((p) => p.id === paymentId);
     if (!payment) return;
-    if (payment.submitted_by && user?.id && payment.submitted_by === user.id) {
+    if (
+      payment.submitted_by &&
+      user?.id &&
+      payment.submitted_by === user.id &&
+      !canSelfApprove
+    ) {
       setActionError("You cannot approve a payment you submitted (dual-approval control).");
       return;
     }
@@ -558,7 +564,10 @@ function InvoiceDetailContent() {
                   {invoicePayments.map((payment) => {
                     const status = payment.approval_status ?? "posted";
                     const selfSubmitted =
-                      !!payment.submitted_by && !!user?.id && payment.submitted_by === user.id;
+                      !!payment.submitted_by &&
+                      !!user?.id &&
+                      payment.submitted_by === user.id &&
+                      !canSelfApprove;
                     return (
                       <tr key={payment.id}>
                         <td className="whitespace-nowrap">{payment.payment_date ?? "—"}</td>

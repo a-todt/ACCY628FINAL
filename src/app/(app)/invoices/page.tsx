@@ -22,7 +22,7 @@ import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell
 import { writeAuditLog } from "@/lib/audit";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { invoiceAfterApplyingPayment, paymentNeedsOwnerApproval } from "@/lib/payments";
-import { canApprovePayments, canCreateInvoices, canRecordPayments, statusBadgeClass } from "@/lib/roles";
+import { canApprovePayments, canCreateInvoices, canRecordPayments, canSelfApprovePayment, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 
@@ -72,6 +72,7 @@ export default function InvoicesPage() {
   const canManage = canCreateInvoices(effectiveRole);
   const canPay = canRecordPayments(effectiveRole);
   const canApprove = canApprovePayments(effectiveRole);
+  const canSelfApprove = canSelfApprovePayment(effectiveRole);
   const canMutate = canManage;
 
   const [invoiceForm, setInvoiceForm] = useState(EMPTY_INVOICE_FORM);
@@ -423,7 +424,7 @@ export default function InvoicesPage() {
           payment_amount: paymentAmount,
         });
         setPaymentSuccess(
-          "Payment submitted for owner approval. AR will update after the owner posts it."
+          "Payment submitted for approval. AR will update after an owner or admin posts it."
         );
       } else {
         const update = invoiceAfterApplyingPayment(selectedInvoice, paymentAmount);
@@ -458,7 +459,12 @@ export default function InvoicesPage() {
     const payment = payments.find((p) => p.id === paymentId);
     const invoice = invoices.find((i) => i.id === invoiceId);
     if (!payment || !invoice) return;
-    if (payment.submitted_by && user?.id && payment.submitted_by === user.id) {
+    if (
+      payment.submitted_by &&
+      user?.id &&
+      payment.submitted_by === user.id &&
+      !canSelfApprove
+    ) {
       setPaymentError("You cannot approve a payment you submitted (dual-approval control).");
       return;
     }
@@ -762,8 +768,8 @@ export default function InvoicesPage() {
         <SectionCard title="Record Payment">
           <p className="text-sm opacity-70 mb-3">
             {paymentNeedsOwnerApproval(effectiveRole)
-              ? "This payment will be submitted for owner dual-approval before it updates AR."
-              : "As owner, this payment posts to AR immediately."}
+              ? "This payment will be submitted for dual-approval before it updates AR."
+              : "As an admin or owner/executive, this payment posts to AR immediately."}
           </p>
           {paymentError ? <AlertBanner type="error">{paymentError}</AlertBanner> : null}
           {paymentSuccess ? <AlertBanner type="success">{paymentSuccess}</AlertBanner> : null}
@@ -870,7 +876,10 @@ export default function InvoicesPage() {
                 {pendingPayments.map((payment) => {
                   const invoice = invoices.find((i) => i.id === payment.invoice_id);
                   const selfSubmitted =
-                    !!payment.submitted_by && !!user?.id && payment.submitted_by === user.id;
+                    !!payment.submitted_by &&
+                    !!user?.id &&
+                    payment.submitted_by === user.id &&
+                    !canSelfApprove;
                   return (
                     <tr key={payment.id}>
                       <td>

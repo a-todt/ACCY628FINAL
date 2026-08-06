@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { Building2, ChevronDown, HardHat, Pencil, Plus, Trash2, TriangleAlert } from "lucide-react";
 import {
@@ -17,7 +17,7 @@ import { PageSkeleton } from "@/components/PageSkeleton";
 import { StatusFilterChips } from "@/components/StatusFilterChips";
 import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
 import { useToast } from "@/components/ToastProvider";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { StarRating } from "@/components/StarRating";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize, money } from "@/lib/metrics";
@@ -122,6 +122,11 @@ export default function SubcontractorsPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [viewing, setViewing] = useState<Subcontractor | null>(null);
+  const [showAllRows, setShowAllRows] = useState(false);
+
+  useEffect(() => {
+    setShowAllRows(false);
+  }, [companyFilter, projectFilter, statusChip]);
 
   const subLogins = useMemo(() => userProfiles.filter((p) => p.role === "subcontractor"), [userProfiles]);
 
@@ -446,6 +451,10 @@ export default function SubcontractorsPage() {
 
   const colCount = 7 + (canMutate ? 2 : 0);
 
+  const tableScrollClass = showAllRows
+    ? "overflow-visible table-sticky-head table-freeze-first"
+    : "overflow-auto max-h-[calc(4.5rem+8*1.85rem)] table-sticky-head table-freeze-first";
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -722,7 +731,8 @@ export default function SubcontractorsPage() {
           }
         />
       ) : (
-        <TableShell freezeFirst>
+        <div className="rounded-box border border-base-300 bg-base-100">
+          <div className={tableScrollClass}>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
@@ -967,7 +977,19 @@ export default function SubcontractorsPage() {
                 )}
               </tbody>
             </table>
-        </TableShell>
+          </div>
+          {filtered.length > 8 ? (
+            <div className="flex justify-center border-t border-base-300 pt-2 pb-1">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setShowAllRows((v) => !v)}
+              >
+                {showAllRows ? "Show less" : `Show all (${filtered.length})`}
+              </button>
+            </div>
+          ) : null}
+        </div>
       )}
 
       {viewing ? (

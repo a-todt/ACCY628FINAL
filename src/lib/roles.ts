@@ -202,9 +202,14 @@ export function canRecordPayments(role: UserRole): boolean {
   return hasPermission(role, "recordPayments");
 }
 
-/** Owner is the checker in the payment dual-approval workflow. */
+/** Owner / executive is the checker in the payment dual-approval workflow; admin may also approve. */
 export function canApprovePayments(role: UserRole): boolean {
-  return role === "owner";
+  return role === "owner" || role === "admin";
+}
+
+/** Admin and owner/executive may approve payments they submitted; other roles cannot. */
+export function canSelfApprovePayment(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
 }
 
 /** Owner fraud / control exception alerts (admin can also view for demos). */
