@@ -688,21 +688,106 @@ function BiddingPage() {
     setError(null);
     try {
       const supabase = createClient();
+      const bidRow =
+        bids.find((b) => b.id === bidId) ??
+        packageBids.find((b) => b.id === bidId) ??
+        null;
       const { error: updateError } = await supabase
         .from("bids")
         .update({ status, updated_at: new Date().toISOString() })
         .eq("id", bidId);
       if (updateError) throw updateError;
+
+      let engagementCreated = false;
+      let engagementUpdated = false;
+      let engagementError: string | null = null;
+
       if (status === "accepted" && selected) {
-        await supabase
+        const { error: awardError } = await supabase
           .from("bid_packages")
           .update({ status: "awarded", updated_at: new Date().toISOString() })
           .eq("id", selected.id);
+        if (awardError) throw awardError;
+
+        // Winning a bid must create a subcontract engagement so the sub sees the job under Contracts.
+        const contractId = selected.contract_id;
+        if (contractId && bidRow) {
+          const engagementPayload = {
+            contract_id: contractId,
+            company_name: bidRow.company_name.trim(),
+            contact_name: bidRow.contact_name?.trim() || null,
+            contact_email: bidRow.contact_email?.trim() || null,
+            contact_phone: bidRow.contact_phone?.trim() || null,
+            trade: selected.trade?.trim() || null,
+            subcontract_value: Number(bidRow.amount),
+            amount_paid: 0,
+            status: "active" as const,
+            scope_of_work: selected.scope_of_work?.trim() || null,
+            user_id: bidRow.user_id,
+            license_number: bidRow.license_number?.trim() || null,
+            license_state: bidRow.license_state?.trim() || null,
+            license_expiration: bidRow.license_expiration || null,
+          };
+
+          let existingId: string | null = null;
+          if (bidRow.user_id) {
+            const { data: byUser } = await supabase
+              .from("subcontractors")
+              .select("id")
+              .eq("contract_id", contractId)
+              .eq("user_id", bidRow.user_id)
+              .maybeSingle();
+            existingId = byUser?.id ?? null;
+          }
+          if (!existingId) {
+            const { data: byCompany } = await supabase
+              .from("subcontractors")
+              .select("id")
+              .eq("contract_id", contractId)
+              .ilike("company_name", engagementPayload.company_name)
+              .maybeSingle();
+            existingId = byCompany?.id ?? null;
+          }
+
+          if (existingId) {
+            const { error: engUpdateError } = await supabase
+              .from("subcontractors")
+              .update(engagementPayload)
+              .eq("id", existingId);
+            if (engUpdateError) engagementError = engUpdateError.message;
+            else engagementUpdated = true;
+          } else {
+            const { error: engInsertError } = await supabase
+              .from("subcontractors")
+              .insert(engagementPayload);
+            if (engInsertError) engagementError = engInsertError.message;
+            else engagementCreated = true;
+          }
+        }
       }
-      await writeAuditLog("bid_status", "bids", bidId, { status });
-      setMessage(`Bid ${labelize(status)}.`);
+
+      if (engagementError) {
+        throw new Error(
+          `Bid accepted, but could not link the winner to the contract: ${engagementError}`
+        );
+      }
+
+      await writeAuditLog("bid_status", "bids", bidId, {
+        status,
+        engagementCreated,
+        engagementUpdated,
+      });
+      setMessage(
+        status === "accepted"
+          ? engagementCreated
+            ? "Bid accepted — winner linked to the project under Contracts / Subcontractors."
+            : engagementUpdated
+              ? "Bid accepted — existing engagement updated."
+              : `Bid ${labelize(status)}.`
+          : `Bid ${labelize(status)}.`
+      );
       setFocusBidId(null);
-      await load();
+      await Promise.all([load(), refreshContractData()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update bid.");
     } finally {
