@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Building2, ChevronDown, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
+import { Building2, ChevronDown, FileText, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import {
   ColumnAutocompleteHeader,
   ColumnSortHeader,
@@ -13,7 +13,11 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { compareValues } from "@/components/FilterSortBar";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { StatusFilterChips } from "@/components/StatusFilterChips";
+import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
+import { useToast } from "@/components/ToastProvider";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
 import { canCreateInvoices, statusBadgeClass } from "@/lib/roles";
@@ -90,11 +94,14 @@ export default function InvoicesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [statusChip, setStatusChip] = useState("all");
+  const { toast } = useToast();
 
   const filtered = useMemo(() => {
     const next = invoices.filter((invoice) => {
       if (!matchesColumnFilter(invoice.invoice_number, numberFilter)) return false;
       if (!matchesColumnFilter(invoice.contracts?.contract_name, projectFilter)) return false;
+      if (statusChip !== "all" && displayStatus(invoice) !== statusChip) return false;
       return true;
     });
 
@@ -113,7 +120,7 @@ export default function InvoicesPage() {
       }
       return compareValues(invoiceBalance(a), invoiceBalance(b), sortDir);
     });
-  }, [invoices, numberFilter, projectFilter, sortKey, sortDir]);
+  }, [invoices, numberFilter, projectFilter, statusChip, sortKey, sortDir]);
 
   const numberOptions = useMemo(
     () => uniqueSorted(invoices.map((invoice) => invoice.invoice_number)),
@@ -412,11 +419,7 @@ export default function InvoicesPage() {
   };
 
   if (loading) {
-    return (
-      <div className="grid place-items-center py-24">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+    return <PageSkeleton rows={8} />;
   }
 
   if (error) {
@@ -432,43 +435,6 @@ export default function InvoicesPage() {
         subtitle="Billing and payment status across all projects."
         actions={
           <div className="flex flex-wrap gap-2 items-center">
-            {canMutate && selectedIds.size > 0 ? (
-              <div className="dropdown dropdown-end">
-                <div
-                  tabIndex={0}
-                  role="button"
-                  className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}
-                >
-                  Bulk actions ({selectedIds.size})
-                  <ChevronDown className="h-4 w-4" />
-                </div>
-                <ul
-                  tabIndex={0}
-                  className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300"
-                >
-                  <li className="menu-title px-3 pt-1">
-                    <span>Change status</span>
-                  </li>
-                  {STATUS_OPTIONS.map((status) => (
-                    <li key={status}>
-                      <button type="button" disabled={busy} onClick={() => void runBulk(status)}>
-                        Set {labelize(status)}
-                      </button>
-                    </li>
-                  ))}
-                  <li>
-                    <button
-                      type="button"
-                      className="text-error"
-                      disabled={busy}
-                      onClick={() => void runBulk("delete")}
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete selected
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            ) : null}
             {canManage ? (
               <>
                 <button
@@ -488,6 +454,61 @@ export default function InvoicesPage() {
           </div>
         }
       />
+
+      <StickyToolbar>
+        <StatusFilterChips
+          options={STATUS_OPTIONS}
+          value={statusChip}
+          onChange={setStatusChip}
+          allLabel="All statuses"
+        />
+        <p className="text-xs opacity-55 tabular-nums">
+          {filtered.length} shown
+          {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+        </p>
+      </StickyToolbar>
+
+      <BulkActionBar count={canMutate ? selectedIds.size : 0} onClear={clearSelection}>
+        <div className="dropdown dropdown-top dropdown-end">
+          <div tabIndex={0} role="button" className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}>
+            Bulk actions
+            <ChevronDown className="h-4 w-4" />
+          </div>
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300 mb-2"
+          >
+            <li className="menu-title px-3 pt-1">
+              <span>Change status</span>
+            </li>
+            {STATUS_OPTIONS.map((status) => (
+              <li key={status}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void runBulk(status).then(() => toast(`Updated ${selectedIds.size} invoice(s)`, "success"))
+                  }
+                >
+                  Set {labelize(status)}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                type="button"
+                className="text-error"
+                disabled={busy}
+                onClick={() =>
+                  void runBulk("delete").then(() => toast("Deleted selected invoices", "success"))
+                }
+              >
+                <Trash2 className="h-4 w-4" /> Delete selected
+              </button>
+            </li>
+          </ul>
+        </div>
+      </BulkActionBar>
 
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
       {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
@@ -692,22 +713,32 @@ export default function InvoicesPage() {
       ) : null}
 
       {invoices.length === 0 ? (
-        <EmptyState title="No invoices" message="No invoices have been issued yet." />
+        <EmptyState
+          title="No invoices"
+          message="No invoices have been issued yet."
+          icon={FileText}
+          action={
+            canManage ? (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowInvoiceForm(true)}>
+                <Plus className="h-4 w-4" /> Create Invoice
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="rounded-box border border-base-300 bg-base-100">
-          <div className="overflow-x-auto">
+        <TableShell freezeFirst>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
-                <col className="w-[11%]" />
-                <col className="w-[14%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
+                <col className="w-[8%]" />
+                <col className="w-[8%]" />
                 <col className="w-[9%]" />
                 <col className="w-[9%] hidden xl:table-column" />
                 <col className="w-[9%]" />
                 <col className="w-[8%] hidden xl:table-column" />
-                <col className="w-[9%]" />
+                <col className="w-[12%]" />
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
               <thead>
@@ -837,7 +868,7 @@ export default function InvoicesPage() {
                         <td className="truncate px-1 text-center hidden xl:table-cell">
                           {money(invoice.amount_paid)}
                         </td>
-                        <td className="px-1 text-center">
+                        <td className="px-1 text-center overflow-visible">
                           <span className={`badge badge-sm ${statusBadgeClass(shownStatus)}`}>
                             {overdue ? "Overdue" : labelize(invoice.status)}
                           </span>
@@ -933,12 +964,7 @@ export default function InvoicesPage() {
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="px-4 py-2 text-xs opacity-60 border-t border-base-300">
-            Showing {filtered.length} of {invoices.length} invoices
-            {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
-          </div>
-        </div>
+        </TableShell>
       )}
     </div>
   );

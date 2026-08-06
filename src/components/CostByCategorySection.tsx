@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { ReportDetailsModal, ReportPane, StatCard } from "@/components/ui";
+import { chartColorAt } from "@/lib/chartColors";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { money, percent } from "@/lib/metrics";
 
@@ -14,17 +15,6 @@ type CategoryRow = {
 type Props = {
   rows: CategoryRow[];
 };
-
-const COST_CATEGORY_COLORS = [
-  "#ea580c",
-  "#0d9488",
-  "#0369a1",
-  "#ca8a04",
-  "#64748b",
-  "#b45309",
-  "#134e4a",
-  "#78716c",
-];
 
 const SMALL_SHARE = 0.04;
 
@@ -83,7 +73,7 @@ export function CostByCategorySection({ rows }: Props) {
     [rows, grandTotal]
   );
 
-  const colorFor = (index: number) => COST_CATEGORY_COLORS[index % COST_CATEGORY_COLORS.length];
+  const colorFor = (index: number) => chartColorAt(index);
 
   function exportCsv() {
     downloadCsv(

@@ -25,6 +25,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useContractSummaries } from "@/hooks/useContractSummaries";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
+import { StatusFilterChips } from "@/components/StatusFilterChips";
 import { AlertBanner, EmptyState, PageHeader } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
@@ -888,22 +889,16 @@ function FieldSupervisorContracts({
         resultCount={filtered.length}
         filters={
           <>
-            <label className="form-control w-full lg:w-40">
+            <div className="form-control w-full lg:w-auto">
               <span className="label py-1">
                 <span className="label-text text-xs opacity-70">Status</span>
               </span>
-              <select
-                className="select select-bordered select-sm"
+              <StatusFilterChips
+                options={["active", "on_hold", "completed", "canceled"]}
                 value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <option value="all">All statuses</option>
-                <option value="active">Active</option>
-                <option value="on_hold">On Hold</option>
-                <option value="completed">Completed</option>
-                <option value="canceled">Canceled</option>
-              </select>
-            </label>
+                onChange={setStatusFilter}
+              />
+            </div>
             <label className="form-control w-full lg:w-44">
               <span className="label py-1">
                 <span className="label-text text-xs opacity-70">Detail access</span>
@@ -926,6 +921,7 @@ function FieldSupervisorContracts({
         <EmptyState
           title="No contracts found"
           message={summaries.length === 0 ? "No contracts are available." : "Try adjusting your search or filters."}
+          icon={Building2}
         />
       ) : (
         <>

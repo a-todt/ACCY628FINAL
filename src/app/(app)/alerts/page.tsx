@@ -71,14 +71,14 @@ export default function AlertsPage() {
         title="Alerts"
         subtitle="Role-aware warnings for invoices, insurance, weather, and change orders."
         actions={
-          <span className="badge badge-lg gap-1">
+          <span className={`badge badge-lg gap-1.5 font-medium tabular-nums ${alerts.length > 0 ? "badge-error" : "badge-ghost"}`}>
             <Bell className="h-3.5 w-3.5" />
             {alerts.length} open
           </span>
         }
       />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 p-3 rounded-box border border-base-300 bg-base-100 shadow-sm">
         <select
           className="select select-bordered select-sm"
           value={severity}

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { Building2, ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
+import { Building2, ChevronDown, ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
 import {
   ColumnAutocompleteHeader,
@@ -14,7 +14,11 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { compareValues } from "@/components/FilterSortBar";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { StatusFilterChips } from "@/components/StatusFilterChips";
+import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
+import { useToast } from "@/components/ToastProvider";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize, money } from "@/lib/metrics";
 import { canCreateChangeOrders, statusBadgeClass } from "@/lib/roles";
@@ -88,6 +92,8 @@ export default function ChangeOrdersPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [viewing, setViewing] = useState<ChangeOrder | null>(null);
+  const [statusChip, setStatusChip] = useState("all");
+  const { toast } = useToast();
 
   const isClient = effectiveRole === "client";
 
@@ -100,6 +106,7 @@ export default function ChangeOrdersPage() {
     const next = baseList.filter((co) => {
       if (!matchesColumnFilter(co.contracts?.contract_name, projectFilter)) return false;
       if (!matchesColumnFilter(co.change_order_number, numberFilter)) return false;
+      if (statusChip !== "all" && co.status !== statusChip) return false;
       return true;
     });
 
@@ -110,7 +117,7 @@ export default function ChangeOrdersPage() {
       if (sortKey === "status") return compareValues(a.status, b.status, sortDir);
       return compareValues(a.date_submitted, b.date_submitted, sortDir);
     });
-  }, [baseList, projectFilter, numberFilter, sortKey, sortDir]);
+  }, [baseList, projectFilter, numberFilter, statusChip, sortKey, sortDir]);
 
   const projectOptions = useMemo(
     () => uniqueSorted(baseList.map((co) => co.contracts?.contract_name)),
@@ -400,11 +407,7 @@ export default function ChangeOrdersPage() {
   };
 
   if (loading) {
-    return (
-      <div className="grid place-items-center py-24">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+    return <PageSkeleton rows={8} />;
   }
 
   if (error) {
@@ -423,52 +426,65 @@ export default function ChangeOrdersPage() {
             : "Track scope and value changes across all your projects."
         }
         actions={
-          <div className="flex flex-wrap gap-2 items-center">
-            {canMutate && selectedIds.size > 0 ? (
-              <div className="dropdown dropdown-end">
-                <div
-                  tabIndex={0}
-                  role="button"
-                  className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}
-                >
-                  Bulk actions ({selectedIds.size})
-                  <ChevronDown className="h-4 w-4" />
-                </div>
-                <ul
-                  tabIndex={0}
-                  className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300"
-                >
-                  <li className="menu-title px-3 pt-1">
-                    <span>Change status</span>
-                  </li>
-                  {STATUS_OPTIONS.map((status) => (
-                    <li key={status}>
-                      <button type="button" disabled={busy} onClick={() => void runBulk(status)}>
-                        Set {labelize(status)}
-                      </button>
-                    </li>
-                  ))}
-                  <li>
-                    <button
-                      type="button"
-                      className="text-error"
-                      disabled={busy}
-                      onClick={() => void runBulk("delete")}
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete selected
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            ) : null}
-            {canCreate ? (
-              <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
-                <Plus className="h-4 w-4" /> {showForm ? "Close Form" : "Add Change Order"}
-              </button>
-            ) : null}
-          </div>
+          canCreate ? (
+            <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
+              <Plus className="h-4 w-4" /> {showForm ? "Close" : "Add Change Order"}
+            </button>
+          ) : null
         }
       />
+
+      {!isClient ? (
+        <StickyToolbar>
+          <StatusFilterChips
+            options={STATUS_OPTIONS}
+            value={statusChip}
+            onChange={setStatusChip}
+            allLabel="All statuses"
+          />
+          <p className="text-xs opacity-55 tabular-nums">
+            {filtered.length} shown
+            {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+          </p>
+        </StickyToolbar>
+      ) : null}
+
+      <BulkActionBar count={canMutate ? selectedIds.size : 0} onClear={clearSelection}>
+        <div className="dropdown dropdown-top dropdown-end">
+          <div tabIndex={0} role="button" className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}>
+            Bulk actions
+            <ChevronDown className="h-4 w-4" />
+          </div>
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300 mb-2"
+          >
+            {STATUS_OPTIONS.map((status) => (
+              <li key={status}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void runBulk(status).then(() => toast(`Updated ${selectedIds.size} change order(s)`, "success"))
+                  }
+                >
+                  Set {labelize(status)}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                type="button"
+                className="text-error"
+                disabled={busy}
+                onClick={() => void runBulk("delete").then(() => toast("Deleted selected", "success"))}
+              >
+                <Trash2 className="h-4 w-4" /> Delete selected
+              </button>
+            </li>
+          </ul>
+        </div>
+      </BulkActionBar>
 
       {isClient ? (
         <AlertBanner type="info">You are viewing approved change orders only.</AlertBanner>
@@ -586,10 +602,17 @@ export default function ChangeOrdersPage() {
               ? "No approved change orders yet."
               : "No change orders yet. Add one once scope changes on a project."
           }
+          icon={ClipboardList}
+          action={
+            canCreate ? (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4" /> Add Change Order
+              </button>
+            ) : undefined
+          }
         />
       ) : (
-        <div className="rounded-box border border-base-300 bg-base-100">
-          <div className="overflow-x-auto">
+        <TableShell freezeFirst>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
@@ -598,8 +621,8 @@ export default function ChangeOrdersPage() {
                 <col className="w-[15%]" />
                 <col className="w-[13%] hidden xl:table-column" />
                 <col className="w-[8%]" />
-                <col className="w-[8%]" />
-                <col className="w-[8%]" />
+                <col className="w-[11%]" />
+                <col className="w-[7%]" />
                 <col className="w-[8%] hidden xl:table-column" />
                 {!isClient ? <col className="w-[10%] hidden xl:table-column" /> : null}
                 {canMutate ? <col className="w-[11%]" /> : null}
@@ -727,7 +750,7 @@ export default function ChangeOrdersPage() {
                         {co.reason ?? "—"}
                       </td>
                       <td className="truncate px-1 text-center">{money(co.amount)}</td>
-                      <td className="px-1 text-center">
+                      <td className="px-1 text-center overflow-visible">
                         <span className={`badge badge-sm ${statusBadgeClass(co.status)}`}>
                           {labelize(co.status)}
                         </span>
@@ -828,12 +851,7 @@ export default function ChangeOrdersPage() {
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="px-4 py-2 text-xs opacity-60 border-t border-base-300">
-            Showing {filtered.length} of {baseList.length} change orders
-            {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
-          </div>
-        </div>
+        </TableShell>
       )}
 
       {viewing ? (

@@ -148,34 +148,34 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-base-200 to-secondary/25" />
+    <div className="min-h-screen relative overflow-hidden bg-base-200">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/25 via-base-200 to-secondary/20" />
       <div
-        className="absolute inset-0 opacity-30"
+        className="absolute inset-0 opacity-40"
         style={{
           backgroundImage:
-            "radial-gradient(circle at 18% 22%, oklch(72% 0.18 48) 0, transparent 34%), radial-gradient(circle at 82% 8%, oklch(55% 0.13 150) 0, transparent 32%), linear-gradient(140deg, transparent 45%, oklch(35% 0.03 70 / 25%) 100%)",
+            "radial-gradient(circle at 18% 22%, color-mix(in oklch, var(--color-primary) 55%, transparent) 0, transparent 34%), radial-gradient(circle at 82% 8%, color-mix(in oklch, var(--color-secondary) 45%, transparent) 0, transparent 32%)",
         }}
       />
 
-      <div className="relative z-10 min-h-screen grid lg:grid-cols-2">
+      <div className="relative z-10 min-h-screen grid lg:grid-cols-2 app-enter">
         <div className="flex flex-col min-h-[42vh] lg:min-h-screen p-6 sm:p-10 lg:p-12 text-base-content">
-          <div className="w-fit rounded-2xl shadow-xl ring-4 ring-base-100/40">
+          <div className="w-fit rounded-2xl shadow-xl ring-4 ring-base-100/50">
             <NailItLogo size="xl" />
           </div>
 
           <div className="flex-1 flex flex-col justify-center max-w-lg space-y-6 pb-6 lg:pb-8">
-            <p className="text-xl sm:text-2xl font-medium leading-snug opacity-90">
+            <p className="text-xl sm:text-2xl font-semibold leading-snug tracking-tight">
               Know exactly where every project stands
             </p>
-            <ul className="list-disc list-inside space-y-3 text-base sm:text-lg font-medium marker:text-primary">
+            <ul className="list-disc list-inside space-y-3 text-base sm:text-lg font-medium marker:text-primary opacity-90">
               {FEATURES.map((feature) => (
                 <li key={feature}>{feature}</li>
               ))}
             </ul>
           </div>
 
-          <p className="text-sm opacity-60 max-w-md">
+          <p className="text-sm opacity-55 max-w-md">
             Your data is private. Only you can see your projects.
           </p>
         </div>
@@ -185,14 +185,14 @@ export default function LoginPage() {
             <div className="card-body gap-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-2xl font-semibold">
+                  <h2 className="text-2xl font-semibold tracking-tight">
                     {mode === "login"
                       ? "Sign in"
                       : mode === "signup"
                         ? "Create account"
                         : "Reset password"}
                   </h2>
-                  <p className="text-sm opacity-70">
+                  <p className="text-sm opacity-65 mt-0.5">
                     {mode === "forgot"
                       ? "Reset via email or Client ID"
                       : mode === "login"
@@ -350,12 +350,12 @@ export default function LoginPage() {
                 )}
               </p>
 
-              <div className="bg-base-200 rounded-lg p-3 text-xs space-y-1">
-                <p className="font-medium">Demo logins (password: Demo123!)</p>
-                <p>admin@gcmanager.demo · client@gcmanager.demo</p>
-                <p>PMs: pm@ · pm2@gcmanager.demo</p>
-                <p>Field: field@ · field2@gcmanager.demo</p>
-                <p>Subs: sub@ · sub2@gcmanager.demo</p>
+              <div className="bg-base-200/80 rounded-box border border-base-300 p-3 text-xs space-y-1">
+                <p className="font-semibold tracking-tight">Demo logins (password: Demo123!)</p>
+                <p className="opacity-80">admin@gcmanager.demo · client@gcmanager.demo</p>
+                <p className="opacity-80">PMs: pm@ · pm2@gcmanager.demo</p>
+                <p className="opacity-80">Field: field@ · field2@gcmanager.demo</p>
+                <p className="opacity-80">Subs: sub@ · sub2@gcmanager.demo</p>
               </div>
             </div>
           </div>

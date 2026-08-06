@@ -29,8 +29,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { buildAlertsForRole, type AlertItem } from "@/lib/alerts";
+import { CHART_COLORS } from "@/lib/chartColors";
 import { computeContractMetrics, daysPastDue, labelize, money, percent } from "@/lib/metrics";
 import { statusBadgeClass } from "@/lib/roles";
 import type { UserRole } from "@/lib/types";
@@ -48,8 +50,6 @@ import type {
   Subcontractor,
 } from "@/lib/types";
 import type { ContractInsuranceRequirement, InsurancePolicy } from "@/lib/types";
-
-const CHART_COLORS = ["#4f46e5", "#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#ec4899"];
 
 interface DashboardData {
   contracts: Contract[];
@@ -81,11 +81,7 @@ export default function DashboardPage() {
   );
 
   if (data.loading || insurance.loading) {
-    return (
-      <div className="grid place-items-center py-24">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+    return <PageSkeleton rows={6} />;
   }
 
   if (data.error) {

@@ -19,6 +19,7 @@ import {
   type WIPCalculations,
 } from "@/hooks/useWIPCalculations";
 import { moneyExact, percent } from "@/lib/metrics";
+import { CHART_SERIES } from "@/lib/chartColors";
 import { createClient } from "@/lib/supabase/client";
 import {
   WIP_DB,
@@ -33,14 +34,14 @@ const C = WIP_DB.projectCosts;
 const B = WIP_DB.billings;
 
 const CHART_COLORS = {
-  earned: "#0d9488",
-  billed: "#ea580c",
-  estimated: "#64748b",
-  actual: "#2563eb",
-  active: "#22c55e",
-  complete: "#3b82f6",
-  onHold: "#f59e0b",
-  atRisk: "#ef4444",
+  earned: CHART_SERIES.earned,
+  billed: CHART_SERIES.billed,
+  estimated: CHART_SERIES.estimated,
+  actual: CHART_SERIES.actual,
+  active: CHART_SERIES.active,
+  complete: CHART_SERIES.complete,
+  onHold: CHART_SERIES.onHold,
+  atRisk: CHART_SERIES.atRisk,
 };
 
 type ProjectStatusBucket = "active" | "completed" | "on_hold" | "other";

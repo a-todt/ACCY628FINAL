@@ -399,7 +399,7 @@ export default function FieldLogsPage() {
         />
       ) : (
         <SectionCard title={`All Field Logs (${filtered.length})`}>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-box border border-base-300 -mx-1">
             <table className="table table-sm">
               <thead>
                 <tr>

@@ -16,13 +16,13 @@ import { useContractData } from "@/hooks/useContractData";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { CHART_COLORS, CHART_SERIES } from "@/lib/chartColors";
 import { labelize, money } from "@/lib/metrics";
 import { canEnterCosts, canViewCosts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import type { CostCategory, CostEntry } from "@/lib/types";
 
 const CATEGORIES: CostCategory[] = ["labor", "materials", "subcontractor", "equipment", "permits", "other"];
-const CHART_COLORS = ["#ea580c", "#16a34a", "#0ea5e9", "#f59e0b", "#8b5cf6", "#ef4444", "#64748b"];
 
 const EMPTY_FORM = {
   contract_id: "",
@@ -535,7 +535,7 @@ export default function CostsPage() {
 
           <SectionCard title="Job Cost Chart">
             <ScrollableBarChart data={jobChartData}>
-              <Bar dataKey="total" fill="#ea580c" radius={[0, 5, 5, 0]} name="Total" />
+              <Bar dataKey="total" fill={CHART_SERIES.primary} radius={[0, 5, 5, 0]} name="Total" />
             </ScrollableBarChart>
           </SectionCard>
         </div>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { Building2, ChevronDown, Pencil, Plus, Trash2, TriangleAlert } from "lucide-react";
+import { Building2, ChevronDown, HardHat, Pencil, Plus, Trash2, TriangleAlert } from "lucide-react";
 import {
   ColumnAutocompleteHeader,
   ColumnSortHeader,
@@ -13,7 +13,11 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { compareValues } from "@/components/FilterSortBar";
-import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { PageSkeleton } from "@/components/PageSkeleton";
+import { StatusFilterChips } from "@/components/StatusFilterChips";
+import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
+import { useToast } from "@/components/ToastProvider";
+import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { StarRating } from "@/components/StarRating";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize, money } from "@/lib/metrics";
@@ -107,6 +111,8 @@ export default function SubcontractorsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("company");
   const [sortDir, setSortDir] = useState<ColumnSortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [statusChip, setStatusChip] = useState("all");
+  const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -131,6 +137,7 @@ export default function SubcontractorsPage() {
     const next = baseList.filter((sub) => {
       if (!matchesColumnFilter(sub.company_name, companyFilter)) return false;
       if (!matchesColumnFilter(sub.contracts?.contract_name, projectFilter)) return false;
+      if (statusChip !== "all" && sub.status !== statusChip) return false;
       return true;
     });
 
@@ -142,7 +149,7 @@ export default function SubcontractorsPage() {
       if (sortKey === "paid") return compareValues(Number(a.amount_paid ?? 0), Number(b.amount_paid ?? 0), sortDir);
       return compareValues(a.status, b.status, sortDir);
     });
-  }, [baseList, companyFilter, projectFilter, sortKey, sortDir]);
+  }, [baseList, companyFilter, projectFilter, statusChip, sortKey, sortDir]);
 
   const companyOptions = useMemo(
     () => uniqueSorted(baseList.map((sub) => sub.company_name)),
@@ -424,11 +431,7 @@ export default function SubcontractorsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="grid place-items-center py-24">
-        <span className="loading loading-spinner loading-lg text-primary" />
-      </div>
-    );
+    return <PageSkeleton rows={8} />;
   }
 
   if (error) {
@@ -453,52 +456,63 @@ export default function SubcontractorsPage() {
             : "Manage subcontractor engagements across all projects."
         }
         actions={
-          <div className="flex flex-wrap gap-2 items-center">
-            {canMutate && selectedIds.size > 0 ? (
-              <div className="dropdown dropdown-end">
-                <div
-                  tabIndex={0}
-                  role="button"
-                  className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}
-                >
-                  Bulk actions ({selectedIds.size})
-                  <ChevronDown className="h-4 w-4" />
-                </div>
-                <ul
-                  tabIndex={0}
-                  className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300"
-                >
-                  <li className="menu-title px-3 pt-1">
-                    <span>Change status</span>
-                  </li>
-                  {STATUS_OPTIONS.map((status) => (
-                    <li key={status}>
-                      <button type="button" disabled={busy} onClick={() => void runBulk(status)}>
-                        Set {labelize(status)}
-                      </button>
-                    </li>
-                  ))}
-                  <li>
-                    <button
-                      type="button"
-                      className="text-error"
-                      disabled={busy}
-                      onClick={() => void runBulk("delete")}
-                    >
-                      <Trash2 className="h-4 w-4" /> Delete selected
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            ) : null}
-            {canManage ? (
-              <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
-                <Plus className="h-4 w-4" /> {showForm ? "Close Form" : "Add Subcontractor"}
-              </button>
-            ) : null}
-          </div>
+          canMutate ? (
+            <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
+              <Plus className="h-4 w-4" /> {showForm ? "Close" : "Add Subcontractor"}
+            </button>
+          ) : null
         }
       />
+
+      <StickyToolbar>
+        <StatusFilterChips
+          options={STATUS_OPTIONS}
+          value={statusChip}
+          onChange={setStatusChip}
+          allLabel="All statuses"
+        />
+        <p className="text-xs opacity-55 tabular-nums">
+          {filtered.length} shown
+          {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+        </p>
+      </StickyToolbar>
+
+      <BulkActionBar count={canMutate ? selectedIds.size : 0} onClear={clearSelection}>
+        <div className="dropdown dropdown-top dropdown-end">
+          <div tabIndex={0} role="button" className={`btn btn-sm ${busy ? "btn-disabled" : "btn-secondary"}`}>
+            Bulk actions
+            <ChevronDown className="h-4 w-4" />
+          </div>
+          <ul
+            tabIndex={0}
+            className="dropdown-content menu bg-base-100 rounded-box z-40 w-56 p-2 shadow border border-base-300 mb-2"
+          >
+            {STATUS_OPTIONS.map((status) => (
+              <li key={status}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void runBulk(status).then(() => toast(`Updated ${selectedIds.size} subcontractor(s)`, "success"))
+                  }
+                >
+                  Set {labelize(status)}
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                type="button"
+                className="text-error"
+                disabled={busy}
+                onClick={() => void runBulk("delete").then(() => toast("Deleted selected", "success"))}
+              >
+                <Trash2 className="h-4 w-4" /> Delete selected
+              </button>
+            </li>
+          </ul>
+        </div>
+      </BulkActionBar>
 
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
       {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
@@ -683,10 +697,20 @@ export default function SubcontractorsPage() {
       ) : null}
 
       {baseList.length === 0 ? (
-        <EmptyState title="No subcontractors" message="No subcontractors have been added yet." />
+        <EmptyState
+          title="No subcontractors"
+          message="No subcontractors have been added yet."
+          icon={HardHat}
+          action={
+            canMutate ? (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4" /> Add Subcontractor
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="rounded-box border border-base-300 bg-base-100">
-          <div className="overflow-x-auto">
+        <TableShell freezeFirst>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}
@@ -694,9 +718,9 @@ export default function SubcontractorsPage() {
                 <col className="w-[16%]" />
                 <col className="w-[10%]" />
                 <col className="w-[14%] hidden xl:table-column" />
-                <col className="w-[10%]" />
+                <col className="w-[9%]" />
                 <col className="w-[10%] hidden xl:table-column" />
-                <col className="w-[10%]" />
+                <col className="w-[12%]" />
                 {canMutate ? <col className="w-[11%]" /> : null}
               </colgroup>
               <thead>
@@ -827,7 +851,7 @@ export default function SubcontractorsPage() {
                         <td className="truncate px-1 text-center hidden xl:table-cell">
                           {money(sub.amount_paid)}
                         </td>
-                        <td className="px-1 text-center">
+                        <td className="px-1 text-center overflow-visible">
                           <div className="inline-flex flex-wrap items-center justify-center gap-1">
                             <span className={`badge badge-sm ${statusBadgeClass(sub.status)}`}>
                               {labelize(sub.status)}
@@ -924,12 +948,7 @@ export default function SubcontractorsPage() {
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="px-4 py-2 text-xs opacity-60 border-t border-base-300">
-            Showing {filtered.length} of {baseList.length} subcontractors
-            {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
-          </div>
-        </div>
+        </TableShell>
       )}
 
       {viewing ? (
