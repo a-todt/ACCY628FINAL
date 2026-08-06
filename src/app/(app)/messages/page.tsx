@@ -10,8 +10,10 @@ import {
   deleteThread,
   fetchThreadMessages,
   loadMessageableContracts,
+  loadMessageableProspects,
   markThreadRead,
   sendMessage,
+  startOrGetLeadThread,
   startOrGetThread,
   useMessages,
 } from "@/hooks/useMessages";
@@ -21,6 +23,23 @@ import { resolveClientScopeUserId } from "@/lib/clientScope";
 import { canUseMessaging } from "@/lib/roles";
 import { resolveAssignedStaffUserId } from "@/lib/staffScope";
 import type { Contract, Message } from "@/lib/types";
+
+type ComposeMode = "contract" | "lead";
+
+function threadTitle(thread: {
+  thread_kind?: string | null;
+  contracts?: { contract_name: string; client_name: string | null } | null;
+  customers?: { company_name: string; contact_name: string | null } | null;
+}): string {
+  if (thread.thread_kind === "lead") {
+    return (
+      thread.customers?.company_name ||
+      thread.customers?.contact_name ||
+      "Project inquiry"
+    );
+  }
+  return thread.contracts?.contract_name ?? "Contract";
+}
 
 export default function MessagesPage() {
   return (
@@ -44,9 +63,14 @@ function MessagesContent() {
   const [sending, setSending] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeMode, setComposeMode] = useState<ComposeMode>("contract");
   const [composeContractId, setComposeContractId] = useState("");
+  const [composeCustomerId, setComposeCustomerId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [messageableContracts, setMessageableContracts] = useState<Contract[]>([]);
+  const [prospects, setProspects] = useState<
+    Array<{ id: string; company_name: string; contact_name: string | null; notes: string | null }>
+  >([]);
   const [contractsLoading, setContractsLoading] = useState(true);
 
   const selectedThread = useMemo(
@@ -54,39 +78,77 @@ function MessagesContent() {
     [threads, selectedId]
   );
 
+  const isCompanyInbox = effectiveRole === "owner" || effectiveRole === "admin";
+  const isClient = effectiveRole === "client";
+
   useEffect(() => {
     let cancelled = false;
 
-    async function loadContracts() {
+    async function loadComposeTargets() {
       if (!user || !canUseMessaging(effectiveRole)) {
         setMessageableContracts([]);
+        setProspects([]);
         setContractsLoading(false);
         return;
       }
 
       setContractsLoading(true);
       try {
-        const rows = await loadMessageableContracts({
-          effectiveRole,
-          actualRole: profile?.role,
-          userId: user.id,
-        });
-        if (!cancelled) setMessageableContracts(rows);
+        const [rows, prospectRows] = await Promise.all([
+          loadMessageableContracts({
+            effectiveRole,
+            actualRole: profile?.role,
+            userId: user.id,
+          }),
+          isCompanyInbox || isClient
+            ? loadMessageableProspects().catch(() => [])
+            : Promise.resolve([]),
+        ]);
+        if (!cancelled) {
+          setMessageableContracts(rows);
+          setProspects(isCompanyInbox ? prospectRows : []);
+          if (isClient && rows.length === 0) {
+            setComposeMode("lead");
+          }
+        }
       } catch (err) {
         if (!cancelled) {
           setMessageableContracts([]);
-          setActionError(err instanceof Error ? err.message : "Failed to load contracts");
+          setProspects([]);
+          setActionError(err instanceof Error ? err.message : "Failed to load conversations");
         }
       } finally {
         if (!cancelled) setContractsLoading(false);
       }
     }
 
-    void loadContracts();
+    void loadComposeTargets();
     return () => {
       cancelled = true;
     };
-  }, [user, effectiveRole, profile?.role]);
+  }, [user, effectiveRole, profile?.role, isCompanyInbox, isClient]);
+
+  // Clients with no contract threads: open (or create) their lead inquiry automatically.
+  useEffect(() => {
+    if (!isClient || loading || !user) return;
+    if (threads.some((t) => t.thread_kind === "lead")) return;
+    if (threads.length > 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const threadId = await startOrGetLeadThread();
+        if (cancelled) return;
+        await refresh();
+        setSelectedId(threadId);
+        router.replace(`/messages?thread=${threadId}`);
+      } catch {
+        // Prospect may not exist yet — AccessGate / signup should create it.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isClient, loading, user, threads, refresh, router]);
 
   const loadMessages = useCallback(
     async (threadId: string) => {
@@ -119,11 +181,24 @@ function MessagesContent() {
     void loadMessages(selectedId);
   }, [selectedId, loadMessages]);
 
+  const personaUserId = useMemo(() => {
+    if (!user) return null;
+    if (effectiveRole === "client") {
+      return resolveClientScopeUserId(effectiveRole, profile?.role, user.id, userProfiles) ?? user.id;
+    }
+    if (effectiveRole === "project_manager") {
+      return (
+        resolveAssignedStaffUserId(effectiveRole, profile?.role, user.id, userProfiles) ?? user.id
+      );
+    }
+    return user.id;
+  }, [effectiveRole, profile?.role, user, userProfiles]);
+
   if (!canUseMessaging(effectiveRole)) {
     return (
       <EmptyState
         title="Messaging unavailable"
-        message="Messages are for clients and project managers on shared contracts."
+        message="Messages are for clients, project managers, and company owners/admins."
       />
     );
   }
@@ -142,24 +217,14 @@ function MessagesContent() {
     return p.full_name ?? p.email ?? "User";
   };
 
-  const personaUserId = useMemo(() => {
-    if (!user) return null;
-    if (effectiveRole === "client") {
-      return resolveClientScopeUserId(effectiveRole, profile?.role, user.id, userProfiles) ?? user.id;
-    }
-    if (effectiveRole === "project_manager") {
-      return (
-        resolveAssignedStaffUserId(effectiveRole, profile?.role, user.id, userProfiles) ?? user.id
-      );
-    }
-    return user.id;
-  }, [effectiveRole, profile?.role, user, userProfiles]);
-
   /** Own bubbles (right / orange) vs received (left / gray), like a normal text thread. */
   const isOwnMessage = (msg: Message) => {
     // Prefer explicit acting-role (needed when demo role-switch sends as the same auth user).
     if (msg.sender_role === "client" || msg.sender_role === "project_manager") {
       return msg.sender_role === effectiveRole;
+    }
+    if (msg.sender_role === "owner" || msg.sender_role === "admin") {
+      return effectiveRole === "owner" || effectiveRole === "admin";
     }
 
     if (!user) return false;
@@ -181,6 +246,9 @@ function MessagesContent() {
     if (effectiveRole === "project_manager") {
       return sender?.role === "project_manager";
     }
+    if (effectiveRole === "owner" || effectiveRole === "admin") {
+      return sender?.role === "owner" || sender?.role === "admin" || msg.sender_id === user.id;
+    }
     return false;
   };
 
@@ -191,14 +259,22 @@ function MessagesContent() {
   };
 
   const onStartConversation = async () => {
-    if (!composeContractId) return;
     setSending(true);
     setActionError(null);
     try {
-      const threadId = await startOrGetThread(composeContractId);
+      let threadId: string;
+      if (composeMode === "lead") {
+        threadId = await startOrGetLeadThread(
+          isClient ? null : composeCustomerId || null
+        );
+      } else {
+        if (!composeContractId) return;
+        threadId = await startOrGetThread(composeContractId);
+      }
       await refresh();
       setComposeOpen(false);
       setComposeContractId("");
+      setComposeCustomerId("");
       onSelectThread(threadId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not start conversation");
@@ -261,12 +337,21 @@ function MessagesContent() {
     <div className="space-y-4">
       <PageHeader
         title="Messages"
-        subtitle="Client and project manager conversations by contract. Subcontractors are not included."
+        subtitle={
+          isCompanyInbox
+            ? "Project inquiries (clients) and contract threads with project managers."
+            : isClient
+              ? "Message our team about your inquiry, or your PM once a contract is created."
+              : "Client conversations by contract."
+        }
         actions={
           <button
             type="button"
             className="btn btn-primary btn-sm gap-1.5"
-            onClick={() => setComposeOpen(true)}
+            onClick={() => {
+              setComposeMode(isClient && messageableContracts.length === 0 ? "lead" : "contract");
+              setComposeOpen(true);
+            }}
           >
             <Plus className="h-4 w-4" />
             New
@@ -279,56 +364,121 @@ function MessagesContent() {
 
       {composeOpen ? (
         <SectionCard title="Start a conversation" compact>
-          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
-            <label className="form-control flex-1">
-              <span className="label-text text-xs opacity-70 mb-1">Contract</span>
-              <select
-                className="select select-bordered select-sm w-full"
-                value={composeContractId}
-                onChange={(e) => setComposeContractId(e.target.value)}
-                disabled={contractsLoading || sending}
-              >
-                <option value="">
-                  {contractsLoading
-                    ? "Loading contracts…"
-                    : messageableContracts.length === 0
-                      ? "No contracts available"
-                      : "Select a contract…"}
-                </option>
-                {messageableContracts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.contract_name}
-                    {c.client_name ? ` · ${c.client_name}` : ""}
-                  </option>
-                ))}
-              </select>
-              {!contractsLoading ? (
-                <p className="text-xs opacity-50 mt-1">{messageableContracts.length} contract(s) available</p>
-              ) : null}
-            </label>
-            <div className="flex gap-2">
+          {(isCompanyInbox || isClient) && (isCompanyInbox || messageableContracts.length > 0) ? (
+            <div className="flex flex-wrap gap-2 mb-3">
               <button
                 type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setComposeOpen(false)}
-                disabled={sending}
+                className={`btn btn-sm ${composeMode === "lead" ? "btn-primary" : "btn-ghost"}`}
+                onClick={() => setComposeMode("lead")}
               >
-                Cancel
+                Project inquiry
               </button>
               <button
                 type="button"
-                className="btn btn-primary btn-sm"
-                disabled={!composeContractId || sending}
-                onClick={() => void onStartConversation()}
+                className={`btn btn-sm ${composeMode === "contract" ? "btn-primary" : "btn-ghost"}`}
+                onClick={() => setComposeMode("contract")}
+                disabled={isClient && messageableContracts.length === 0}
               >
-                {sending ? "Opening…" : "Open thread"}
+                Contract thread
               </button>
             </div>
-          </div>
-          <p className="text-xs opacity-60 mt-2">
-            Opens the client ↔ project manager thread for that job
-            {effectiveRole === "client" ? " (assigned PM only)." : "."}
-          </p>
+          ) : null}
+
+          {composeMode === "lead" ? (
+            <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
+              {isCompanyInbox ? (
+                <label className="form-control flex-1">
+                  <span className="label-text text-xs opacity-70 mb-1">Prospect client</span>
+                  <select
+                    className="select select-bordered select-sm w-full"
+                    value={composeCustomerId}
+                    onChange={(e) => setComposeCustomerId(e.target.value)}
+                    disabled={contractsLoading || sending}
+                  >
+                    <option value="">
+                      {contractsLoading
+                        ? "Loading…"
+                        : prospects.length === 0
+                          ? "No open prospects"
+                          : "Select a prospect…"}
+                    </option>
+                    {prospects.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.company_name}
+                        {c.contact_name ? ` · ${c.contact_name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <p className="text-sm opacity-70 flex-1">
+                  Opens your inquiry thread with the company (owner / admin).
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setComposeOpen(false)}
+                  disabled={sending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={(isCompanyInbox && !composeCustomerId) || sending}
+                  onClick={() => void onStartConversation()}
+                >
+                  {sending ? "Opening…" : "Open inquiry"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
+              <label className="form-control flex-1">
+                <span className="label-text text-xs opacity-70 mb-1">Contract</span>
+                <select
+                  className="select select-bordered select-sm w-full"
+                  value={composeContractId}
+                  onChange={(e) => setComposeContractId(e.target.value)}
+                  disabled={contractsLoading || sending}
+                >
+                  <option value="">
+                    {contractsLoading
+                      ? "Loading contracts…"
+                      : messageableContracts.length === 0
+                        ? "No contracts available"
+                        : "Select a contract…"}
+                  </option>
+                  {messageableContracts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.contract_name}
+                      {c.client_name ? ` · ${c.client_name}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setComposeOpen(false)}
+                  disabled={sending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={!composeContractId || sending}
+                  onClick={() => void onStartConversation()}
+                >
+                  {sending ? "Opening…" : "Open thread"}
+                </button>
+              </div>
+            </div>
+          )}
         </SectionCard>
       ) : null}
 
@@ -341,7 +491,11 @@ function MessagesContent() {
           ) : threads.length === 0 ? (
             <EmptyState
               title="No conversations yet"
-              message='Click "New" to message about a contract.'
+              message={
+                isClient
+                  ? "Open Messages to start your project inquiry with our team."
+                  : 'Click "New" to open an inquiry or contract thread.'
+              }
             />
           ) : (
             <ul className="divide-y divide-base-300 max-h-[70vh] overflow-y-auto -mx-1">
@@ -358,7 +512,12 @@ function MessagesContent() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-sm line-clamp-1">
-                          {thread.contracts?.contract_name ?? "Contract"}
+                          {threadTitle(thread)}
+                          {thread.thread_kind === "lead" ? (
+                            <span className="badge badge-ghost badge-xs ml-1.5 align-middle">
+                              Inquiry
+                            </span>
+                          ) : null}
                         </p>
                         {thread.unreadCount > 0 ? (
                           <span className="badge badge-primary badge-xs tabular-nums">
@@ -391,16 +550,16 @@ function MessagesContent() {
         </SectionCard>
 
         <SectionCard
-          title={
-            selectedThread
-              ? selectedThread.contracts?.contract_name ?? "Conversation"
-              : "Conversation"
-          }
+          title={selectedThread ? threadTitle(selectedThread) : "Conversation"}
           compact
           actions={
             selectedThread ? (
               <div className="flex items-center gap-2">
-                <span className="text-xs opacity-60 hidden sm:inline">Client ↔ Project Manager</span>
+                <span className="text-xs opacity-60 hidden sm:inline">
+                  {selectedThread.thread_kind === "lead"
+                    ? "Client ↔ Company"
+                    : "Client ↔ Project Manager"}
+                </span>
                 <button
                   type="button"
                   className="btn btn-ghost btn-xs gap-1 text-error"
@@ -439,7 +598,9 @@ function MessagesContent() {
                     const senderLabel = mine
                       ? "You"
                       : effectiveRole === "client"
-                        ? "Project Manager"
+                        ? selectedThread?.thread_kind === "lead"
+                          ? "Company"
+                          : "Project Manager"
                         : effectiveRole === "project_manager"
                           ? "Client"
                           : profileName(msg.sender_id);

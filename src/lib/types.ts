@@ -461,11 +461,14 @@ export interface Attachment {
 
 export interface MessageThread {
   id: string;
-  contract_id: string;
+  contract_id: string | null;
+  customer_id?: string | null;
+  thread_kind?: "contract" | "lead" | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
   contracts?: { contract_name: string; client_name: string | null } | null;
+  customers?: { company_name: string; contact_name: string | null } | null;
 }
 
 export interface MessageThreadParticipant {

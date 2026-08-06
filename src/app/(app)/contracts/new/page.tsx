@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { useAdminData } from "@/hooks/useAdminData";
 import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { canManageContracts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
+import { linkCustomerToContract } from "@/lib/clientProspect";
 import type { ContractType, MilestoneStatus } from "@/lib/types";
 
 interface MilestoneRow {
@@ -41,11 +44,28 @@ const EMPTY_FORM = {
   scope_description: "",
   special_terms: "",
   client_user_id: "",
+  customer_id: "",
 };
 
-export default function NewContractPage() {
+export default function NewContractRoute() {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid place-items-center py-24">
+          <span className="loading loading-spinner loading-lg text-primary" />
+        </div>
+      }
+    >
+      <NewContractPage />
+    </Suspense>
+  );
+}
+
+function NewContractPage() {
+  const searchParams = useSearchParams();
   const { effectiveRole, user } = useAuth();
   const { userProfiles } = useContractData();
+  const admin = useAdminData();
   const [form, setForm] = useState(EMPTY_FORM);
   const [milestones, setMilestones] = useState<MilestoneRow[]>([{ ...EMPTY_MILESTONE }]);
   const [saving, setSaving] = useState(false);
@@ -53,6 +73,30 @@ export default function NewContractPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const clients = useMemo(() => userProfiles.filter((p) => p.role === "client"), [userProfiles]);
+  const linkableCustomers = useMemo(() => {
+    const rows = admin.customers.filter((c) => Boolean(c.user_id));
+    return rows;
+  }, [admin.customers]);
+  const prospectCustomers = useMemo(
+    () => linkableCustomers.filter((c) => !c.contract_id),
+    [linkableCustomers]
+  );
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("customer");
+    if (!fromQuery || form.customer_id) return;
+    const match = linkableCustomers.find((c) => c.id === fromQuery);
+    if (!match) return;
+    setForm((prev) => ({
+      ...prev,
+      customer_id: match.id,
+      client_name: match.company_name || match.contact_name || prev.client_name,
+      client_email: match.contact_email || prev.client_email,
+      client_phone: match.contact_phone || prev.client_phone,
+      client_user_id: match.user_id || prev.client_user_id,
+      contract_name: prev.contract_name || `${match.company_name || "Client"} — Project`,
+    }));
+  }, [searchParams, linkableCustomers, form.customer_id]);
 
   if (!canManageContracts(effectiveRole)) {
     return (
@@ -125,6 +169,10 @@ export default function NewContractPage() {
 
       if (contractError) throw contractError;
       if (!contract) throw new Error("Contract could not be created.");
+
+      if (form.customer_id) {
+        await linkCustomerToContract(form.customer_id, contract.id);
+      }
 
       const milestoneRows = milestones
         .filter((m) => m.milestone_name.trim().length > 0)
@@ -208,6 +256,47 @@ export default function NewContractPage() {
                   value={form.client_email}
                   onChange={(e) => updateField("client_email", e.target.value)}
                 />
+              </FormField>
+              <FormField
+                stacked
+                label="Link prospect / client record"
+                hint="Self-serve inquiries and existing client rows. Links login access after create."
+              >
+                <select
+                  className="select select-bordered w-full"
+                  value={form.customer_id}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const match = linkableCustomers.find((c) => c.id === id);
+                    setForm((prev) => ({
+                      ...prev,
+                      customer_id: id,
+                      client_name: match?.company_name || match?.contact_name || prev.client_name,
+                      client_email: match?.contact_email || prev.client_email,
+                      client_phone: match?.contact_phone || prev.client_phone,
+                      client_user_id: match?.user_id || prev.client_user_id,
+                    }));
+                  }}
+                >
+                  <option value="">None</option>
+                  {prospectCustomers.length > 0 ? (
+                    <optgroup label="Open prospects">
+                      {prospectCustomers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.company_name}
+                          {c.contact_name ? ` · ${c.contact_name}` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {linkableCustomers
+                    .filter((c) => c.contract_id)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.company_name} (already on a project)
+                      </option>
+                    ))}
+                </select>
               </FormField>
               <FormField
                 stacked
