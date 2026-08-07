@@ -29,7 +29,7 @@ import {
   canApproveChangeOrderForAmount,
   changeOrderApprovalBlockedReason,
 } from "@/lib/approvalThresholds";
-import { canEnterCosts, canViewCosts, statusBadgeClass } from "@/lib/roles";
+import { canEnterCosts, canListCompanyProjects, canViewCosts, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import { WIP_DB, colNum, colStr, selectList, type DbRow } from "@/lib/wipSchema";
 
@@ -129,6 +129,7 @@ export default function ProjectsPage() {
   const { user, effectiveRole } = useAuth();
   const canView = canViewCosts(effectiveRole);
   const canEdit = canEnterCosts(effectiveRole);
+  const listCompanyProjects = canListCompanyProjects(effectiveRole);
 
   const [projects, setProjects] = useState<DbRow[]>([]);
   const [contracts, setContracts] = useState<
@@ -171,7 +172,7 @@ export default function ProjectsPage() {
     setError(null);
     const supabase = createClient();
     try {
-      const { data, error: loadError } = await supabase
+      let query = supabase
         .from(P.table)
         .select(
           selectList(
@@ -187,8 +188,11 @@ export default function ProjectsPage() {
             "end_date"
           ),
         )
-        .eq(P.userId, user.id)
         .order(P.name, { ascending: true });
+      if (!listCompanyProjects) {
+        query = query.eq(P.userId, user.id);
+      }
+      const { data, error: loadError } = await query;
       if (loadError) throw loadError;
       setProjects((data ?? []) as unknown as DbRow[]);
 
@@ -214,7 +218,7 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, canView, canEdit]);
+  }, [user, canView, canEdit, listCompanyProjects]);
 
   useEffect(() => {
     void load();
@@ -309,11 +313,14 @@ export default function ProjectsPage() {
     setSuccess(null);
     try {
       const supabase = createClient();
-      const { error: updateError } = await supabase
+      let updateQuery = supabase
         .from(P.table)
         .update({ [P.status]: status })
-        .eq(P.pk, projectId)
-        .eq(P.userId, user.id);
+        .eq(P.pk, projectId);
+      if (!listCompanyProjects) {
+        updateQuery = updateQuery.eq(P.userId, user.id);
+      }
+      const { error: updateError } = await updateQuery;
       if (updateError) throw updateError;
       setSuccess(`Status set to ${labelize(status)}.`);
       await load();
@@ -332,11 +339,14 @@ export default function ProjectsPage() {
     try {
       const supabase = createClient();
       const ids = Array.from(selectedIds);
-      const { error: updateError } = await supabase
+      let updateQuery = supabase
         .from(P.table)
         .update({ [P.status]: status })
-        .in(P.pk, ids)
-        .eq(P.userId, user.id);
+        .in(P.pk, ids);
+      if (!listCompanyProjects) {
+        updateQuery = updateQuery.eq(P.userId, user.id);
+      }
+      const { error: updateError } = await updateQuery;
       if (updateError) throw updateError;
       setSuccess(`Updated ${ids.length} project${ids.length === 1 ? "" : "s"} to ${labelize(status)}.`);
       setSelectedIds(new Set());
@@ -362,11 +372,11 @@ export default function ProjectsPage() {
     setSuccess(null);
     try {
       const supabase = createClient();
-      const { error: deleteError } = await supabase
-        .from(P.table)
-        .delete()
-        .eq(P.pk, projectId)
-        .eq(P.userId, user.id);
+      let deleteQuery = supabase.from(P.table).delete().eq(P.pk, projectId);
+      if (!listCompanyProjects) {
+        deleteQuery = deleteQuery.eq(P.userId, user.id);
+      }
+      const { error: deleteError } = await deleteQuery;
       if (deleteError) throw deleteError;
       setSuccess("Project deleted.");
       setSelectedIds((prev) => {
@@ -454,11 +464,14 @@ export default function ProjectsPage() {
       };
 
       if (editingProjectId) {
-        const { error: updateError } = await supabase
+        let updateQuery = supabase
           .from(P.table)
           .update(payload)
-          .eq(P.pk, editingProjectId)
-          .eq(P.userId, user.id);
+          .eq(P.pk, editingProjectId);
+        if (!listCompanyProjects) {
+          updateQuery = updateQuery.eq(P.userId, user.id);
+        }
+        const { error: updateError } = await updateQuery;
         if (updateError) throw updateError;
         setSuccess("Project updated.");
       } else {

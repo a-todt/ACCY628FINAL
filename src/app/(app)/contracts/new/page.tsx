@@ -9,7 +9,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { useAdminData } from "@/hooks/useAdminData";
 import { MoneyInput } from "@/components/MoneyInput";
 import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
-import { canManageContracts } from "@/lib/roles";
+import { canManageContracts, ROLE_LABELS } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import { linkCustomerToContract } from "@/lib/clientProspect";
 import type { ContractType, MilestoneStatus } from "@/lib/types";
@@ -46,6 +46,8 @@ const EMPTY_FORM = {
   special_terms: "",
   client_user_id: "",
   customer_id: "",
+  field_supervisor_id: "",
+  accounting_user_id: "",
 };
 
 export default function NewContractRoute() {
@@ -74,6 +76,14 @@ function NewContractPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   const clients = useMemo(() => userProfiles.filter((p) => p.role === "client"), [userProfiles]);
+  const fieldSupervisors = useMemo(
+    () => userProfiles.filter((p) => p.role === "field_supervisor" && p.is_active !== false),
+    [userProfiles]
+  );
+  const accountants = useMemo(
+    () => userProfiles.filter((p) => p.role === "owner" && p.is_active !== false),
+    [userProfiles]
+  );
   const linkableCustomers = useMemo(() => {
     const rows = admin.customers.filter((c) => Boolean(c.user_id));
     return rows;
@@ -175,6 +185,60 @@ function NewContractPage() {
         await linkCustomerToContract(form.customer_id, contract.id);
       }
 
+      const originalValue = form.original_value ? Number(form.original_value) : null;
+      const wipStatus =
+        form.status === "canceled" || form.status === "on_hold"
+          ? "on_hold"
+          : form.status === "completed"
+            ? "completed"
+            : "active";
+      const { error: wipError } = await supabase.from("projects").insert({
+        user_id: user.id,
+        project_name: form.contract_name.trim(),
+        client_name: form.client_name.trim() || null,
+        original_contract_value: originalValue,
+        revised_contract_value: originalValue,
+        estimated_total_cost: null,
+        start_date: form.start_date || null,
+        end_date: form.end_date || null,
+        status: wipStatus,
+        contract_id: contract.id,
+      });
+      if (wipError) {
+        console.warn("WIP project sync:", wipError.message);
+      }
+
+      const teamLinks: Array<{
+        contract_id: string;
+        user_id: string;
+        assignment_role: "project_manager" | "field_supervisor" | "owner";
+      }> = [];
+      if (effectiveRole === "project_manager") {
+        teamLinks.push({
+          contract_id: contract.id,
+          user_id: user.id,
+          assignment_role: "project_manager",
+        });
+      }
+      if (form.field_supervisor_id) {
+        teamLinks.push({
+          contract_id: contract.id,
+          user_id: form.field_supervisor_id,
+          assignment_role: "field_supervisor",
+        });
+      }
+      if (form.accounting_user_id) {
+        teamLinks.push({
+          contract_id: contract.id,
+          user_id: form.accounting_user_id,
+          assignment_role: "owner",
+        });
+      }
+      if (teamLinks.length > 0) {
+        const { error: assignError } = await supabase.from("contract_assignments").insert(teamLinks);
+        if (assignError) throw assignError;
+      }
+
       const milestoneRows = milestones
         .filter((m) => m.milestone_name.trim().length > 0)
         .map((m) => ({
@@ -190,7 +254,14 @@ function NewContractPage() {
         if (milestoneError) throw milestoneError;
       }
 
-      setSuccess(`Contract "${form.contract_name.trim()}" created successfully.`);
+      setSuccess(
+        `Contract "${form.contract_name.trim()}" created` +
+          (effectiveRole === "project_manager" ? ". You are assigned as PM" : "") +
+          (form.field_supervisor_id ? "; field supervisor linked" : "") +
+          (form.accounting_user_id ? "; Accounting linked" : "") +
+          (form.client_user_id || form.customer_id ? "; client linked" : "") +
+          "."
+      );
       resetForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create contract.");
@@ -304,6 +375,36 @@ function NewContractPage() {
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.full_name || client.email}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label="Field Supervisor">
+                <select
+                  className={selectClass}
+                  title="Assign a field supervisor to this project."
+                  value={form.field_supervisor_id}
+                  onChange={(e) => updateField("field_supervisor_id", e.target.value)}
+                >
+                  <option value="">None yet</option>
+                  {fieldSupervisors.map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.full_name || person.email}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField stacked label={`Link ${ROLE_LABELS.owner}`}>
+                <select
+                  className={selectClass}
+                  title="Optional — put Accounting on this project team."
+                  value={form.accounting_user_id}
+                  onChange={(e) => updateField("accounting_user_id", e.target.value)}
+                >
+                  <option value="">None yet</option>
+                  {accountants.map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.full_name || person.email}
                     </option>
                   ))}
                 </select>

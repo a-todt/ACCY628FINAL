@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         phone: body.phone?.trim() || null,
         role,
         is_active: true,
-        onboarding_complete: false,
+        onboarding_complete: role === "project_manager" || role === "owner",
       })
       .eq("id", signup.user.id);
 

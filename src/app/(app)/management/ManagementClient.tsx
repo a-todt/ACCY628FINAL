@@ -92,8 +92,10 @@ function SettingsValue({ value }: { value: string | number | null | undefined })
 
 function assignmentRoleFor(
   role: string
-): "project_manager" | "field_supervisor" {
-  return role === "field_supervisor" ? "field_supervisor" : "project_manager";
+): "project_manager" | "field_supervisor" | "owner" {
+  if (role === "field_supervisor") return "field_supervisor";
+  if (role === "owner") return "owner";
+  return "project_manager";
 }
 
 function labelAssignmentRole(role: string) {

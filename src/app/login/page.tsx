@@ -164,7 +164,9 @@ function LoginPage() {
             .from("user_profiles")
             .update({
               role: intended,
-              ...(intended === "subcontractor" ? { onboarding_complete: true } : {}),
+              ...(intended === "subcontractor" || intended === "project_manager"
+                ? { onboarding_complete: true }
+                : {}),
             })
             .eq("id", signedIn.id);
         }
@@ -238,7 +240,8 @@ function LoginPage() {
             full_name: (fullName.trim() || signupCompany) || null,
             secondary_name: isClientSignup ? null : secondaryName.trim() || null,
             role: signupRole,
-            onboarding_complete: signupRole === "subcontractor",
+            onboarding_complete:
+              signupRole === "subcontractor" || signupRole === "project_manager",
             email,
           })
           .eq("id", userId);
@@ -260,6 +263,13 @@ function LoginPage() {
       if (signupRole === "subcontractor" && data.session) {
         setMessage("Account created. Opening Bidding…");
         router.replace("/bidding");
+        router.refresh();
+        return;
+      }
+
+      if (signupRole === "project_manager" && data.session) {
+        setMessage("Account created. You can add projects and link your team.");
+        router.replace("/contracts/new");
         router.refresh();
         return;
       }
@@ -291,8 +301,10 @@ function LoginPage() {
         signupRole === "client"
           ? `Account created.${clientNote}`
           : signupRole === "subcontractor"
-            ? "Account created. Sign in and open Bidding to bid on open packages. You can link a GC invite later when you are awarded a project."
-            : "Account created. Sign in — your Owner must assign you to a project before you can work."
+            ? "Account created. Sign in — you’re in the bidder directory and can open Bidding right away."
+            : signupRole === "project_manager"
+              ? "Account created. Sign in — you can add projects and link field supervisors, clients, and Accounting right away."
+              : "Account created. Sign in — a Project Manager must assign you to a project before you can work."
       );
       setMode("login");
       setLoginId(email);

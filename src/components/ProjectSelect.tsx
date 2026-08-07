@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { canListCompanyProjects } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import { WIP_DB, colStr, selectList, type DbRow } from "@/lib/wipSchema";
 
@@ -33,7 +34,8 @@ export function ProjectSelect({
   emptyLabel = "Select project…",
   refreshKey = 0,
 }: ProjectSelectProps) {
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
+  const listCompanyProjects = canListCompanyProjects(effectiveRole);
   const [rows, setRows] = useState<DbRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,11 +52,14 @@ export function ProjectSelect({
     const supabase = createClient();
 
     try {
-      const { data, error: loadError } = await supabase
+      let query = supabase
         .from(P.table)
         .select(selectList(P.pk, P.name, P.status))
-        .eq(P.userId, user.id)
         .order(P.name, { ascending: true });
+      if (!listCompanyProjects) {
+        query = query.eq(P.userId, user.id);
+      }
+      const { data, error: loadError } = await query;
 
       if (loadError) throw loadError;
       setRows((data ?? []) as unknown as DbRow[]);
@@ -64,7 +69,7 @@ export function ProjectSelect({
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, listCompanyProjects]);
 
   useEffect(() => {
     void load();

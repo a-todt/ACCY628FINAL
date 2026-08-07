@@ -13,6 +13,7 @@ import {
   type WipProjectLike,
 } from "@/lib/periodReports";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
+import { canListCompanyProjects } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import {
   reportsFilterMonths,
@@ -86,7 +87,8 @@ export function ProjectPeriodReportsSection({
   displayControls,
   timeFilter,
 }: Props) {
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
+  const listCompanyProjects = canListCompanyProjects(effectiveRole);
   const lockYear = Boolean(timeFilter && timeFilter.grain !== "all");
   const [year, setYear] = useState(() => timeFilter?.year ?? new Date().getFullYear());
   const [contractId, setContractId] = useState("");
@@ -113,11 +115,15 @@ export function ProjectPeriodReportsSection({
       const P = WIP_DB.projects;
       const C = WIP_DB.projectCosts;
       const B = WIP_DB.billings;
-      const [projRes, costRes, billRes] = await Promise.all([
-        supabase.from(P.table).select("*").eq(P.userId, user.id),
-        supabase.from(C.table).select("*").eq(C.userId, user.id),
-        supabase.from(B.table).select("*").eq(B.userId, user.id),
-      ]);
+      let projQuery = supabase.from(P.table).select("*");
+      let costQuery = supabase.from(C.table).select("*");
+      let billQuery = supabase.from(B.table).select("*");
+      if (!listCompanyProjects) {
+        projQuery = projQuery.eq(P.userId, user.id);
+        costQuery = costQuery.eq(C.userId, user.id);
+        billQuery = billQuery.eq(B.userId, user.id);
+      }
+      const [projRes, costRes, billRes] = await Promise.all([projQuery, costQuery, billQuery]);
       if (projRes.error) throw projRes.error;
       if (costRes.error) throw costRes.error;
       if (billRes.error) throw billRes.error;
@@ -162,7 +168,7 @@ export function ProjectPeriodReportsSection({
     } finally {
       setWipLoading(false);
     }
-  }, [user]);
+  }, [user, listCompanyProjects]);
 
   useEffect(() => {
     void loadWip();

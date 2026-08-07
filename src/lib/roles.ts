@@ -212,6 +212,11 @@ export function canManageContracts(role: UserRole): boolean {
   return hasPermission(role, "manageContracts");
 }
 
+/** List / manage company WIP projects (not only rows owned by the signed-in user). */
+export function canListCompanyProjects(role: UserRole): boolean {
+  return role === "admin" || role === "owner" || role === "project_manager";
+}
+
 export function canCreateInvoices(role: UserRole): boolean {
   return hasPermission(role, "manageInvoices");
 }
@@ -318,14 +323,15 @@ export function canStaffEnterBids(role: UserRole): boolean {
   return role === "admin";
 }
 
-/** Review received bids, rate vendors, and accept/reject (includes PMs). */
+/** Review received bids, rate vendors, and accept/reject (Admin, Accounting, PMs). */
 export function canReviewBids(role: UserRole): boolean {
-  return role === "admin" || role === "project_manager";
+  return role === "admin" || role === "owner" || role === "project_manager";
 }
 
 export function canViewBidding(role: UserRole): boolean {
   return (
     role === "admin" ||
+    role === "owner" ||
     role === "project_manager" ||
     role === "field_supervisor" ||
     role === "subcontractor"
