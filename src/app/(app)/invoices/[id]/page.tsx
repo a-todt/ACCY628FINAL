@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronDown, Pencil } from "lucide-react";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { uniqueSorted } from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { MoneyInput } from "@/components/MoneyInput";
@@ -88,6 +89,7 @@ function InvoiceDetailContent() {
   const { effectiveRole, user } = useAuth();
   const { contracts, changeOrders, invoices, payments, loading, error, refresh } =
     useContractData();
+  const { invoiceAdminThreshold } = useCompanySettings();
   const canEdit = canCreateInvoices(effectiveRole);
   const canApprove = canApprovePayments(effectiveRole);
   const canSelfApprove = canSelfApprovePayment(effectiveRole);
@@ -220,7 +222,7 @@ function InvoiceDetailContent() {
     try {
       const supabase = createClient();
       const nowIso = new Date().toISOString();
-      const next = paymentStatusAfterAccounting(amount);
+      const next = paymentStatusAfterAccounting(amount, invoiceAdminThreshold);
       const { error: payErr } = await supabase
         .from("payments")
         .update({
@@ -246,7 +248,7 @@ function InvoiceDetailContent() {
       });
       setActionSuccess(
         next === "pending_admin"
-          ? "Cleared by Accounting — awaiting Admin / Owner (≥ $250k)."
+          ? `Cleared by Accounting — awaiting Admin / Owner (≥ ${money(invoiceAdminThreshold)}).`
           : "Payment approved and posted to AR."
       );
       await refresh();

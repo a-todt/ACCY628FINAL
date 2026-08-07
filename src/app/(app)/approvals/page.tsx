@@ -4,19 +4,24 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Check, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { useContractData } from "@/hooks/useContractData";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { AlertBanner, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { notifyPmInvoiceDecision } from "@/lib/invoiceNotifications";
-import { money } from "@/lib/metrics";
+import { labelize, money } from "@/lib/metrics";
 import {
-  HIGH_VALUE_APPROVAL_THRESHOLD,
+  costApprovalBadge,
+  costApprovalLabel,
+  costStatusAfterAccounting,
   invoiceAfterApplyingPayment,
   invoiceApprovalBadge,
   invoiceApprovalLabel,
   invoiceStatusAfterAccounting,
   isApprovedInvoice,
+  isCostAwaitingAccounting,
+  isCostAwaitingAdmin,
   isInvoiceAwaitingAccounting,
   isInvoiceAwaitingAdmin,
   isPaymentAwaitingAccounting,
@@ -25,6 +30,7 @@ import {
   paymentApprovalLabel,
   paymentStatusAfterAccounting,
   requiresAdminHighValueApproval,
+  requiresCostAdminApproval,
 } from "@/lib/payments";
 import {
   canApproveHighValue,
@@ -32,13 +38,14 @@ import {
   canViewApprovals,
 } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
-import type { Invoice, Payment, UserRole } from "@/lib/types";
+import type { CostEntry, Invoice, Payment, UserRole } from "@/lib/types";
 
 type QueueTab = "accounting" | "admin";
 
 export default function ApprovalsPage() {
   const { effectiveRole, user } = useAuth();
-  const { invoices, payments, loading, error, refresh } = useContractData();
+  const { invoices, payments, costEntries, loading, error, refresh } = useContractData();
+  const { invoiceAdminThreshold, costAdminThreshold } = useCompanySettings();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -63,6 +70,11 @@ export default function ApprovalsPage() {
     [payments]
   );
   const adminPayments = useMemo(() => payments.filter(isPaymentAwaitingAdmin), [payments]);
+  const accountingCosts = useMemo(
+    () => costEntries.filter(isCostAwaitingAccounting),
+    [costEntries]
+  );
+  const adminCosts = useMemo(() => costEntries.filter(isCostAwaitingAdmin), [costEntries]);
 
   if (!canViewApprovals(effectiveRole)) {
     return (
@@ -98,7 +110,7 @@ export default function ApprovalsPage() {
       const amount = Number(invoice.invoice_amount ?? invoice.net_amount_due ?? 0);
 
       if (step === "accounting") {
-        const next = invoiceStatusAfterAccounting(amount);
+        const next = invoiceStatusAfterAccounting(amount, invoiceAdminThreshold);
         const { error: updateError } = await supabase
           .from("invoices")
           .update({
@@ -124,7 +136,7 @@ export default function ApprovalsPage() {
         }
         setActionSuccess(
           next === "pending_admin"
-            ? "Invoice cleared by Accounting — awaiting Admin / Owner (≥ $250k)."
+            ? `Invoice cleared by Accounting — awaiting Admin / Owner (≥ ${money(invoiceAdminThreshold)}).`
             : "Invoice approved and now billable. Project manager notified."
         );
       } else {
@@ -209,6 +221,104 @@ export default function ApprovalsPage() {
     }
   };
 
+  const onApproveCost = async (cost: CostEntry, step: QueueTab) => {
+    if (step === "accounting" && !canAccounting) return;
+    if (step === "admin" && !canAdmin) return;
+    if (denySelf(cost.submitted_by ?? cost.user_id)) return;
+
+    setBusyId(cost.id);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const supabase = createClient();
+      const nowIso = new Date().toISOString();
+      const amount = Number(cost.amount ?? 0);
+
+      if (step === "accounting") {
+        const next = costStatusAfterAccounting(amount, costAdminThreshold);
+        const { error: updateError } = await supabase
+          .from("cost_entries")
+          .update({
+            approval_status: next,
+            accounting_approved_by: user?.id ?? null,
+            accounting_approved_at: nowIso,
+            rejection_reason: null,
+          })
+          .eq("id", cost.id)
+          .eq("approval_status", "pending_accounting");
+        if (updateError) throw updateError;
+        await writeAuditLog("cost_accounting_approved", "cost_entry", cost.id, {
+          next_status: next,
+          amount,
+        });
+        setActionSuccess(
+          next === "pending_admin"
+            ? `Cost cleared by Accounting — awaiting Admin / Owner (over ${money(costAdminThreshold)}).`
+            : "Cost approved and counted in job costs."
+        );
+      } else {
+        const { error: updateError } = await supabase
+          .from("cost_entries")
+          .update({
+            approval_status: "approved",
+            admin_approved_by: user?.id ?? null,
+            admin_approved_at: nowIso,
+            rejection_reason: null,
+          })
+          .eq("id", cost.id)
+          .eq("approval_status", "pending_admin");
+        if (updateError) throw updateError;
+        await writeAuditLog("cost_admin_approved", "cost_entry", cost.id, { amount });
+        setActionSuccess("High-value cost approved by Admin / Owner.");
+      }
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to approve cost.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onRejectCost = async (cost: CostEntry, step: QueueTab) => {
+    if (step === "accounting" && !canAccounting) return;
+    if (step === "admin" && !canAdmin) return;
+    const reason = window.prompt("Rejection reason (optional):") ?? "";
+    setBusyId(cost.id);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const supabase = createClient();
+      const expected = step === "accounting" ? "pending_accounting" : "pending_admin";
+      const { error: updateError } = await supabase
+        .from("cost_entries")
+        .update({
+          approval_status: "rejected",
+          rejection_reason: reason.trim() || null,
+          accounting_approved_by:
+            step === "accounting" ? user?.id ?? null : cost.accounting_approved_by ?? null,
+          accounting_approved_at:
+            step === "accounting"
+              ? new Date().toISOString()
+              : cost.accounting_approved_at ?? null,
+          admin_approved_by: step === "admin" ? user?.id ?? null : null,
+          admin_approved_at: step === "admin" ? new Date().toISOString() : null,
+        })
+        .eq("id", cost.id)
+        .eq("approval_status", expected);
+      if (updateError) throw updateError;
+      await writeAuditLog("cost_rejected", "cost_entry", cost.id, {
+        step,
+        reason: reason.trim() || null,
+      });
+      setActionSuccess("Cost rejected — not counted in job costs.");
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to reject cost.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const onApprovePayment = async (payment: Payment, step: QueueTab) => {
     if (step === "accounting" && !canAccounting) return;
     if (step === "admin" && !canAdmin) return;
@@ -232,7 +342,7 @@ export default function ApprovalsPage() {
       const amount = Number(payment.payment_amount ?? 0);
 
       if (step === "accounting") {
-        const next = paymentStatusAfterAccounting(amount);
+        const next = paymentStatusAfterAccounting(amount, invoiceAdminThreshold);
         const { error: payErr } = await supabase
           .from("payments")
           .update({
@@ -262,7 +372,7 @@ export default function ApprovalsPage() {
         });
         setActionSuccess(
           next === "pending_admin"
-            ? "Payment cleared by Accounting — awaiting Admin / Owner (≥ $250k)."
+            ? `Payment cleared by Accounting — awaiting Admin / Owner (≥ ${money(invoiceAdminThreshold)}).`
             : "Payment approved and posted to AR."
         );
       } else {
@@ -344,15 +454,19 @@ export default function ApprovalsPage() {
 
   const queueInvoices = activeTab === "accounting" ? accountingInvoices : adminInvoices;
   const queuePayments = activeTab === "accounting" ? accountingPayments : adminPayments;
+  const queueCosts = activeTab === "accounting" ? accountingCosts : adminCosts;
   const canAct = activeTab === "accounting" ? canAccounting : canAdmin;
+  const accountingCount =
+    accountingInvoices.length + accountingPayments.length + accountingCosts.length;
+  const adminCount = adminInvoices.length + adminPayments.length + adminCosts.length;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Approvals"
-        subtitle={`Accounting clears all invoices and payments. Amounts ≥ ${money(
-          HIGH_VALUE_APPROVAL_THRESHOLD
-        )} also need Admin / Owner.`}
+        subtitle={`Accounting clears invoices, payments, and cost logs. Invoices/payments ≥ ${money(
+          invoiceAdminThreshold
+        )} and costs over ${money(costAdminThreshold)} also need Admin / Owner. Thresholds are set in Company Settings.`}
       />
 
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
@@ -365,7 +479,7 @@ export default function ApprovalsPage() {
             className={`btn btn-sm ${activeTab === "accounting" ? "btn-primary" : "btn-outline"}`}
             onClick={() => setTab("accounting")}
           >
-            Accounting queue ({accountingInvoices.length + accountingPayments.length})
+            Accounting queue ({accountingCount})
           </button>
         ) : null}
         {showAdmin ? (
@@ -374,10 +488,93 @@ export default function ApprovalsPage() {
             className={`btn btn-sm ${activeTab === "admin" ? "btn-primary" : "btn-outline"}`}
             onClick={() => setTab("admin")}
           >
-            Admin high-value ({adminInvoices.length + adminPayments.length})
+            Admin high-value ({adminCount})
           </button>
         ) : null}
       </div>
+
+      <SectionCard title="Cost logs awaiting approval">
+        {queueCosts.length === 0 ? (
+          <EmptyState title="No cost logs in this queue" message="Nothing waiting for this step." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Project</th>
+                  <th>Category</th>
+                  <th className="text-right">Amount</th>
+                  <th>Status</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {queueCosts.map((cost) => {
+                  const amount = Number(cost.amount ?? 0);
+                  const high = requiresCostAdminApproval(amount, costAdminThreshold);
+                  return (
+                    <tr key={cost.id}>
+                      <td>{cost.date_incurred ?? "—"}</td>
+                      <td>
+                        <Link
+                          href={`/contracts/${cost.contract_id}`}
+                          className="link link-hover font-medium"
+                        >
+                          {cost.contracts?.contract_name ?? "—"}
+                        </Link>
+                        {cost.description ? (
+                          <div className="text-xs opacity-60 truncate max-w-[14rem]">
+                            {cost.description}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>{labelize(cost.category)}</td>
+                      <td className="text-right tabular-nums">
+                        {money(amount)}
+                        {high ? (
+                          <span className="badge badge-xs badge-warning ml-2">
+                            &gt;{money(costAdminThreshold)}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td>
+                        <span className={`badge badge-sm ${costApprovalBadge(cost.approval_status)}`}>
+                          {costApprovalLabel(cost.approval_status)}
+                        </span>
+                      </td>
+                      <td className="text-right">
+                        {canAct ? (
+                          <div className="flex justify-end gap-1">
+                            <button
+                              type="button"
+                              className="btn btn-success btn-xs gap-1"
+                              disabled={busyId === cost.id}
+                              onClick={() => void onApproveCost(cost, activeTab)}
+                            >
+                              <Check className="h-3 w-3" /> Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-error btn-xs gap-1"
+                              disabled={busyId === cost.id}
+                              onClick={() => void onRejectCost(cost, activeTab)}
+                            >
+                              <X className="h-3 w-3" /> Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs opacity-60">View only</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
 
       <SectionCard title="Invoices awaiting approval">
         {queueInvoices.length === 0 ? (
@@ -397,7 +594,7 @@ export default function ApprovalsPage() {
               <tbody>
                 {queueInvoices.map((invoice) => {
                   const amount = Number(invoice.invoice_amount ?? 0);
-                  const high = requiresAdminHighValueApproval(amount);
+                  const high = requiresAdminHighValueApproval(amount, invoiceAdminThreshold);
                   return (
                     <tr key={invoice.id}>
                       <td>
@@ -409,7 +606,9 @@ export default function ApprovalsPage() {
                       <td className="text-right tabular-nums">
                         {money(amount)}
                         {high ? (
-                          <span className="badge badge-xs badge-warning ml-2">≥250k</span>
+                          <span className="badge badge-xs badge-warning ml-2">
+                            ≥{money(invoiceAdminThreshold)}
+                          </span>
                         ) : null}
                       </td>
                       <td>
@@ -469,7 +668,7 @@ export default function ApprovalsPage() {
                 {queuePayments.map((payment) => {
                   const invoice = invoiceById.get(payment.invoice_id);
                   const amount = Number(payment.payment_amount ?? 0);
-                  const high = requiresAdminHighValueApproval(amount);
+                  const high = requiresAdminHighValueApproval(amount, invoiceAdminThreshold);
                   return (
                     <tr key={payment.id}>
                       <td className="font-mono text-xs">{payment.id.slice(0, 8)}</td>
@@ -485,7 +684,9 @@ export default function ApprovalsPage() {
                       <td className="text-right tabular-nums">
                         {money(amount)}
                         {high ? (
-                          <span className="badge badge-xs badge-warning ml-2">≥250k</span>
+                          <span className="badge badge-xs badge-warning ml-2">
+                            ≥{money(invoiceAdminThreshold)}
+                          </span>
                         ) : null}
                       </td>
                       <td>

@@ -519,6 +519,12 @@ export default function ManagementPage() {
           logo_url: String(form.get("logo_url") || "").trim() || null,
           default_retainage_percent: Number(form.get("default_retainage_percent") || 10),
           default_payment_terms: String(form.get("default_payment_terms") || "Net 30").trim(),
+          invoice_admin_approval_threshold: Number(
+            form.get("invoice_admin_approval_threshold") || 250000
+          ),
+          cost_admin_approval_threshold: Number(
+            form.get("cost_admin_approval_threshold") || 50000
+          ),
           updated_at: new Date().toISOString(),
           updated_by: user?.id ?? null,
         })
@@ -1457,6 +1463,34 @@ export default function ManagementPage() {
                   defaultValue={admin.company.default_payment_terms}
                 />
               </FormField>
+              <FormField
+                label="Invoice admin threshold ($)"
+                hint="At or above this amount, invoices/payments need Accounting then Admin / Owner."
+              >
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  name="invoice_admin_approval_threshold"
+                  className="input input-bordered"
+                  defaultValue={admin.company.invoice_admin_approval_threshold ?? 250000}
+                  required
+                />
+              </FormField>
+              <FormField
+                label="Cost admin threshold ($)"
+                hint="At or below this amount, cost logs need Accounting only. Above it, Accounting then Admin / Owner."
+              >
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  name="cost_admin_approval_threshold"
+                  className="input input-bordered"
+                  defaultValue={admin.company.cost_admin_approval_threshold ?? 50000}
+                  required
+                />
+              </FormField>
               <FormField label="Address Line 1">
                 <input
                   name="address_line1"
@@ -1524,15 +1558,33 @@ export default function ManagementPage() {
               <FormField label="License Expiration">
                 <SettingsValue value={admin.company.gc_license_expiration} />
               </FormField>
-              <FormField label="Default Retainage %">
-                <SettingsValue value={admin.company.default_retainage_percent} />
-              </FormField>
-              <FormField label="Default Payment Terms">
-                <SettingsValue value={admin.company.default_payment_terms} />
-              </FormField>
-              <FormField label="Address Line 1">
-                <SettingsValue value={admin.company.address_line1} />
-              </FormField>
+                <FormField label="Default Retainage %">
+                  <SettingsValue value={admin.company.default_retainage_percent} />
+                </FormField>
+                <FormField label="Default Payment Terms">
+                  <SettingsValue value={admin.company.default_payment_terms} />
+                </FormField>
+                <FormField label="Invoice admin threshold">
+                  <SettingsValue
+                    value={
+                      admin.company.invoice_admin_approval_threshold != null
+                        ? `$${Number(admin.company.invoice_admin_approval_threshold).toLocaleString()}`
+                        : "$250,000"
+                    }
+                  />
+                </FormField>
+                <FormField label="Cost admin threshold">
+                  <SettingsValue
+                    value={
+                      admin.company.cost_admin_approval_threshold != null
+                        ? `$${Number(admin.company.cost_admin_approval_threshold).toLocaleString()}`
+                        : "$50,000"
+                    }
+                  />
+                </FormField>
+                <FormField label="Address Line 1">
+                  <SettingsValue value={admin.company.address_line1} />
+                </FormField>
               <FormField label="Address Line 2">
                 <SettingsValue value={admin.company.address_line2} />
               </FormField>
