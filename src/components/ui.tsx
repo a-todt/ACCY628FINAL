@@ -163,11 +163,19 @@ export function TableShell({
   );
 }
 
+export type ReportPaneDisplayControls = {
+  showNumbers: boolean;
+  showGraphs: boolean;
+  onShowNumbersChange: (next: boolean) => void;
+  onShowGraphsChange: (next: boolean) => void;
+};
+
 export function ReportPane({
   title,
   subtitle,
   children,
   footerStart,
+  displayControls,
   onExportCsv,
   onExportPdf,
 }: {
@@ -175,6 +183,7 @@ export function ReportPane({
   subtitle?: string;
   children: ReactNode;
   footerStart?: ReactNode;
+  displayControls?: ReportPaneDisplayControls;
   onExportCsv: () => void;
   onExportPdf: () => void;
 }) {
@@ -191,13 +200,37 @@ export function ReportPane({
         </div>
         <div>{children}</div>
         <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-base-300">
-          <div className="flex items-center gap-2">{footerStart}</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {displayControls ? (
+              <>
+                <label className="btn btn-ghost btn-xs gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-xs"
+                    checked={displayControls.showNumbers}
+                    onChange={(e) => displayControls.onShowNumbersChange(e.target.checked)}
+                  />
+                  Numbers
+                </label>
+                <label className="btn btn-ghost btn-xs gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-xs"
+                    checked={displayControls.showGraphs}
+                    onChange={(e) => displayControls.onShowGraphsChange(e.target.checked)}
+                  />
+                  Graphs
+                </label>
+              </>
+            ) : null}
+            {footerStart}
+          </div>
           <div className="flex items-center gap-1.5 ml-auto">
-            <button type="button" className="btn btn-outline btn-xs" onClick={onExportCsv}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={onExportCsv}>
               <Download className="h-3.5 w-3.5" />
               Export CSV
             </button>
-            <button type="button" className="btn btn-primary btn-xs" onClick={onExportPdf}>
+            <button type="button" className="btn btn-primary btn-sm" onClick={onExportPdf}>
               <FileDown className="h-3.5 w-3.5" />
               Export PDF
             </button>

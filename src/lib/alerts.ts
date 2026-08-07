@@ -84,20 +84,28 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   const contracts = data.contracts ?? [];
   const invoices = data.invoices;
 
-  // 1) Payments awaiting owner dual-approval
+  // 1) Payments awaiting Accounting or Admin dual-approval
   for (const payment of payments) {
-    if ((payment.approval_status ?? "posted") !== "pending_approval") continue;
+    const status = payment.approval_status ?? "posted";
+    if (status !== "pending_accounting" && status !== "pending_approval" && status !== "pending_admin") {
+      continue;
+    }
     const invoice = invoices.find((i) => i.id === payment.invoice_id);
     const number = invoice?.invoice_number?.trim() || "Invoice";
     const project = invoice?.contracts?.contract_name ?? "Project";
+    const awaitingAdmin = status === "pending_admin";
     alerts.push({
       id: `fraud-payment-pending-${payment.id}`,
       severity: "critical",
       category: "fraud",
-      title: `Potential fraud — payment awaiting approval · ${money(payment.payment_amount)}`,
+      title: awaitingAdmin
+        ? `High-value payment awaiting Admin · ${money(payment.payment_amount)}`
+        : `Payment awaiting Accounting · ${money(payment.payment_amount)}`,
       detail: `${number} · ${project}${payment.reference_number ? ` · Ref ${payment.reference_number}` : ""}`,
-      action: "Open invoice to approve or reject this payment (dual approval)",
-      href: `/invoices/${payment.invoice_id}?tab=payments`,
+      action: awaitingAdmin
+        ? "Open Approvals for Admin / Owner sign-off (≥ $250k)"
+        : "Open Approvals for Accounting sign-off",
+      href: `/approvals`,
       createdAt: payment.submitted_at ?? payment.created_at ?? now,
     });
   }
@@ -209,7 +217,7 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
 }
 
 export function alertBadgeLabel(alert: AlertItem): string {
-  if (alert.category === "fraud") return "Potential fraud";
+  if (alert.category === "fraud") return "Control";
   if (alert.category === "invoice" && alert.severity === "critical") return "Overdue";
   return labelize(alert.severity);
 }
@@ -282,24 +290,27 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
   }
 
   if (canSeeFinancialAlerts(role)) {
-    for (const co of data.changeOrders) {
-      if (co.status !== "pending") continue;
+    // Accounting focuses on cash/control exceptions — skip pending CO ops noise.
+    if (role !== "owner") {
+      for (const co of data.changeOrders) {
+        if (co.status !== "pending") continue;
 
-      const number = co.change_order_number?.trim() || "Change order";
-      const project = co.contracts?.contract_name ?? "Project";
-      const q = co.change_order_number?.trim() || co.description?.trim() || "";
-      const href = q ? `/change-orders?q=${encodeQuery(q)}` : "/change-orders";
+        const number = co.change_order_number?.trim() || "Change order";
+        const project = co.contracts?.contract_name ?? "Project";
+        const q = co.change_order_number?.trim() || co.description?.trim() || "";
+        const href = q ? `/change-orders?q=${encodeQuery(q)}` : "/change-orders";
 
-      alerts.push({
-        id: `co-pending-${co.id}`,
-        severity: "info",
-        category: "change_order",
-        title: `${number} awaiting decision`,
-        detail: `${project}${co.description ? ` · ${co.description}` : ""}`,
-        action: "Open change order to approve or reject",
-        href,
-        createdAt: co.created_at ?? now,
-      });
+        alerts.push({
+          id: `co-pending-${co.id}`,
+          severity: "info",
+          category: "change_order",
+          title: `${number} awaiting decision`,
+          detail: `${project}${co.description ? ` · ${co.description}` : ""}`,
+          action: "Open change order to approve or reject",
+          href,
+          createdAt: co.created_at ?? now,
+        });
+      }
     }
   }
 
@@ -307,11 +318,15 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
     alerts.push(...buildFraudAlerts(data, now));
   }
 
-  // Fraud first, then severity, then newest.
+  // Fraud / control first (especially for Accounting), then severity, then newest.
   return alerts.sort((a, b) => {
-    const fraudRank = (alert: AlertItem) => (alert.category === "fraud" ? 0 : 1);
-    const byFraud = fraudRank(a) - fraudRank(b);
-    if (byFraud !== 0) return byFraud;
+    const controlRank = (alert: AlertItem) => {
+      if (alert.category === "fraud") return 0;
+      if (role === "owner" && alert.category === "invoice") return 1;
+      return 2;
+    };
+    const byControl = controlRank(a) - controlRank(b);
+    if (byControl !== 0) return byControl;
     const severityRank: Record<AlertSeverity, number> = { critical: 0, warning: 1, info: 2 };
     const bySeverity = severityRank[a.severity] - severityRank[b.severity];
     if (bySeverity !== 0) return bySeverity;

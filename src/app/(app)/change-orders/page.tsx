@@ -21,6 +21,7 @@ import { StatusFilterChips } from "@/components/StatusFilterChips";
 import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
 import { useToast } from "@/components/ToastProvider";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
+import { MoneyInput } from "@/components/MoneyInput";
 import { writeAuditLog } from "@/lib/audit";
 import {
   CHANGE_ORDER_APPROVAL_POLICY,
@@ -656,12 +657,10 @@ export default function ChangeOrdersPage() {
             <FormField label="Amount">
               <label className="input input-bordered flex items-center gap-2">
                 $
-                <input
-                  type="number"
-                  step="0.01"
+                <MoneyInput
                   className="grow"
                   value={form.amount}
-                  onChange={(e) => updateField("amount", e.target.value)}
+                  onValueChange={(v) => updateField("amount", v)}
                 />
               </label>
             </FormField>
@@ -1131,12 +1130,10 @@ export default function ChangeOrdersPage() {
               <FormField label="Amount">
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     className="grow"
                     value={editForm.amount}
-                    onChange={(e) => updateEditField("amount", e.target.value)}
+                    onValueChange={(v) => updateEditField("amount", v)}
                   />
                 </label>
               </FormField>

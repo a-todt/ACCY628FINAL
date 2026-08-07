@@ -443,7 +443,7 @@ export default function ManagementPage() {
       <div>
         <PageHeader title="Company Management" />
         <AlertBanner type="error">
-          Access denied. Only Admin / Owner or Accounting can open company management.
+          Access denied. Only Admin / Owner can open company management.
         </AlertBanner>
       </div>
     );
@@ -1065,7 +1065,7 @@ export default function ManagementPage() {
     <div className="space-y-6">
       <PageHeader
         title="Company Management"
-        subtitle="Accounting and Admin / Owner controls for company settings, team, and compliance."
+        subtitle="Admin / Owner controls for company settings, team, and compliance."
       />
 
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}

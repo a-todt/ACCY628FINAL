@@ -66,6 +66,7 @@ export function DashboardCustomizeModal({
   title = "Customize dashboard",
   previewLabel = "Dashboard preview",
   unusedEmptyLabel = "All panes are on the dashboard.",
+  columns: columnsProp,
 }: {
   open: boolean;
   role?: UserRole;
@@ -78,6 +79,8 @@ export function DashboardCustomizeModal({
   title?: string;
   previewLabel?: string;
   unusedEmptyLabel?: string;
+  /** Override auto column count (1–3) in the layout preview. */
+  columns?: number;
 }) {
   const [draft, setDraft] = useState<DashboardLayoutPrefs>(layout);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -118,7 +121,10 @@ export function DashboardCustomizeModal({
   );
 
   const nonFullWidthCount = enabledPanes.filter((pane) => !pane.fullWidth).length;
-  const columns = paneGridColumns(nonFullWidthCount);
+  const columns =
+    columnsProp != null
+      ? Math.min(3, Math.max(1, columnsProp))
+      : paneGridColumns(nonFullWidthCount);
   const colClass =
     columns <= 1
       ? "grid-cols-1"

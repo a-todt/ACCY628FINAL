@@ -27,6 +27,18 @@ const ADMIN_PANES: DashboardPaneDef[] = [
   { id: "alerts", label: "Needs attention" },
 ];
 
+/** Finance-first home for Accounting (`owner`). */
+const ACCOUNTING_PANES: DashboardPaneDef[] = [
+  { id: "accounting_work_queue", label: "Work queue", fullWidth: true },
+  { id: "money_pulse", label: "Money pulse" },
+  { id: "cash_controls", label: "Cash controls" },
+  { id: "wip_pulse", label: "WIP pulse" },
+  { id: "chart_billed_vs_collected", label: "Lowest collection rates" },
+  { id: "chart_costs_by_category", label: "Costs by category" },
+  { id: "chart_gross_profit", label: "Lowest gross profit" },
+  { id: "alerts", label: "Control exceptions" },
+];
+
 const FIELD_PANES: DashboardPaneDef[] = [
   { id: "kpi_stats", label: "Field KPIs", fullWidth: true },
   { id: "assigned_projects", label: "Assigned projects" },
@@ -50,7 +62,8 @@ const CLIENT_PANES: DashboardPaneDef[] = [
 ];
 
 export function dashboardRoleKey(role: UserRole): string {
-  if (role === "admin" || role === "owner" || role === "project_manager") {
+  if (role === "owner") return "accounting";
+  if (role === "admin" || role === "project_manager") {
     return "admin";
   }
   if (role === "field_supervisor") return "field";
@@ -62,6 +75,8 @@ export function panesForRole(role: UserRole): DashboardPaneDef[] {
   switch (dashboardRoleKey(role)) {
     case "admin":
       return ADMIN_PANES;
+    case "accounting":
+      return ACCOUNTING_PANES;
     case "field":
       return FIELD_PANES;
     case "subcontractor":

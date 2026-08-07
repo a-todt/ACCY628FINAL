@@ -7,6 +7,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useAdminData } from "@/hooks/useAdminData";
+import { MoneyInput } from "@/components/MoneyInput";
 import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { canManageContracts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
@@ -333,13 +334,11 @@ function NewContractPage() {
               <FormField stacked label="Original Value">
                 <label className="input input-bordered input-sm flex items-center gap-2 w-full">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                  <MoneyInput
                     className="grow"
+                    min="0"
                     value={form.original_value}
-                    onChange={(e) => updateField("original_value", e.target.value)}
+                    onValueChange={(v) => updateField("original_value", v)}
                   />
                 </label>
               </FormField>
@@ -444,12 +443,10 @@ function NewContractPage() {
                 </div>
                 <div>
                   <label className="text-[10px] opacity-60">Value</label>
-                  <input
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     className={`${fieldClass} mt-0.5`}
                     value={milestone.milestone_value}
-                    onChange={(e) => updateMilestone(index, "milestone_value", e.target.value)}
+                    onValueChange={(v) => updateMilestone(index, "milestone_value", v)}
                   />
                 </div>
                 <div>

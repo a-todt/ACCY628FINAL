@@ -69,11 +69,13 @@ import {
   scheduleBadgeClass,
 } from "@/lib/metrics";
 import {
+  canApprovePayments,
   canCreateChangeOrders,
   canCreateFieldLogs,
   canCreateInvoices,
   canEnterCosts,
   canManageContracts,
+  canViewReports,
   statusBadgeClass,
 } from "@/lib/roles";
 import type { UserRole } from "@/lib/types";
@@ -217,8 +219,12 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <PageHeader
         compact
-        title="Dashboard"
-        subtitle={`Welcome back${profile?.full_name ? `, ${profile.full_name}` : ""}`}
+        title={effectiveRole === "owner" ? "Accounting Dashboard" : "Dashboard"}
+        subtitle={
+          effectiveRole === "owner"
+            ? `Cash, WIP, and billing${profile?.full_name ? ` · ${profile.full_name}` : ""}`
+            : `Welcome back${profile?.full_name ? `, ${profile.full_name}` : ""}`
+        }
         actions={
           <button
             type="button"
@@ -281,6 +287,24 @@ function DashboardQuickActions({ role }: { role: UserRole }) {
       label: "Log Cost",
       icon: Wrench,
       show: canEnterCosts(role) && role !== "field_supervisor" && role !== "subcontractor",
+    },
+    {
+      href: "/approvals",
+      label: "Approvals",
+      icon: Banknote,
+      show: canApprovePayments(role),
+    },
+    {
+      href: "/wip",
+      label: "WIP Schedule",
+      icon: TrendingUp,
+      show: role === "owner",
+    },
+    {
+      href: "/reports",
+      label: "Reports",
+      icon: FileText,
+      show: role === "owner" && canViewReports(role),
     },
     {
       href: "/field-logs?new=1",
@@ -373,11 +397,13 @@ function DashboardAlertsPreview({
 
   const preview = alerts.slice(0, DASHBOARD_ALERT_PREVIEW_LIMIT);
   const remaining = alerts.length - preview.length;
+  const isAccounting = role === "owner";
+  const fraudCount = alerts.filter((alert) => alert.category === "fraud").length;
 
   return (
     <SectionCard
       compact
-      title="Needs attention"
+      title={isAccounting ? "Control exceptions" : "Needs attention"}
       actions={
         <Link href="/alerts" className="btn btn-primary btn-xs gap-1">
           <Bell className="h-3.5 w-3.5" />
@@ -386,6 +412,11 @@ function DashboardAlertsPreview({
       }
     >
       <div className="space-y-2">
+        {isAccounting && fraudCount > 0 ? (
+          <p className="text-xs text-error font-medium px-0.5">
+            {fraudCount} control exception{fraudCount === 1 ? "" : "s"} need review
+          </p>
+        ) : null}
         <div
           className="overflow-y-auto pr-1"
           style={{ height: "var(--dashboard-chart-h, 220px)" }}
@@ -452,11 +483,21 @@ function AdminDashboard({
     return (
       <EmptyState
         title="No contracts yet"
-        message="Add your first contract to start seeing dashboard metrics."
+        message={
+          role === "owner"
+            ? "Financial metrics appear once projects are set up by Admin / Owner."
+            : "Add your first contract to start seeing dashboard metrics."
+        }
         action={
-          <Link href="/contracts/new" className="btn btn-primary btn-sm">
-            <Plus className="h-4 w-4" /> Add Contract
-          </Link>
+          role === "owner" ? (
+            <Link href="/finance" className="btn btn-primary btn-sm">
+              Open Finance
+            </Link>
+          ) : (
+            <Link href="/contracts/new" className="btn btn-primary btn-sm">
+              <Plus className="h-4 w-4" /> Add Contract
+            </Link>
+          )
         }
       />
     );
@@ -596,6 +637,54 @@ function AdminDashboard({
   );
 
   const panes: Record<string, ReactNode> = {
+    accounting_work_queue: (
+      <SectionCard
+        compact
+        title="Work queue"
+        actions={
+          <Link href="/approvals" className="btn btn-ghost btn-xs gap-1">
+            Open Approvals
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        }
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <StatCard
+            compact
+            title="Payments to approve"
+            value={String(cashControls.pendingApprovals)}
+            icon={Banknote}
+            tone={cashControls.pendingApprovals > 0 ? "warning" : "default"}
+            href="/approvals"
+          />
+          <StatCard
+            compact
+            title="Overdue invoices"
+            value={String(overdueInvoices.length)}
+            hint={cashControls.overdueAr > 0 ? money(cashControls.overdueAr) : undefined}
+            icon={FileText}
+            tone={overdueInvoices.length > 0 ? "error" : "default"}
+            href="/invoices"
+          />
+          <StatCard
+            compact
+            title="Jobs underbilled"
+            value={String(wip.jobsUnderbilled)}
+            icon={TrendingUp}
+            tone={wip.jobsUnderbilled > 0 ? "warning" : "default"}
+            href="/wip"
+          />
+          <StatCard
+            compact
+            title="Jobs overbilled"
+            value={String(wip.jobsOverbilled)}
+            icon={CircleDollarSign}
+            tone={wip.jobsOverbilled > 0 ? "error" : "default"}
+            href="/wip"
+          />
+        </div>
+      </SectionCard>
+    ),
     money_pulse: (
       <SectionCard compact title="Money pulse">
         <div

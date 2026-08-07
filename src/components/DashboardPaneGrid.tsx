@@ -21,6 +21,7 @@ export function DashboardPaneGrid({
   emptyMessage = "Turn on one or more panes in Customize to build your dashboard.",
   customizeLabel = "Customize dashboard",
   stackPanes: stackPanesProp,
+  columns: columnsProp,
 }: {
   role?: UserRole;
   layout: DashboardLayoutPrefs;
@@ -33,6 +34,8 @@ export function DashboardPaneGrid({
   customizeLabel?: string;
   /** Force single-column stack. Defaults to field/sub/client when using role catalogs. */
   stackPanes?: boolean;
+  /** Override auto column count (1–3). Ignored when stackPanes is true. */
+  columns?: number;
 }) {
   const catalog = catalogProp ?? (role ? panesForRole(role) : []);
   const byId = new Map(catalog.map((pane) => [pane.id, pane]));
@@ -60,7 +63,11 @@ export function DashboardPaneGrid({
   const stackPanes =
     stackPanesProp ??
     (role === "field_supervisor" || role === "subcontractor" || role === "client");
-  const columns = stackPanes ? 1 : paneGridColumns(nonFullWidthCount);
+  const columns = stackPanes
+    ? 1
+    : columnsProp != null
+      ? Math.min(3, Math.max(1, columnsProp))
+      : paneGridColumns(nonFullWidthCount);
   const chartLikeCount = Math.max(1, nonFullWidthCount);
   const chartHeight = chartPanelHeight(chartLikeCount);
   const colClass =

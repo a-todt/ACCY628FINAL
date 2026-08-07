@@ -7,6 +7,7 @@ import type {
   Milestone,
   Payment,
 } from "./types";
+import { isApprovedInvoice } from "./payments";
 
 export function money(n: number | null | undefined): string {
   const value = Number(n ?? 0);
@@ -18,17 +19,9 @@ export function money(n: number | null | undefined): string {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+/** Whole-dollar display (same as `money`). Cents remain in stored values / form inputs. */
 export function moneyExact(n: number | null | undefined): string {
-  const raw = Number(n ?? 0);
-  const value = Number.isFinite(raw) ? raw : 0;
-  const large = Math.abs(value) >= 1_000_000;
-  const display = large ? Math.round(value) : value;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: large ? 0 : 2,
-    maximumFractionDigits: large ? 0 : 2,
-  }).format(display);
+  return money(n);
 }
 
 export function percent(n: number | null | undefined): string {
@@ -71,7 +64,9 @@ export function computeContractMetrics(
   payments: Payment[] = []
 ): ContractMetrics {
   const relatedCOs = changeOrders.filter((c) => c.contract_id === contract.id);
-  const relatedInvoices = invoices.filter((i) => i.contract_id === contract.id);
+  const relatedInvoices = invoices.filter(
+    (i) => i.contract_id === contract.id && isApprovedInvoice(i)
+  );
   const relatedCosts = costs.filter((c) => c.contract_id === contract.id);
   const relatedMilestones = milestones.filter((m) => m.contract_id === contract.id);
   const invoiceIds = new Set(relatedInvoices.map((i) => i.id));

@@ -1,8 +1,9 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { AlertBanner, ReportDetailsModal, ReportPane, StatCard } from "@/components/ui";
+import { ReportBarChart } from "@/components/ReportMiniChart";
+import { AlertBanner, ReportPane, StatCard, type ReportPaneDisplayControls } from "@/components/ui";
 import { money } from "@/lib/metrics";
 import {
   buildPeriodRows,
@@ -13,6 +14,10 @@ import {
 } from "@/lib/periodReports";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { createClient } from "@/lib/supabase/client";
+import {
+  reportsFilterMonths,
+  type ReportsTimeFilter,
+} from "@/lib/reportsTimeFilter";
 import { WIP_DB, colNum, colStr, type DbRow } from "@/lib/wipSchema";
 import type { ChangeOrder, Contract, CostEntry, Invoice, Payment } from "@/lib/types";
 
@@ -22,22 +27,14 @@ type Props = {
   invoices: Invoice[];
   payments: Payment[];
   changeOrders: ChangeOrder[];
+  showSummaryNumbers?: boolean;
+  showGraphs?: boolean;
+  displayControls?: ReportPaneDisplayControls;
+  /** Mass reports time filter — locks year when not "all". */
+  timeFilter?: ReportsTimeFilter;
 };
 
-function moneyCell(n: number | null | undefined) {
-  if (n == null) return "—";
-  return money(n);
-}
-
-type PeriodTotals = PeriodReportRow | (Omit<PeriodReportRow, "contractId" | "contractName" | "periodKey" | "periodLabel"> & {
-  hasWipMatch: boolean;
-});
-
-function sumPeriodRows(detailRows: PeriodReportRow[]): Omit<
-  PeriodReportRow,
-  "contractId" | "contractName" | "periodKey" | "periodLabel"
-> {
-  const hasWipMatch = detailRows.some((r) => r.hasWipMatch);
+function sumRows(rows: PeriodReportRow[]) {
   let expenses = 0;
   let billed = 0;
   let collected = 0;
@@ -47,12 +44,14 @@ function sumPeriodRows(detailRows: PeriodReportRow[]): Omit<
   let wipBilled = 0;
   let anyWipExp = false;
   let anyWipBilled = false;
-  for (const r of detailRows) {
+  let hasWipMatch = false;
+  for (const r of rows) {
     expenses += r.expenses;
     billed += r.billed;
     collected += r.collected;
     earnedPeriod += r.earnedPeriod;
     earnedYtd += r.earnedYtd;
+    hasWipMatch = hasWipMatch || r.hasWipMatch;
     if (r.wipExpenses != null) {
       wipExpenses += r.wipExpenses;
       anyWipExp = true;
@@ -76,259 +75,31 @@ function sumPeriodRows(detailRows: PeriodReportRow[]): Omit<
   };
 }
 
-function MetricCells({
-  row,
-  showWip,
-}: {
-  row: Pick<
-    PeriodReportRow,
-    | "expenses"
-    | "billed"
-    | "collected"
-    | "earnedPeriod"
-    | "earnedYtd"
-    | "grossBilled"
-    | "grossEarned"
-    | "wipExpenses"
-    | "wipBilled"
-  >;
-  showWip: boolean;
-}) {
-  return (
-    <>
-      <td className="text-right whitespace-nowrap">{money(row.expenses)}</td>
-      <td className="text-right whitespace-nowrap">{money(row.billed)}</td>
-      <td className="text-right whitespace-nowrap">{money(row.collected)}</td>
-      <td className="text-right whitespace-nowrap">{money(row.earnedPeriod)}</td>
-      <td className="text-right whitespace-nowrap">{money(row.earnedYtd)}</td>
-      <td className={`text-right whitespace-nowrap ${row.grossBilled < 0 ? "text-error" : ""}`}>
-        {money(row.grossBilled)}
-      </td>
-      <td
-        className={`text-right whitespace-nowrap hidden xl:table-cell ${row.grossEarned < 0 ? "text-error" : ""}`}
-      >
-        {money(row.grossEarned)}
-      </td>
-      {showWip ? (
-        <>
-          <td className="text-right whitespace-nowrap hidden xl:table-cell">
-            {moneyCell(row.wipExpenses)}
-          </td>
-          <td className="text-right whitespace-nowrap hidden xl:table-cell">
-            {moneyCell(row.wipBilled)}
-          </td>
-        </>
-      ) : null}
-    </>
-  );
-}
-
-function PeriodTable({
-  rows,
-  totals,
-  unspecified,
-  showProject,
-  groupByMonth,
-}: {
-  rows: PeriodReportRow[];
-  totals: PeriodTotals;
-  unspecified: PeriodReportRow | null;
-  showProject: boolean;
-  groupByMonth: boolean;
-}) {
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set());
-
-  useEffect(() => {
-    setExpandedMonths(new Set());
-  }, [rows, groupByMonth]);
-
-  const monthGroups = useMemo(() => {
-    if (!groupByMonth) return null;
-    const byPeriod = new Map<string, PeriodReportRow[]>();
-    for (const row of rows) {
-      const list = byPeriod.get(row.periodKey) ?? [];
-      list.push(row);
-      byPeriod.set(row.periodKey, list);
-    }
-    return Array.from(byPeriod.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([periodKey, detailRows]) => {
-        const sorted = [...detailRows].sort((a, b) => a.contractName.localeCompare(b.contractName));
-        return {
-          periodKey,
-          periodLabel: sorted[0]?.periodLabel ?? periodKey,
-          summary: sumPeriodRows(sorted),
-          details: sorted,
-        };
-      });
-  }, [groupByMonth, rows]);
-
-  const displayRows = unspecified ? [...rows, unspecified] : rows;
-  const showWip =
-    (monthGroups
-      ? monthGroups.some((g) => g.summary.hasWipMatch)
-      : displayRows.some((r) => r.hasWipMatch)) || totals.hasWipMatch;
-  const hasRows = groupByMonth
-    ? (monthGroups?.length ?? 0) > 0 || Boolean(unspecified)
-    : displayRows.length > 0;
-  const colSpan =
-    (groupByMonth ? 1 : 0) + (showProject || groupByMonth ? 1 : 0) + (showWip ? 9 : 7);
-
-  function toggleMonth(periodKey: string) {
-    setExpandedMonths((prev) => {
-      const next = new Set(prev);
-      if (next.has(periodKey)) next.delete(periodKey);
-      else next.add(periodKey);
-      return next;
-    });
-  }
-
-  const allExpanded =
-    Boolean(monthGroups?.length) &&
-    monthGroups!.every((g) => expandedMonths.has(g.periodKey));
-
-  function toggleAllDetails() {
-    if (!monthGroups) return;
-    if (allExpanded) {
-      setExpandedMonths(new Set());
-    } else {
-      setExpandedMonths(new Set(monthGroups.map((g) => g.periodKey)));
-    }
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="table table-sm">
-        <thead>
-          <tr>
-            {groupByMonth ? (
-              <th className="w-28">
-                {monthGroups && monthGroups.length > 0 ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-xs"
-                    onClick={toggleAllDetails}
-                    aria-expanded={allExpanded}
-                  >
-                    {allExpanded ? "Hide all" : "Show all"}
-                  </button>
-                ) : null}
-              </th>
-            ) : null}
-            {showProject || groupByMonth ? <th>Project</th> : null}
-            <th>Period</th>
-            <th className="text-right">Expenses</th>
-            <th className="text-right">Billed</th>
-            <th className="text-right">Collected</th>
-            <th className="text-right">Earned (period)</th>
-            <th className="text-right">Earned (YTD)</th>
-            <th className="text-right">Gross (Billed)</th>
-            <th className="text-right hidden xl:table-cell">Gross (Earned)</th>
-            {showWip ? (
-              <>
-                <th className="text-right hidden xl:table-cell">WIP Exp</th>
-                <th className="text-right hidden xl:table-cell">WIP Billed</th>
-              </>
-            ) : null}
-          </tr>
-        </thead>
-        <tbody>
-          {!hasRows ? (
-            <tr>
-              <td colSpan={colSpan} className="text-center opacity-60">
-                No activity for this selection.
-              </td>
-            </tr>
-          ) : groupByMonth && monthGroups ? (
-            <>
-              {monthGroups.map((group) => {
-                const open = expandedMonths.has(group.periodKey);
-                return (
-                  <Fragment key={group.periodKey}>
-                    <tr className="font-medium bg-base-200/50">
-                      <td className="whitespace-nowrap">
-                        <button
-                          type="button"
-                          className={`btn btn-ghost btn-xs ${open ? "btn-active" : ""}`}
-                          onClick={() => toggleMonth(group.periodKey)}
-                          aria-expanded={open}
-                        >
-                          {open ? "Hide" : "Details"}
-                        </button>
-                      </td>
-                      <td className="whitespace-nowrap opacity-70">
-                        {group.details.length} project{group.details.length === 1 ? "" : "s"}
-                      </td>
-                      <td className="whitespace-nowrap">{group.periodLabel}</td>
-                      <MetricCells row={group.summary} showWip={showWip} />
-                    </tr>
-                    {open
-                      ? group.details.map((row) => (
-                          <tr key={`${row.contractId}-${row.periodKey}`} className="bg-base-100">
-                            <td />
-                            <td className="font-medium whitespace-nowrap pl-4">{row.contractName}</td>
-                            <td className="whitespace-nowrap opacity-60">{row.periodLabel}</td>
-                            <MetricCells row={row} showWip={showWip} />
-                          </tr>
-                        ))
-                      : null}
-                  </Fragment>
-                );
-              })}
-              {unspecified ? (
-                <tr className="opacity-70">
-                  <td />
-                  <td className="font-medium whitespace-nowrap">{unspecified.contractName}</td>
-                  <td className="whitespace-nowrap">{unspecified.periodLabel}</td>
-                  <MetricCells row={unspecified} showWip={showWip} />
-                </tr>
-              ) : null}
-            </>
-          ) : (
-            displayRows.map((row) => (
-              <tr
-                key={`${row.contractId}-${row.periodKey}`}
-                className={row.periodKey === "unspecified" ? "opacity-70" : undefined}
-              >
-                {showProject ? <td className="font-medium whitespace-nowrap">{row.contractName}</td> : null}
-                <td className="whitespace-nowrap">{row.periodLabel}</td>
-                <MetricCells row={row} showWip={showWip} />
-              </tr>
-            ))
-          )}
-        </tbody>
-        {hasRows ? (
-          <tfoot>
-            <tr className="font-semibold bg-base-200">
-              {groupByMonth ? <td /> : null}
-              {showProject || groupByMonth ? <td>TOTALS</td> : null}
-              <td>{showProject || groupByMonth ? "" : "TOTALS"}</td>
-              <MetricCells row={totals} showWip={showWip} />
-            </tr>
-          </tfoot>
-        ) : null}
-      </table>
-    </div>
-  );
-}
-
 export function ProjectPeriodReportsSection({
   contracts,
   costEntries,
   invoices,
   payments,
   changeOrders,
+  showSummaryNumbers = true,
+  showGraphs = false,
+  displayControls,
+  timeFilter,
 }: Props) {
   const { user } = useAuth();
-  const [year, setYear] = useState(new Date().getFullYear());
+  const lockYear = Boolean(timeFilter && timeFilter.grain !== "all");
+  const [year, setYear] = useState(() => timeFilter?.year ?? new Date().getFullYear());
   const [contractId, setContractId] = useState("");
-  const [activityOnly, setActivityOnly] = useState(true);
+  const [projectQuery, setProjectQuery] = useState("");
   const [projects, setProjects] = useState<WipProjectLike[]>([]);
   const [projectCosts, setProjectCosts] = useState<WipCostLike[]>([]);
   const [billings, setBillings] = useState<WipBillingLike[]>([]);
   const [wipLoading, setWipLoading] = useState(true);
   const [wipError, setWipError] = useState<string | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
+
+  useEffect(() => {
+    if (lockYear && timeFilter) setYear(timeFilter.year);
+  }, [lockYear, timeFilter]);
 
   const loadWip = useCallback(async () => {
     if (!user) {
@@ -397,6 +168,35 @@ export function ProjectPeriodReportsSection({
     void loadWip();
   }, [loadWip]);
 
+  const projectNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const contract of contracts) {
+      const name = contract.contract_name?.trim();
+      if (name) names.add(name);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [contracts]);
+
+  const projectNameToId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const contract of contracts) {
+      const name = contract.contract_name?.trim();
+      if (name && !map.has(name)) map.set(name, contract.id);
+    }
+    return map;
+  }, [contracts]);
+
+  function applyProjectQuery(value: string) {
+    setProjectQuery(value);
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setContractId("");
+      return;
+    }
+    const id = projectNameToId.get(trimmed);
+    if (id) setContractId(id);
+  }
+
   const report = useMemo(
     () =>
       buildPeriodRows({
@@ -411,7 +211,8 @@ export function ProjectPeriodReportsSection({
         mode: "month",
         year,
         contractId: contractId || null,
-        activityOnly: contractId ? false : activityOnly,
+        // All contracts: skip empty months. Single project: keep full year for that job.
+        activityOnly: !contractId,
       }),
     [
       contracts,
@@ -424,46 +225,88 @@ export function ProjectPeriodReportsSection({
       billings,
       year,
       contractId,
-      activityOnly,
     ]
   );
 
   useEffect(() => {
+    if (lockYear) return;
     if (report.availableYears.length > 0 && !report.availableYears.includes(year)) {
       setYear(report.availableYears[0]);
     }
-  }, [report.availableYears, year]);
+  }, [report.availableYears, year, lockYear]);
 
-  const showProject = !contractId;
+  const monthFilter = timeFilter ? reportsFilterMonths(timeFilter) : null;
+
+  const filteredRows = useMemo(() => {
+    if (!monthFilter) return report.rows;
+    return report.rows.filter((row) => {
+      const parts = row.periodKey.split("-");
+      const month = Number(parts[1] ?? 0);
+      return monthFilter.includes(month);
+    });
+  }, [report.rows, monthFilter]);
+
+  const filteredUnspecified =
+    monthFilter && report.unspecified ? null : report.unspecified;
+
+  const totals = useMemo(() => {
+    const base = sumRows(filteredRows);
+    if (filteredUnspecified) {
+      const u = filteredUnspecified;
+      return sumRows([...filteredRows, u]);
+    }
+    return { ...base, hasWipMatch: base.hasWipMatch || report.totals.hasWipMatch };
+  }, [filteredRows, filteredUnspecified, report.totals.hasWipMatch]);
+
+  const chartData = useMemo(() => {
+    const byMonth = new Map<string, { billed: number; expenses: number; label: string }>();
+    for (const row of filteredRows) {
+      const cur = byMonth.get(row.periodKey) ?? {
+        billed: 0,
+        expenses: 0,
+        label: row.periodLabel,
+      };
+      cur.billed += row.billed;
+      cur.expenses += row.expenses;
+      byMonth.set(row.periodKey, cur);
+    }
+    return Array.from(byMonth.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, v]) => ({
+        name: v.label,
+        value: v.billed,
+        value2: v.expenses,
+      }));
+  }, [filteredRows]);
 
   function exportCsv() {
     downloadCsv(
       "project-period-reports.csv",
-      periodReportCsvRows(report.rows, report.unspecified, {
-        expenses: report.totals.expenses,
-        billed: report.totals.billed,
-        collected: report.totals.collected,
-        earnedPeriod: report.totals.earnedPeriod,
-        earnedYtd: report.totals.earnedYtd,
-        grossBilled: report.totals.grossBilled,
-        grossEarned: report.totals.grossEarned,
-        wipExpenses: report.totals.wipExpenses ?? 0,
-        wipBilled: report.totals.wipBilled ?? 0,
+      periodReportCsvRows(filteredRows, filteredUnspecified, {
+        expenses: totals.expenses,
+        billed: totals.billed,
+        collected: totals.collected,
+        earnedPeriod: totals.earnedPeriod,
+        earnedYtd: totals.earnedYtd,
+        grossBilled: totals.grossBilled,
+        grossEarned: totals.grossEarned,
+        wipExpenses: totals.wipExpenses ?? 0,
+        wipBilled: totals.wipBilled ?? 0,
       })
     );
   }
 
   function exportPdf() {
-    const csvRows = periodReportCsvRows(report.rows, report.unspecified, {
-      expenses: report.totals.expenses,
-      billed: report.totals.billed,
-      collected: report.totals.collected,
-      earnedPeriod: report.totals.earnedPeriod,
-      earnedYtd: report.totals.earnedYtd,
-      grossBilled: report.totals.grossBilled,
-      grossEarned: report.totals.grossEarned,
-      wipExpenses: report.totals.wipExpenses ?? 0,
-      wipBilled: report.totals.wipBilled ?? 0,
+    const csvRows = periodReportCsvRows(filteredRows, filteredUnspecified, {
+      expenses: totals.expenses,
+      billed: totals.billed,
+      collected: totals.collected,
+      earnedPeriod: totals.earnedPeriod,
+      earnedYtd: totals.earnedYtd,
+      grossBilled: totals.grossBilled,
+      grossEarned: totals.grossEarned,
+      wipExpenses: totals.wipExpenses ?? 0,
+      wipBilled: totals.wipBilled ?? 0,
     });
     downloadPdfTables("project-period-reports.pdf", "General Contract Management — Project Period Reports", [
       {
@@ -482,107 +325,112 @@ export function ProjectPeriodReportsSection({
     ]);
   }
 
-  return (
-    <>
-      <ReportPane
-        title="Project Period Reports"
-        subtitle="Monthly billed, earned, and cost activity by project. WIP columns appear when a Projects row matches the contract name."
-        onExportCsv={exportCsv}
-        onExportPdf={exportPdf}
-        footerStart={
-          !wipLoading ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-xs"
-              onClick={() => setShowDetails(true)}
-            >
-              Show details
-            </button>
-          ) : null
-        }
-      >
-        {wipError ? <AlertBanner type="warning">{wipError}</AlertBanner> : null}
+  const yearOptions = useMemo(() => {
+    const years = new Set(report.availableYears);
+    years.add(year);
+    return Array.from(years).sort((a, b) => b - a);
+  }, [report.availableYears, year]);
 
-        <div className="grid grid-cols-1 gap-1 sm:grid-cols-3 mb-1">
-          <label className="flex min-w-0 flex-col gap-0.5">
+  const showHint = !showSummaryNumbers && !showGraphs;
+
+  return (
+    <ReportPane
+      title="Project Period Reports"
+      subtitle="Monthly billed, earned, and cost activity by project. WIP columns appear when a Projects row matches the contract name."
+      onExportCsv={exportCsv}
+      onExportPdf={exportPdf}
+      displayControls={displayControls}
+    >
+      {wipError ? <AlertBanner type="warning">{wipError}</AlertBanner> : null}
+
+      <div className="mb-1 flex flex-wrap items-end gap-2">
+        {lockYear ? null : (
+          <label className="flex w-28 shrink-0 flex-col gap-0.5">
             <span className="text-xs font-medium">Year</span>
             <select
               className="select select-bordered select-xs w-full min-h-8 h-8"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
             >
-              {report.availableYears.map((y) => (
+              {yearOptions.map((y) => (
                 <option key={y} value={y}>
                   {y}
                 </option>
               ))}
             </select>
           </label>
-          <label className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-xs font-medium">Project</span>
-            <select
-              className="select select-bordered select-xs w-full min-h-8 h-8"
-              value={contractId}
-              onChange={(e) => setContractId(e.target.value)}
-            >
-              <option value="">All contracts</option>
-              {contracts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.contract_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-xs font-medium">Filters</span>
-            <label className="label h-8 min-h-8 cursor-pointer justify-start gap-2 py-0">
-              <input
-                type="checkbox"
-                className="checkbox checkbox-xs"
-                checked={activityOnly}
-                disabled={Boolean(contractId)}
-                onChange={(e) => setActivityOnly(e.target.checked)}
-              />
-              <span className="label-text text-xs">Only periods with activity</span>
-            </label>
-          </div>
-        </div>
-
-        {wipLoading ? (
-          <div className="flex justify-center py-4">
-            <span className="loading loading-spinner loading-sm text-primary" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mb-1">
-            <StatCard compact title="Expenses" value={money(report.totals.expenses)} />
-            <StatCard compact title="Billed" value={money(report.totals.billed)} />
-            <StatCard compact title="Collected" value={money(report.totals.collected)} tone="success" />
-            <StatCard compact title="Earned (period)" value={money(report.totals.earnedPeriod)} />
-            <StatCard
-              compact
-              title="Gross (billed)"
-              value={money(report.totals.grossBilled)}
-              tone={report.totals.grossBilled < 0 ? "error" : "default"}
-            />
-          </div>
         )}
-      </ReportPane>
+        <label className="flex w-full sm:w-1/2 min-w-0 flex-col gap-0.5">
+          <span className="text-xs font-medium">Project</span>
+          <input
+            type="search"
+            className="input input-bordered input-xs w-full min-h-8 h-8"
+            list="period-report-project-names"
+            value={projectQuery}
+            onChange={(e) => applyProjectQuery(e.target.value)}
+            onBlur={() => {
+              const trimmed = projectQuery.trim();
+              if (!trimmed) {
+                setContractId("");
+                setProjectQuery("");
+                return;
+              }
+              const id = projectNameToId.get(trimmed);
+              if (id) {
+                setContractId(id);
+                setProjectQuery(trimmed);
+              } else if (contractId) {
+                const name =
+                  contracts.find((c) => c.id === contractId)?.contract_name?.trim() ?? "";
+                setProjectQuery(name);
+              } else {
+                setProjectQuery("");
+              }
+            }}
+            placeholder="Search projects…"
+            autoComplete="off"
+          />
+          <datalist id="period-report-project-names">
+            {projectNames.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </label>
+      </div>
 
-      <ReportDetailsModal
-        open={showDetails}
-        title="Project Period Reports"
-        subtitle="Monthly billed, earned, and cost activity by project. WIP columns appear when a Projects row matches the contract name."
-        onClose={() => setShowDetails(false)}
-      >
-        <PeriodTable
-          rows={report.rows}
-          totals={report.totals}
-          unspecified={report.unspecified}
-          showProject={showProject}
-          groupByMonth={showProject}
-        />
-      </ReportDetailsModal>
-    </>
+      {wipLoading ? (
+        <div className="flex justify-center py-4">
+          <span className="loading loading-spinner loading-sm text-primary" />
+        </div>
+      ) : (
+        <>
+          {showSummaryNumbers ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mb-1">
+              <StatCard compact title="Expenses" value={money(totals.expenses)} />
+              <StatCard compact title="Billed" value={money(totals.billed)} />
+              <StatCard compact title="Collected" value={money(totals.collected)} tone="success" />
+              <StatCard compact title="Earned (period)" value={money(totals.earnedPeriod)} />
+              <StatCard
+                compact
+                title="Gross (billed)"
+                value={money(totals.grossBilled)}
+                tone={totals.grossBilled < 0 ? "error" : "default"}
+              />
+            </div>
+          ) : null}
+
+          {showGraphs ? (
+            <ReportBarChart data={chartData} valueLabel="Billed" value2Label="Expenses" />
+          ) : null}
+
+          {showHint ? (
+            <p className="text-sm opacity-60 py-1">
+              Export CSV or PDF for monthly project activity using the filters above.
+            </p>
+          ) : null}
+        </>
+      )}
+    </ReportPane>
   );
 }
 

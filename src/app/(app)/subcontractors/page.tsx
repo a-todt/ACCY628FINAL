@@ -18,6 +18,7 @@ import { PageSkeleton } from "@/components/PageSkeleton";
 import { StatusFilterChips } from "@/components/StatusFilterChips";
 import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
 import { useToast } from "@/components/ToastProvider";
+import { MoneyInput } from "@/components/MoneyInput";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { StarRating } from "@/components/StarRating";
 import { writeAuditLog } from "@/lib/audit";
@@ -645,24 +646,20 @@ export default function SubcontractorsPage() {
               <FormField stacked label="Subcontract Value">
                 <label className="input input-bordered flex items-center gap-2 w-full">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     className="grow"
                     value={form.subcontract_value}
-                    onChange={(e) => updateField("subcontract_value", e.target.value)}
+                    onValueChange={(v) => updateField("subcontract_value", v)}
                   />
                 </label>
               </FormField>
               <FormField stacked label="Amount Paid">
                 <label className="input input-bordered flex items-center gap-2 w-full">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     className="grow"
                     value={form.amount_paid}
-                    onChange={(e) => updateField("amount_paid", e.target.value)}
+                    onValueChange={(v) => updateField("amount_paid", v)}
                   />
                 </label>
               </FormField>
@@ -1157,24 +1154,20 @@ export default function SubcontractorsPage() {
               <FormField label="Value">
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     className="grow"
                     value={editForm.subcontract_value}
-                    onChange={(e) => updateEditField("subcontract_value", e.target.value)}
+                    onValueChange={(v) => updateEditField("subcontract_value", v)}
                   />
                 </label>
               </FormField>
               <FormField label="Paid">
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     className="grow"
                     value={editForm.amount_paid}
-                    onChange={(e) => updateEditField("amount_paid", e.target.value)}
+                    onValueChange={(v) => updateEditField("amount_paid", v)}
                   />
                 </label>
               </FormField>

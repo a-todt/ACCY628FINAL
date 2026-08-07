@@ -9,6 +9,7 @@ import { uniqueSorted } from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { MoneyInput } from "@/components/MoneyInput";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { writeAuditLog } from "@/lib/audit";
@@ -23,8 +24,11 @@ import { contractInvoiceDefaults } from "@/lib/invoices";
 import { daysPastDue, labelize, money, moneyExact } from "@/lib/metrics";
 import {
   invoiceAfterApplyingPayment,
+  isPaymentAwaitingAccounting,
   isPostedPayment,
   paymentApprovalBadge,
+  paymentApprovalLabel,
+  paymentStatusAfterAccounting,
 } from "@/lib/payments";
 import { canApprovePayments, canCreateInvoices, canSelfApprovePayment, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
@@ -199,6 +203,10 @@ function InvoiceDetailContent() {
       setActionError("You cannot approve a payment you submitted (dual-approval control).");
       return;
     }
+    if (!canApprovePayments(effectiveRole)) {
+      setActionError("Only Accounting can clear the first approval step. Use Approvals for Admin high-value.");
+      return;
+    }
     const amount = Number(payment.payment_amount ?? 0);
     const paymentAmountError = validatePaymentAmount(amount, invoice);
     if (paymentAmountError) {
@@ -210,25 +218,36 @@ function InvoiceDetailContent() {
     setActionSuccess(null);
     try {
       const supabase = createClient();
-      const update = invoiceAfterApplyingPayment(invoice, amount);
+      const nowIso = new Date().toISOString();
+      const next = paymentStatusAfterAccounting(amount);
       const { error: payErr } = await supabase
         .from("payments")
         .update({
-          approval_status: "posted",
-          approved_by: user?.id ?? null,
-          approved_at: new Date().toISOString(),
+          approval_status: next,
+          accounting_approved_by: user?.id ?? null,
+          accounting_approved_at: nowIso,
+          approved_by: next === "posted" ? user?.id ?? null : null,
+          approved_at: next === "posted" ? nowIso : null,
           rejection_reason: null,
         })
         .eq("id", paymentId)
-        .eq("approval_status", "pending_approval");
+        .in("approval_status", ["pending_accounting", "pending_approval"]);
       if (payErr) throw payErr;
-      const { error: invErr } = await supabase.from("invoices").update(update).eq("id", invoice.id);
-      if (invErr) throw invErr;
-      await writeAuditLog("payment_approved", "payment", paymentId, {
+      if (next === "posted") {
+        const update = invoiceAfterApplyingPayment(invoice, amount);
+        const { error: invErr } = await supabase.from("invoices").update(update).eq("id", invoice.id);
+        if (invErr) throw invErr;
+      }
+      await writeAuditLog("payment_accounting_approved", "payment", paymentId, {
         invoice_id: invoice.id,
         payment_amount: amount,
+        next_status: next,
       });
-      setActionSuccess("Payment approved and posted to AR.");
+      setActionSuccess(
+        next === "pending_admin"
+          ? "Cleared by Accounting — awaiting Admin / Owner (≥ $250k)."
+          : "Payment approved and posted to AR."
+      );
       await refresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to approve payment.");
@@ -253,7 +272,7 @@ function InvoiceDetailContent() {
           rejection_reason: reason.trim() || null,
         })
         .eq("id", paymentId)
-        .eq("approval_status", "pending_approval");
+        .in("approval_status", ["pending_accounting", "pending_approval"]);
       if (payErr) throw payErr;
       await writeAuditLog("payment_rejected", "payment", paymentId, {
         invoice_id: invoice.id,
@@ -277,7 +296,10 @@ function InvoiceDetailContent() {
     setForm((prev) => {
       if (!prev) return prev;
       if (!contract) return { ...prev, contract_id: contractId };
-      const defaults = contractInvoiceDefaults(contract, invoices, prev);
+      const defaults = contractInvoiceDefaults(contract, invoices, prev, {
+        changeOrders,
+        excludeInvoiceId: invoice.id,
+      });
       return {
         ...prev,
         contract_id: contractId,
@@ -286,6 +308,7 @@ function InvoiceDetailContent() {
         due_date: defaults.due_date ?? prev.due_date,
         description: defaults.description ?? prev.description,
         invoice_number: defaults.invoice_number ?? prev.invoice_number,
+        invoice_amount: defaults.invoice_amount ?? prev.invoice_amount,
       };
     });
   };
@@ -501,13 +524,10 @@ function InvoiceDetailContent() {
               >
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
+                  <MoneyInput
                     className="grow"
                     value={form.invoice_amount}
-                    onChange={(e) => updateField("invoice_amount", e.target.value)}
+                    onValueChange={(v) => updateField("invoice_amount", v)}
                     required
                   />
                 </label>
@@ -540,12 +560,10 @@ function InvoiceDetailContent() {
               <FormField label="Amount Paid">
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     className="grow"
                     value={form.amount_paid}
-                    onChange={(e) => updateField("amount_paid", e.target.value)}
+                    onValueChange={(v) => updateField("amount_paid", v)}
                   />
                 </label>
               </FormField>
@@ -703,7 +721,7 @@ function InvoiceDetailContent() {
                         <td>{payment.reference_number ?? "—"}</td>
                         <td>
                           <span className={`badge badge-sm ${paymentApprovalBadge(status)}`}>
-                            {labelize(status)}
+                            {paymentApprovalLabel(status)}
                           </span>
                         </td>
                         <td className="max-w-xs truncate">
@@ -713,7 +731,7 @@ function InvoiceDetailContent() {
                         </td>
                         {canApprove ? (
                           <td className="text-right whitespace-nowrap">
-                            {status === "pending_approval" ? (
+                            {isPaymentAwaitingAccounting(payment) ? (
                               selfSubmitted ? (
                                 <span className="text-xs opacity-60">Submitted by you</span>
                               ) : (
@@ -736,6 +754,10 @@ function InvoiceDetailContent() {
                                   </button>
                                 </div>
                               )
+                            ) : status === "pending_admin" ? (
+                              <Link href="/approvals" className="link link-hover text-xs">
+                                Awaiting Admin
+                              </Link>
                             ) : (
                               "—"
                             )}

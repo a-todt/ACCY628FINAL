@@ -77,12 +77,29 @@ const FULL_ACCESS: RolePermissions = {
  */
 export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: { ...FULL_ACCESS },
+  /** Finance-first Accounting persona (DB key remains `owner`). */
   owner: {
-    ...FULL_ACCESS,
-    // Owners (Accounting) review submitted field logs but do not create or edit them.
+    manageCompany: false,
+    manageRoles: false,
+    manageContracts: false,
+    manageInvoices: true,
+    recordPayments: true,
+    manageChangeOrders: false,
+    approveChangeOrders: false,
+    manageSubcontractors: false,
+    enterCosts: true,
     createFieldLogs: false,
     manageFieldLogEntries: false,
+    viewCosts: true,
+    viewReports: true,
     viewAuditLog: true,
+    viewInvoices: true,
+    viewContractFinancials: true,
+    viewChangeOrders: true,
+    viewSubcontractors: true,
+    viewFieldLogs: false,
+    viewSafetyIncidents: false,
+    createSafetyIncidents: false,
   },
   project_manager: {
     manageCompany: false,
@@ -203,9 +220,9 @@ export function canRecordPayments(role: UserRole): boolean {
   return hasPermission(role, "recordPayments");
 }
 
-/** Owner / executive is the checker in the payment dual-approval workflow; admin may also approve. */
+/** Accounting approves invoice/payment step 1. */
 export function canApprovePayments(role: UserRole): boolean {
-  return role === "owner" || role === "admin";
+  return role === "owner";
 }
 
 /** Admin and owner/executive may approve payments they submitted; other roles cannot. */
@@ -213,7 +230,17 @@ export function canSelfApprovePayment(role: UserRole): boolean {
   return role === "owner" || role === "admin";
 }
 
-/** Owner fraud / control exception alerts (admin can also view for demos). */
+/** Admin / Owner approves high-value (≥ $250k) step 2. */
+export function canApproveHighValue(role: UserRole): boolean {
+  return role === "admin";
+}
+
+/** Approvals queue under Billing & Cash. */
+export function canViewApprovals(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/** Accounting fraud / control exception alerts (admin can also view for demos). */
 export function canViewFraudAlerts(role: UserRole): boolean {
   return role === "owner" || role === "admin";
 }
@@ -281,34 +308,33 @@ export function canViewSubcontractors(role: UserRole): boolean {
   return hasPermission(role, "viewSubcontractors");
 }
 
-/** Create/delete bid packages (admin/owner). */
+/** Create/delete bid packages (admin only). */
 export function canManageBidPackages(role: UserRole): boolean {
-  return role === "admin" || role === "owner";
+  return role === "admin";
 }
 
-/** Staff-enter phone/email quotes into a package — admin only (owners review/approve). */
+/** Staff-enter phone/email quotes into a package — admin only. */
 export function canStaffEnterBids(role: UserRole): boolean {
   return role === "admin";
 }
 
 /** Review received bids, rate vendors, and accept/reject (includes PMs). */
 export function canReviewBids(role: UserRole): boolean {
-  return role === "admin" || role === "owner" || role === "project_manager";
+  return role === "admin" || role === "project_manager";
 }
 
 export function canViewBidding(role: UserRole): boolean {
   return (
     role === "admin" ||
-    role === "owner" ||
     role === "project_manager" ||
     role === "field_supervisor" ||
     role === "subcontractor"
   );
 }
 
-/** Deadlines calendar — Owner, Admin, and Project Managers only. */
+/** Deadlines calendar — Admin / Owner and Project Managers only. */
 export function canViewCalendar(role: UserRole): boolean {
-  return role === "admin" || role === "owner" || role === "project_manager";
+  return role === "admin" || role === "project_manager";
 }
 
 export function canViewFieldLogs(role: UserRole): boolean {
@@ -365,36 +391,49 @@ export interface NavItem {
 
 export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCategoryId }> {
   const showSubcontracting = canViewSubcontractors(role) || canViewBidding(role);
+  const isAccounting = role === "owner";
   return (
     [
       { id: "favorites" as const, href: "/favorites", label: "Favorites", show: true },
-      { id: "dashboard" as const, href: "/dashboard", label: "Dashboard", show: true },
-      { id: "reports" as const, href: "/reports", label: "Reports", show: canViewReports(role) },
+      {
+        id: "dashboard" as const,
+        href: "/dashboard",
+        label: isAccounting ? "Accounting" : "Dashboard",
+        show: true,
+      },
+      {
+        id: "reports" as const,
+        href: "/reports",
+        label: isAccounting ? "Financial Reports" : "Reports",
+        show: canViewReports(role),
+      },
       {
         id: "contracts" as const,
         href: role === "field_supervisor" ? "/contracts" : "/contracts/overview",
-        label: "Contracts",
+        label: isAccounting ? "Jobs / Contract Values" : "Contracts",
         show: true,
       },
       {
         id: "finance" as const,
         href: "/finance",
-        label: "Costing and Invoicing",
+        label: isAccounting ? "Billing & Cash" : "Costing and Invoicing",
         show: canViewFinance(role),
       },
       {
         id: "subcontracting" as const,
-        href: canViewSubcontractors(role)
-          ? "/subcontractors/overview"
-          : "/bidding",
-        label: "Subcontracting",
+        href: role === "subcontractor"
+          ? "/bidding"
+          : canViewSubcontractors(role)
+            ? "/subcontractors/overview"
+            : "/bidding",
+        label: isAccounting ? "Vendor Payables" : "Subcontracting",
         show: showSubcontracting,
       },
       {
         id: "management" as const,
-        href: "/management",
-        label: "Company Management",
-        show: canManageCompany(role),
+        href: canManageCompany(role) ? "/management" : "/management?tab=audit",
+        label: canManageCompany(role) ? "Company Management" : "Audit Log",
+        show: canManageCompany(role) || canViewAuditLog(role),
       },
     ] as Array<NavItem & { id: NavCategoryId; show: boolean }>
   )
@@ -407,14 +446,19 @@ export function secondaryNavForCategory(
   role: UserRole
 ): NavItem[] {
   if (category === "contracts") {
+    const isAccounting = role === "owner";
     return (
       [
         {
           href: "/contracts/overview",
-          label: "Overview",
+          label: isAccounting ? "Job Overview" : "Overview",
           show: role !== "field_supervisor",
         },
-        { href: "/contracts", label: "All Contracts", show: true },
+        {
+          href: "/contracts",
+          label: isAccounting ? "All Jobs" : "All Contracts",
+          show: true,
+        },
         { href: "/contracts/new", label: "Add Contract", show: canManageContracts(role) },
         {
           href: "/change-orders",
@@ -438,6 +482,7 @@ export function secondaryNavForCategory(
   }
 
   if (category === "subcontracting") {
+    const isAccounting = role === "owner";
     return (
       [
         {
@@ -447,7 +492,7 @@ export function secondaryNavForCategory(
         },
         {
           href: "/subcontractors",
-          label: "Subcontractors",
+          label: isAccounting ? "Vendors" : "Subcontractors",
           show: canViewSubcontractors(role),
         },
         {
@@ -462,13 +507,31 @@ export function secondaryNavForCategory(
   }
 
   if (category === "finance") {
+    const isAccounting = role === "owner";
     return (
       [
-        { href: "/finance", label: "Overview", show: true },
-        { href: "/projects", label: "Projects", show: canViewCosts(role) },
+        {
+          href: "/finance",
+          label: isAccounting ? "Cash Overview" : "Overview",
+          show: true,
+        },
+        {
+          href: "/projects",
+          label: isAccounting ? "Jobs" : "Projects",
+          show: canViewCosts(role),
+        },
         { href: "/costs", label: "Cost Tracker", show: canViewCosts(role) },
         { href: "/wip", label: "WIP Schedule", show: canViewCosts(role) },
-        { href: "/invoices", label: "Invoices", show: canViewInvoices(role) },
+        {
+          href: "/invoices",
+          label: isAccounting ? "Invoices & Payments" : "Invoices",
+          show: canViewInvoices(role),
+        },
+        {
+          href: "/approvals",
+          label: "Approvals",
+          show: canViewApprovals(role),
+        },
       ] as Array<NavItem & { show: boolean }>
     )
       .filter((item) => item.show)
@@ -478,11 +541,23 @@ export function secondaryNavForCategory(
   if (category === "management") {
     return (
       [
-        { href: "/management", label: "Overview", show: true },
-        { href: "/management?tab=settings", label: "Company Settings", show: true },
-        { href: "/management?tab=team", label: "Team", show: true },
-        { href: "/management?tab=parties", label: "External Parties", show: true },
-        { href: "/management?tab=compliance", label: "Compliance", show: true },
+        { href: "/management", label: "Overview", show: canManageCompany(role) },
+        {
+          href: "/management?tab=settings",
+          label: "Company Settings",
+          show: canManageCompany(role),
+        },
+        { href: "/management?tab=team", label: "Team", show: canManageCompany(role) },
+        {
+          href: "/management?tab=parties",
+          label: "External Parties",
+          show: canManageCompany(role),
+        },
+        {
+          href: "/management?tab=compliance",
+          label: "Compliance",
+          show: canManageCompany(role),
+        },
         {
           href: "/management?tab=audit",
           label: "Audit Log",
@@ -520,7 +595,8 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
     pathname.startsWith("/projects") ||
     pathname.startsWith("/costs") ||
     pathname.startsWith("/wip") ||
-    pathname.startsWith("/invoices")
+    pathname.startsWith("/invoices") ||
+    pathname.startsWith("/approvals")
   ) {
     return "finance";
   }
