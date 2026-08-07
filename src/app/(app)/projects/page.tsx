@@ -5,6 +5,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ProjectSelect } from "@/components/ProjectSelect";
 import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { moneyExact, labelize } from "@/lib/metrics";
+import {
+  canApproveChangeOrderForAmount,
+  changeOrderApprovalBlockedReason,
+} from "@/lib/approvalThresholds";
 import { canEnterCosts, canViewCosts, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import { WIP_DB, colNum, colStr, selectList, type DbRow } from "@/lib/wipSchema";
@@ -316,6 +320,13 @@ export default function ProjectsPage() {
     if (amount === 0) {
       setChangeOrderError("Amount cannot be zero.");
       return;
+    }
+    if (changeOrderForm.status === "approved") {
+      const blocked = changeOrderApprovalBlockedReason(effectiveRole, amount);
+      if (blocked) {
+        setChangeOrderError(blocked);
+        return;
+      }
     }
 
     setSavingChangeOrder(true);
@@ -699,7 +710,23 @@ export default function ProjectsPage() {
                     }
                   >
                     <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
+                    <option
+                      value="approved"
+                      disabled={
+                        !canApproveChangeOrderForAmount(
+                          effectiveRole,
+                          parseMoney(changeOrderForm.amount) ?? 0
+                        )
+                      }
+                    >
+                      Approved
+                      {!canApproveChangeOrderForAmount(
+                        effectiveRole,
+                        parseMoney(changeOrderForm.amount) ?? 0
+                      )
+                        ? " (Accounting / Owner required)"
+                        : ""}
+                    </option>
                     <option value="rejected">Rejected</option>
                   </select>
                 </FormField>

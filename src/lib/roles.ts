@@ -1,7 +1,7 @@
 import type { UserRole } from "./types";
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Admin (Internal)",
+  admin: "Accounting (Admin)",
   owner: "Owner / Executive",
   project_manager: "Project Manager",
   field_supervisor: "Field Supervisor",
