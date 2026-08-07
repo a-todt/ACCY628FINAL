@@ -2928,11 +2928,28 @@ export default function ManagementPage() {
                 </p>
               </div>
               <div className="rounded-box border border-base-300 p-4 bg-base-100">
-                <p className="text-sm opacity-60">Sub Insurance Policies</p>
+                <p className="text-sm opacity-60">Sub Licenses on File</p>
                 <p className="font-semibold mt-1 text-2xl">
-                  {admin.insurancePolicies.filter((p) => p.holder_type === "subcontractor").length}
+                  {admin.subcontractors.filter((s) => Boolean(s.license_number)).length}
                 </p>
-                <p className="text-sm mt-1">Tracked COIs on file</p>
+                <p className="text-sm mt-1">
+                  {
+                    admin.subcontractors.filter(
+                      (s) =>
+                        Boolean(s.license_expiration) &&
+                        complianceFromExpiration(s.license_expiration) === "red"
+                    ).length
+                  }{" "}
+                  expired ·{" "}
+                  {
+                    admin.subcontractors.filter(
+                      (s) =>
+                        Boolean(s.license_expiration) &&
+                        complianceFromExpiration(s.license_expiration) === "yellow"
+                    ).length
+                  }{" "}
+                  expiring
+                </p>
               </div>
             </div>
           </SectionCard>
@@ -3037,22 +3054,22 @@ export default function ManagementPage() {
             )}
           </SectionCard>
 
-          <SectionCard title="Subcontractor Insurance Alerts">
+          <SectionCard title="Subcontractor License Alerts">
             <div className="overflow-x-auto">
               <table className="table table-sm">
                 <thead>
-                  <tr><th>Policy</th><th>Type</th><th>Expires</th><th>Status</th></tr>
+                  <tr><th>Company</th><th>License #</th><th>Expires</th><th>Status</th></tr>
                 </thead>
                 <tbody>
-                  {admin.insurancePolicies
-                    .filter((p) => p.holder_type === "subcontractor")
-                    .map((p) => {
-                      const level = complianceFromExpiration(p.expiration_date);
+                  {admin.subcontractors
+                    .filter((s) => Boolean(s.license_number) || Boolean(s.license_expiration))
+                    .map((s) => {
+                      const level = complianceFromExpiration(s.license_expiration);
                       return (
-                        <tr key={p.id}>
-                          <td>{p.carrier_name || p.policy_number || p.id.slice(0, 8)}</td>
-                          <td className="capitalize">{p.policy_type.replaceAll("_", " ")}</td>
-                          <td>{p.expiration_date || "—"}</td>
+                        <tr key={s.id}>
+                          <td>{s.company_name}</td>
+                          <td>{s.license_number || "—"}</td>
+                          <td>{s.license_expiration || "—"}</td>
                           <td><span className={`badge badge-sm ${complianceBadgeClass(level)}`}>{complianceLabel(level)}</span></td>
                         </tr>
                       );

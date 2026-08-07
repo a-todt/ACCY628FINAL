@@ -33,7 +33,7 @@ Supabase MCP was unavailable during setup, so apply SQL manually:
    - Or run `supabase/migrations/20260804180000_gc_contract_manager.sql` then `supabase/seed.sql`
 3. For file attachments, also run:
    - [`supabase/migrations/20260805200000_attachments_and_storage.sql`](supabase/migrations/20260805200000_attachments_and_storage.sql) (base table + Storage bucket)
-   - [`supabase/migrations/20260805210000_attachments_change_orders_insurance.sql`](supabase/migrations/20260805210000_attachments_change_orders_insurance.sql) (change orders + insurance policies)
+   - [`supabase/migrations/20260805210000_attachments_change_orders_insurance.sql`](supabase/migrations/20260805210000_attachments_change_orders_insurance.sql) (change orders attachment entity type)
    
    That creates/extends the `attachments` table, RLS, and a private Storage bucket named `attachments`. If the bucket insert fails, create a **private** bucket named `attachments` in Supabase → Storage and re-run the policy statements from those migrations.
 4. For client ↔ PM messaging (inbox icon), also run:
@@ -83,6 +83,6 @@ That seeds contracts and related demo data and confirms roles.
 - Finance overview CSV / PDF export
 - Role-aware Alerts inbox (invoices, weather, change orders)
 - Client ↔ project manager messaging hub (inbox icon next to Alerts)
-- File attachments on field logs, invoices, change orders, and insurance policies (Supabase Storage)
+- File attachments on field logs, invoices, and change orders (Supabase Storage)
 - Theme selector (daisyUI)
 - Demo role switcher in the header (preview only)

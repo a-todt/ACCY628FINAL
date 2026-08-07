@@ -26,7 +26,6 @@ import {
   Plus,
   Receipt,
   Settings2,
-  ShieldAlert,
   TrendingUp,
   Wrench,
 } from "lucide-react";
@@ -809,21 +808,6 @@ function AdminDashboard({
           className="grid grid-cols-2 gap-2 content-start overflow-y-auto pr-0.5"
           style={{ height: "var(--dashboard-chart-h, 220px)" }}
         >
-          <StatCard
-            compact
-            title="COIs Expired"
-            value={String(compliance.coiExpired)}
-            icon={ShieldAlert}
-            tone={compliance.coiExpired > 0 ? "error" : "default"}
-            href="/management?tab=compliance"
-          />
-          <StatCard
-            compact
-            title="COIs Expiring ≤30d"
-            value={String(compliance.coiExpiringSoon)}
-            tone={compliance.coiExpiringSoon > 0 ? "warning" : "default"}
-            href="/management?tab=compliance"
-          />
           <StatCard
             compact
             title="Open Incidents"

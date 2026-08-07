@@ -1,4 +1,3 @@
-import { policyHealth } from "@/lib/insurance";
 import { isPostedPayment } from "@/lib/payments";
 import {
   computeContractMetrics,
@@ -11,7 +10,6 @@ import type {
   ChangeOrder,
   Contract,
   CostEntry,
-  InsurancePolicy,
   Invoice,
   Milestone,
   Payment,
@@ -40,8 +38,6 @@ export type WipPulseKpis = {
 };
 
 export type CompliancePulseKpis = {
-  coiExpired: number;
-  coiExpiringSoon: number;
   openIncidents: number;
   highSeverityOpen: number;
 };
@@ -197,23 +193,9 @@ export function computeWipPulseKpis(
   };
 }
 
-export function computeCompliancePulseKpis(
-  policies: InsurancePolicy[],
-  incidents: SafetyIncident[],
-  soonDays = 30
-): CompliancePulseKpis {
-  let coiExpired = 0;
-  let coiExpiringSoon = 0;
-  for (const policy of policies) {
-    const health = policyHealth(policy, soonDays);
-    if (health === "expired") coiExpired += 1;
-    else if (health === "expiring") coiExpiringSoon += 1;
-  }
-
+export function computeCompliancePulseKpis(incidents: SafetyIncident[]): CompliancePulseKpis {
   const openIncidents = incidents.filter((i) => i.status === "open");
   return {
-    coiExpired,
-    coiExpiringSoon,
     openIncidents: openIncidents.length,
     highSeverityOpen: openIncidents.filter((i) => i.severity === "high").length,
   };
