@@ -12,7 +12,7 @@ import { AlertBanner, FormField, PageHeader, SectionCard } from "@/components/ui
 import { canManageContracts, ROLE_LABELS } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import { linkCustomerToContract } from "@/lib/clientProspect";
-import type { ContractType, MilestoneStatus } from "@/lib/types";
+import type { ContractStatus, ContractType, MilestoneStatus } from "@/lib/types";
 
 interface MilestoneRow {
   milestone_name: string;
@@ -41,7 +41,7 @@ const EMPTY_FORM = {
   retainage_percent: "10",
   start_date: "",
   end_date: "",
-  status: "active" as const,
+  status: "active" as ContractStatus,
   scope_description: "",
   special_terms: "",
   client_user_id: "",
