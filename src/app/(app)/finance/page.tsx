@@ -9,7 +9,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { daysPastDue, invoiceRetainageReceivable, labelize, money } from "@/lib/metrics";
-import { isApprovedInvoice } from "@/lib/payments";
+import { isApprovedCost, isApprovedInvoice } from "@/lib/payments";
 import { canViewCosts, canViewInvoices, statusBadgeClass } from "@/lib/roles";
 
 export default function FinanceOverviewPage() {
@@ -18,6 +18,11 @@ export default function FinanceOverviewPage() {
 
   const showCosts = canViewCosts(effectiveRole);
   const showInvoices = canViewInvoices(effectiveRole);
+
+  const approvedCosts = useMemo(
+    () => (showCosts ? costEntries.filter(isApprovedCost) : []),
+    [costEntries, showCosts]
+  );
 
   const billableInvoices = useMemo(
     () => (showInvoices ? invoices.filter(isApprovedInvoice) : []),
@@ -33,7 +38,7 @@ export default function FinanceOverviewPage() {
     });
   }, [billableInvoices]);
 
-  const totalCosts = costEntries.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
+  const totalCosts = approvedCosts.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
   const totalBilled = billableInvoices.reduce((sum, i) => sum + Number(i.invoice_amount ?? 0), 0);
   const totalCollected = billableInvoices.reduce((sum, i) => sum + Number(i.amount_paid ?? 0), 0);
   const totalPayments = payments
@@ -86,7 +91,7 @@ export default function FinanceOverviewPage() {
               onClick={() =>
                 downloadCsv("finance-overview.csv", [
                   ...(showCosts
-                    ? [{ Metric: "Total Costs", Value: totalCosts, Count: costEntries.length }]
+                    ? [{ Metric: "Total Costs", Value: totalCosts, Count: approvedCosts.length }]
                     : []),
                   ...(showInvoices
                     ? [
@@ -146,7 +151,7 @@ export default function FinanceOverviewPage() {
             compact
             title="Total Costs"
             value={money(totalCosts)}
-            hint={`${costEntries.length} entries`}
+            hint={`${approvedCosts.length} approved entries`}
             icon={CircleDollarSign}
             href="/costs"
           />
@@ -191,7 +196,7 @@ export default function FinanceOverviewPage() {
           <StatCard
             compact
             title="Cost Entries"
-            value={String(costEntries.length)}
+            value={String(approvedCosts.length)}
             href="/costs"
           />
         )}
@@ -202,7 +207,7 @@ export default function FinanceOverviewPage() {
           <SectionCard compact title="Costs by category">
             <div className="flex flex-wrap gap-1.5">
               {["labor", "materials", "subcontractor", "equipment", "permits", "other"].map((cat) => {
-                const total = costEntries
+                const total = approvedCosts
                   .filter((c) => (c.category ?? "other") === cat)
                   .reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
                 if (!total) return null;
@@ -212,7 +217,7 @@ export default function FinanceOverviewPage() {
                   </span>
                 );
               })}
-              {costEntries.length === 0 ? <p className="text-sm opacity-60">No costs yet.</p> : null}
+              {approvedCosts.length === 0 ? <p className="text-sm opacity-60">No costs yet.</p> : null}
             </div>
           </SectionCard>
         ) : (

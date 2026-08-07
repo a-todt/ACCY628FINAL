@@ -1,5 +1,5 @@
 import { daysPastDue, labelize, money } from "@/lib/metrics";
-import { isApprovedInvoice } from "@/lib/payments";
+import { isApprovedCost, isApprovedInvoice } from "@/lib/payments";
 import { canViewFraudAlerts } from "@/lib/roles";
 import { isBadWeather } from "@/lib/weather";
 import type {
@@ -445,7 +445,7 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   // 5) Job costs exceeding billed × spike ratio
   for (const contract of contracts) {
     const contractCosts = costs
-      .filter((c) => c.contract_id === contract.id)
+      .filter((c) => c.contract_id === contract.id && isApprovedCost(c))
       .reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
     if (contractCosts <= 0) continue;
     const billed = invoices

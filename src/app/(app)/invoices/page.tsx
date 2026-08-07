@@ -12,6 +12,7 @@ import {
   type ColumnSortDir,
 } from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
 import { useContractData } from "@/hooks/useContractData";
 import { useOpenCreateFromQuery } from "@/hooks/useOpenCreateFromQuery";
 import { compareValues } from "@/components/FilterSortBar";
@@ -94,6 +95,7 @@ export default function InvoicesPage() {
   const { effectiveRole, user } = useAuth();
   const { contracts, changeOrders, invoices, payments, loading, error, refresh } =
     useContractData();
+  const { invoiceAdminThreshold } = useCompanySettings();
   const canManage = canCreateInvoices(effectiveRole);
   const canPay = canRecordPayments(effectiveRole);
   const canApprove = canApprovePayments(effectiveRole);
@@ -614,7 +616,7 @@ export default function InvoicesPage() {
     try {
       const supabase = createClient();
       const nowIso = new Date().toISOString();
-      const next = paymentStatusAfterAccounting(amount);
+      const next = paymentStatusAfterAccounting(amount, invoiceAdminThreshold);
 
       const { error: payErr } = await supabase
         .from("payments")
@@ -643,7 +645,7 @@ export default function InvoicesPage() {
       });
       setPaymentSuccess(
         next === "pending_admin"
-          ? "Cleared by Accounting — awaiting Admin / Owner (≥ $250k)."
+          ? `Cleared by Accounting — awaiting Admin / Owner (≥ ${money(invoiceAdminThreshold)}).`
           : "Payment approved and posted to AR."
       );
       await refresh();

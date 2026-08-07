@@ -1,4 +1,6 @@
 import type {
+  CostApprovalStatus,
+  CostEntry,
   Invoice,
   InvoiceApprovalStatus,
   InvoiceStatus,
@@ -7,11 +9,27 @@ import type {
   UserRole,
 } from "@/lib/types";
 
-/** Invoice amount or payment amount at/above this needs Admin / Owner after Accounting. */
-export const HIGH_VALUE_APPROVAL_THRESHOLD = 250_000;
+/** Default: invoice/payment amounts at or above this need Admin after Accounting. */
+export const DEFAULT_INVOICE_ADMIN_APPROVAL_THRESHOLD = 250_000;
+/** Default: cost amounts above this need Admin after Accounting; at/below = Accounting only. */
+export const DEFAULT_COST_ADMIN_APPROVAL_THRESHOLD = 50_000;
 
-export function requiresAdminHighValueApproval(amount: number | null | undefined): boolean {
-  return Number(amount ?? 0) >= HIGH_VALUE_APPROVAL_THRESHOLD;
+/** @deprecated Prefer DEFAULT_INVOICE_ADMIN_APPROVAL_THRESHOLD / company settings. */
+export const HIGH_VALUE_APPROVAL_THRESHOLD = DEFAULT_INVOICE_ADMIN_APPROVAL_THRESHOLD;
+
+export function requiresAdminHighValueApproval(
+  amount: number | null | undefined,
+  threshold: number = DEFAULT_INVOICE_ADMIN_APPROVAL_THRESHOLD
+): boolean {
+  return Number(amount ?? 0) >= Number(threshold);
+}
+
+/** Costs strictly above the company threshold need Accounting + Admin / Owner. */
+export function requiresCostAdminApproval(
+  amount: number | null | undefined,
+  threshold: number = DEFAULT_COST_ADMIN_APPROVAL_THRESHOLD
+): boolean {
+  return Number(amount ?? 0) > Number(threshold);
 }
 
 export function isPostedPayment(payment: Payment): boolean {
@@ -49,6 +67,24 @@ export function isInvoicePending(invoice: Invoice): boolean {
   return isInvoiceAwaitingAccounting(invoice) || isInvoiceAwaitingAdmin(invoice);
 }
 
+/** Job-cost totals only include approved cost logs. */
+export function isApprovedCost(cost: CostEntry): boolean {
+  const status = cost.approval_status ?? "approved";
+  return status === "approved";
+}
+
+export function isCostAwaitingAccounting(cost: CostEntry): boolean {
+  return (cost.approval_status ?? "approved") === "pending_accounting";
+}
+
+export function isCostAwaitingAdmin(cost: CostEntry): boolean {
+  return (cost.approval_status ?? "approved") === "pending_admin";
+}
+
+export function isCostPending(cost: CostEntry): boolean {
+  return isCostAwaitingAccounting(cost) || isCostAwaitingAdmin(cost);
+}
+
 export function nextInvoiceStatus(amountPaid: number, netAmountDue: number): InvoiceStatus {
   // Zero/blank invoices cannot become "paid" via AR math alone.
   if (netAmountDue > 0.005 && amountPaid + 0.005 >= netAmountDue) return "paid";
@@ -81,6 +117,10 @@ export function invoiceApprovalBadge(status: InvoiceApprovalStatus | undefined):
   }
 }
 
+export function costApprovalBadge(status: CostApprovalStatus | undefined): string {
+  return invoiceApprovalBadge(status);
+}
+
 export function paymentApprovalLabel(status: PaymentApprovalStatus | undefined): string {
   switch (status ?? "posted") {
     case "pending_approval":
@@ -106,6 +146,10 @@ export function invoiceApprovalLabel(status: InvoiceApprovalStatus | undefined):
     default:
       return "Approved";
   }
+}
+
+export function costApprovalLabel(status: CostApprovalStatus | undefined): string {
+  return invoiceApprovalLabel(status);
 }
 
 /** @deprecated All payments now enter the Accounting queue — kept for call-site compatibility. */
@@ -142,11 +186,31 @@ export function canViewApprovalsQueue(role: UserRole): boolean {
 }
 
 /** Next payment status after Accounting signs off. */
-export function paymentStatusAfterAccounting(amount: number): PaymentApprovalStatus {
-  return requiresAdminHighValueApproval(amount) ? "pending_admin" : "posted";
+export function paymentStatusAfterAccounting(
+  amount: number,
+  invoiceAdminThreshold: number = DEFAULT_INVOICE_ADMIN_APPROVAL_THRESHOLD
+): PaymentApprovalStatus {
+  return requiresAdminHighValueApproval(amount, invoiceAdminThreshold)
+    ? "pending_admin"
+    : "posted";
 }
 
 /** Next invoice status after Accounting signs off. */
-export function invoiceStatusAfterAccounting(amount: number): InvoiceApprovalStatus {
-  return requiresAdminHighValueApproval(amount) ? "pending_admin" : "approved";
+export function invoiceStatusAfterAccounting(
+  amount: number,
+  invoiceAdminThreshold: number = DEFAULT_INVOICE_ADMIN_APPROVAL_THRESHOLD
+): InvoiceApprovalStatus {
+  return requiresAdminHighValueApproval(amount, invoiceAdminThreshold)
+    ? "pending_admin"
+    : "approved";
+}
+
+/** Next cost status after Accounting signs off. */
+export function costStatusAfterAccounting(
+  amount: number,
+  costAdminThreshold: number = DEFAULT_COST_ADMIN_APPROVAL_THRESHOLD
+): CostApprovalStatus {
+  return requiresCostAdminApproval(amount, costAdminThreshold)
+    ? "pending_admin"
+    : "approved";
 }
