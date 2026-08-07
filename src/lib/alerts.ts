@@ -39,7 +39,7 @@ export interface AlertSourceData {
   assignments?: Array<{
     contract_id: string;
     user_id: string;
-    assignment_role: string;
+    assignment_role?: string | null;
   }>;
   userProfiles?: UserProfile[];
 }

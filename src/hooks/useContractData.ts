@@ -152,6 +152,7 @@ export function useContractData() {
 
   return {
     ...scoped,
+    assignments: data.assignments,
     loading,
     error,
     refresh: load,
