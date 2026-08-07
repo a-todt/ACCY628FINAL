@@ -91,7 +91,9 @@ import type {
   Milestone,
   Payment,
   Subcontractor,
+  UserProfile,
 } from "@/lib/types";
+import type { ContractAssignmentRow } from "@/lib/staffScope";
 
 interface DashboardData {
   contracts: Contract[];
@@ -102,6 +104,8 @@ interface DashboardData {
   payments: Payment[];
   fieldLogs: FieldLog[];
   milestones: Milestone[];
+  userProfiles?: UserProfile[];
+  assignments?: ContractAssignmentRow[];
 }
 
 type DashboardPaneProps = DashboardData & {
@@ -204,6 +208,8 @@ export default function DashboardPage() {
     payments: data.payments,
     fieldLogs: data.fieldLogs,
     milestones: data.milestones,
+    userProfiles: data.userProfiles,
+    assignments: data.assignments,
   };
 
   const paneProps = {
@@ -337,6 +343,8 @@ function DashboardAlertsPreview({
   payments,
   costEntries,
   contracts,
+  assignments,
+  userProfiles,
 }: {
   role: UserRole;
   invoices: Invoice[];
@@ -345,6 +353,8 @@ function DashboardAlertsPreview({
   payments: Payment[];
   costEntries: CostEntry[];
   contracts: Contract[];
+  assignments?: ContractAssignmentRow[];
+  userProfiles?: UserProfile[];
 }) {
   const { dismissedSet, pruneAgainstLiveIds } = useDismissedAlerts();
 
@@ -357,8 +367,20 @@ function DashboardAlertsPreview({
         payments,
         costEntries,
         contracts,
+        assignments,
+        userProfiles,
       }),
-    [role, invoices, fieldLogs, changeOrders, payments, costEntries, contracts]
+    [
+      role,
+      invoices,
+      fieldLogs,
+      changeOrders,
+      payments,
+      costEntries,
+      contracts,
+      assignments,
+      userProfiles,
+    ]
   );
 
   useEffect(() => {
@@ -443,6 +465,8 @@ function AdminDashboard({
   payments,
   milestones,
   fieldLogs,
+  assignments,
+  userProfiles,
   role,
   layout,
   onCustomize,
@@ -1112,6 +1136,8 @@ function AdminDashboard({
         payments={payments}
         costEntries={costEntries}
         contracts={contracts}
+        assignments={assignments}
+        userProfiles={userProfiles}
       />
     ),
   };
@@ -1128,6 +1154,8 @@ function FieldSupervisorDashboard({
   invoices,
   payments,
   changeOrders,
+  assignments,
+  userProfiles,
   userId,
   role,
   layout,
@@ -1265,6 +1293,8 @@ function FieldSupervisorDashboard({
         payments={payments}
         costEntries={costEntries}
         contracts={contracts}
+        assignments={assignments}
+        userProfiles={userProfiles}
       />
     ),
   };
@@ -1282,6 +1312,8 @@ function SubcontractorDashboard({
   invoices,
   payments,
   changeOrders,
+  assignments,
+  userProfiles,
   userId,
   role,
   layout,
@@ -1529,6 +1561,8 @@ function SubcontractorDashboard({
         payments={payments}
         costEntries={costEntries}
         contracts={contracts}
+        assignments={assignments}
+        userProfiles={userProfiles}
       />
     ),
   };
@@ -1561,6 +1595,8 @@ function ClientDashboard({
   milestones,
   payments,
   fieldLogs,
+  assignments,
+  userProfiles,
   role,
   layout,
   onCustomize,
@@ -1971,6 +2007,8 @@ function ClientDashboard({
         payments={payments}
         costEntries={costEntries}
         contracts={contracts}
+        assignments={assignments}
+        userProfiles={userProfiles}
       />
     ),
   };

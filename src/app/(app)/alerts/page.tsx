@@ -47,6 +47,8 @@ export default function AlertsPage() {
       payments: data.payments,
       costEntries: data.costEntries,
       contracts: data.contracts,
+      assignments: data.assignments,
+      userProfiles: data.userProfiles,
     });
   }, [
     effectiveRole,
@@ -57,6 +59,8 @@ export default function AlertsPage() {
     data.payments,
     data.costEntries,
     data.contracts,
+    data.assignments,
+    data.userProfiles,
   ]);
 
   useEffect(() => {
