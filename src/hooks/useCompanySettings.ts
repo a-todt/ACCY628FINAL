@@ -43,6 +43,8 @@ export function useCompanySettings() {
   const costAdminThreshold = Number(
     settings?.cost_admin_approval_threshold ?? DEFAULT_COST_ADMIN_APPROVAL_THRESHOLD
   );
+  // Default ON for demo walkthroughs when the column is missing/null.
+  const allowOwnerSodOverride = settings?.allow_owner_sod_override !== false;
 
   return {
     settings,
@@ -55,5 +57,6 @@ export function useCompanySettings() {
     costAdminThreshold: Number.isFinite(costAdminThreshold)
       ? costAdminThreshold
       : DEFAULT_COST_ADMIN_APPROVAL_THRESHOLD,
+    allowOwnerSodOverride,
   };
 }

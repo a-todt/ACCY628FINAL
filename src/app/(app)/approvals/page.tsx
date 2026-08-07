@@ -35,6 +35,7 @@ import {
 import {
   canApproveHighValue,
   canApprovePayments,
+  canOverrideSegregationOfDuties,
   canViewApprovals,
 } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
@@ -45,13 +46,18 @@ type QueueTab = "accounting" | "admin";
 export default function ApprovalsPage() {
   const { effectiveRole, user } = useAuth();
   const { invoices, payments, costEntries, loading, error, refresh } = useContractData();
-  const { invoiceAdminThreshold, costAdminThreshold } = useCompanySettings();
+  const { invoiceAdminThreshold, costAdminThreshold, allowOwnerSodOverride } =
+    useCompanySettings();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const canAccounting = canApprovePayments(effectiveRole);
   const canAdmin = canApproveHighValue(effectiveRole);
+  const ownerSodOverride = canOverrideSegregationOfDuties(
+    effectiveRole,
+    allowOwnerSodOverride
+  );
   const [tab, setTab] = useState<QueueTab>(canAccounting ? "accounting" : "admin");
 
   const invoiceById = useMemo(() => {
@@ -88,12 +94,23 @@ export default function ApprovalsPage() {
   if (loading) return <PageSkeleton rows={8} />;
   if (error) return <AlertBanner type="error">{error}</AlertBanner>;
 
+  const isSelfSubmitted = (submittedBy: string | null | undefined) =>
+    Boolean(submittedBy && user?.id && submittedBy === user.id);
+
   const denySelf = (submittedBy: string | null | undefined) => {
-    if (submittedBy && user?.id && submittedBy === user.id) {
-      setActionError("You cannot approve an item you submitted (segregation of duties).");
-      return true;
+    if (!isSelfSubmitted(submittedBy)) return false;
+    if (ownerSodOverride) {
+      const ok = window.confirm(
+        "Demo SoD override: approve an item you submitted? This bypasses segregation of duties for Accounting (owner)."
+      );
+      if (!ok) {
+        setActionError("Approval cancelled — segregation of duties still applies.");
+        return true;
+      }
+      return false;
     }
-    return false;
+    setActionError("You cannot approve an item you submitted (segregation of duties).");
+    return true;
   };
 
   const onApproveInvoice = async (invoice: Invoice, step: QueueTab) => {
@@ -125,6 +142,7 @@ export default function ApprovalsPage() {
         await writeAuditLog("invoice_accounting_approved", "invoice", invoice.id, {
           next_status: next,
           invoice_amount: amount,
+          sod_override: isSelfSubmitted(invoice.submitted_by) || undefined,
         });
         if (next === "approved" && user?.id) {
           await notifyPmInvoiceDecision({
@@ -153,6 +171,7 @@ export default function ApprovalsPage() {
         if (updateError) throw updateError;
         await writeAuditLog("invoice_admin_approved", "invoice", invoice.id, {
           invoice_amount: amount,
+          sod_override: isSelfSubmitted(invoice.submitted_by) || undefined,
         });
         if (user?.id) {
           await notifyPmInvoiceDecision({
@@ -250,6 +269,8 @@ export default function ApprovalsPage() {
         await writeAuditLog("cost_accounting_approved", "cost_entry", cost.id, {
           next_status: next,
           amount,
+          sod_override:
+            isSelfSubmitted(cost.submitted_by ?? cost.user_id) || undefined,
         });
         setActionSuccess(
           next === "pending_admin"
@@ -268,7 +289,11 @@ export default function ApprovalsPage() {
           .eq("id", cost.id)
           .eq("approval_status", "pending_admin");
         if (updateError) throw updateError;
-        await writeAuditLog("cost_admin_approved", "cost_entry", cost.id, { amount });
+        await writeAuditLog("cost_admin_approved", "cost_entry", cost.id, {
+          amount,
+          sod_override:
+            isSelfSubmitted(cost.submitted_by ?? cost.user_id) || undefined,
+        });
         setActionSuccess("High-value cost approved by Admin / Owner.");
       }
       await refresh();
@@ -369,6 +394,7 @@ export default function ApprovalsPage() {
         await writeAuditLog("payment_accounting_approved", "payment", payment.id, {
           next_status: next,
           payment_amount: amount,
+          sod_override: isSelfSubmitted(payment.submitted_by) || undefined,
         });
         setActionSuccess(
           next === "pending_admin"
@@ -399,6 +425,7 @@ export default function ApprovalsPage() {
 
         await writeAuditLog("payment_admin_approved", "payment", payment.id, {
           payment_amount: amount,
+          sod_override: isSelfSubmitted(payment.submitted_by) || undefined,
         });
         setActionSuccess("High-value payment approved by Admin / Owner and posted to AR.");
       }
@@ -469,6 +496,14 @@ export default function ApprovalsPage() {
         )} and costs over ${money(costAdminThreshold)} also need Admin / Owner. Thresholds are set in Company Settings.`}
       />
 
+      {allowOwnerSodOverride ? (
+        <AlertBanner type="info">
+          <span className="badge badge-warning badge-sm mr-2">Demo</span>
+          Owner SoD override is on — Accounting may approve items they submitted.
+          Turn off in Management → Company Settings to enforce segregation of duties for everyone.
+        </AlertBanner>
+      ) : null}
+
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
       {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
 
@@ -513,6 +548,7 @@ export default function ApprovalsPage() {
                 {queueCosts.map((cost) => {
                   const amount = Number(cost.amount ?? 0);
                   const high = requiresCostAdminApproval(amount, costAdminThreshold);
+                  const selfRow = isSelfSubmitted(cost.submitted_by ?? cost.user_id);
                   return (
                     <tr key={cost.id}>
                       <td>{cost.date_incurred ?? "—"}</td>
@@ -542,9 +578,14 @@ export default function ApprovalsPage() {
                         <span className={`badge badge-sm ${costApprovalBadge(cost.approval_status)}`}>
                           {costApprovalLabel(cost.approval_status)}
                         </span>
+                        {selfRow && ownerSodOverride ? (
+                          <span className="badge badge-xs badge-warning ml-1">Demo SoD override</span>
+                        ) : selfRow ? (
+                          <span className="badge badge-xs ml-1">Your submission</span>
+                        ) : null}
                       </td>
                       <td className="text-right">
-                        {canAct ? (
+                        {canAct && !(selfRow && !ownerSodOverride) ? (
                           <div className="flex justify-end gap-1">
                             <button
                               type="button"
@@ -563,6 +604,8 @@ export default function ApprovalsPage() {
                               <X className="h-3 w-3" /> Reject
                             </button>
                           </div>
+                        ) : selfRow && !ownerSodOverride ? (
+                          <span className="text-xs opacity-60">SoD blocked</span>
                         ) : (
                           <span className="text-xs opacity-60">View only</span>
                         )}
@@ -595,6 +638,7 @@ export default function ApprovalsPage() {
                 {queueInvoices.map((invoice) => {
                   const amount = Number(invoice.invoice_amount ?? 0);
                   const high = requiresAdminHighValueApproval(amount, invoiceAdminThreshold);
+                  const selfRow = isSelfSubmitted(invoice.submitted_by);
                   return (
                     <tr key={invoice.id}>
                       <td>
@@ -615,9 +659,14 @@ export default function ApprovalsPage() {
                         <span className={`badge badge-sm ${invoiceApprovalBadge(invoice.approval_status)}`}>
                           {invoiceApprovalLabel(invoice.approval_status)}
                         </span>
+                        {selfRow && ownerSodOverride ? (
+                          <span className="badge badge-xs badge-warning ml-1">Demo SoD override</span>
+                        ) : selfRow ? (
+                          <span className="badge badge-xs ml-1">Your submission</span>
+                        ) : null}
                       </td>
                       <td className="text-right">
-                        {canAct ? (
+                        {canAct && !(selfRow && !ownerSodOverride) ? (
                           <div className="flex justify-end gap-1">
                             <button
                               type="button"
@@ -636,6 +685,8 @@ export default function ApprovalsPage() {
                               <X className="h-3 w-3" /> Reject
                             </button>
                           </div>
+                        ) : selfRow && !ownerSodOverride ? (
+                          <span className="text-xs opacity-60">SoD blocked</span>
                         ) : (
                           <span className="text-xs opacity-60">View only</span>
                         )}
@@ -669,6 +720,7 @@ export default function ApprovalsPage() {
                   const invoice = invoiceById.get(payment.invoice_id);
                   const amount = Number(payment.payment_amount ?? 0);
                   const high = requiresAdminHighValueApproval(amount, invoiceAdminThreshold);
+                  const selfRow = isSelfSubmitted(payment.submitted_by);
                   return (
                     <tr key={payment.id}>
                       <td className="font-mono text-xs">{payment.id.slice(0, 8)}</td>
@@ -693,9 +745,14 @@ export default function ApprovalsPage() {
                         <span className={`badge badge-sm ${paymentApprovalBadge(payment.approval_status)}`}>
                           {paymentApprovalLabel(payment.approval_status)}
                         </span>
+                        {selfRow && ownerSodOverride ? (
+                          <span className="badge badge-xs badge-warning ml-1">Demo SoD override</span>
+                        ) : selfRow ? (
+                          <span className="badge badge-xs ml-1">Your submission</span>
+                        ) : null}
                       </td>
                       <td className="text-right">
-                        {canAct ? (
+                        {canAct && !(selfRow && !ownerSodOverride) ? (
                           <div className="flex justify-end gap-1">
                             <button
                               type="button"
@@ -714,6 +771,8 @@ export default function ApprovalsPage() {
                               <X className="h-3 w-3" /> Reject
                             </button>
                           </div>
+                        ) : selfRow && !ownerSodOverride ? (
+                          <span className="text-xs opacity-60">SoD blocked</span>
                         ) : (
                           <span className="text-xs opacity-60">View only</span>
                         )}
