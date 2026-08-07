@@ -6,6 +6,7 @@ import {
   paneGridColumns,
   panesForRole,
   type DashboardLayoutPrefs,
+  type DashboardPaneDef,
 } from "@/lib/dashboardLayout";
 import type { UserRole } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
@@ -15,13 +16,25 @@ export function DashboardPaneGrid({
   layout,
   panes,
   onCustomize,
+  catalog: catalogProp,
+  emptyTitle = "No dashboard panes",
+  emptyMessage = "Turn on one or more panes in Customize to build your dashboard.",
+  customizeLabel = "Customize dashboard",
+  stackPanes: stackPanesProp,
 }: {
-  role: UserRole;
+  role?: UserRole;
   layout: DashboardLayoutPrefs;
   panes: Record<string, ReactNode>;
   onCustomize?: () => void;
+  /** When set, used instead of role-based dashboard panes. */
+  catalog?: DashboardPaneDef[];
+  emptyTitle?: string;
+  emptyMessage?: string;
+  customizeLabel?: string;
+  /** Force single-column stack. Defaults to field/sub/client when using role catalogs. */
+  stackPanes?: boolean;
 }) {
-  const catalog = panesForRole(role);
+  const catalog = catalogProp ?? (role ? panesForRole(role) : []);
   const byId = new Map(catalog.map((pane) => [pane.id, pane]));
   const visible = layout.panes
     .map((id) => byId.get(id))
@@ -30,12 +43,12 @@ export function DashboardPaneGrid({
   if (visible.length === 0) {
     return (
       <EmptyState
-        title="No dashboard panes"
-        message="Turn on one or more panes in Customize to build your dashboard."
+        title={emptyTitle}
+        message={emptyMessage}
         action={
           onCustomize ? (
             <button type="button" className="btn btn-primary btn-sm" onClick={onCustomize}>
-              Customize dashboard
+              {customizeLabel}
             </button>
           ) : null
         }
@@ -44,10 +57,10 @@ export function DashboardPaneGrid({
   }
 
   const nonFullWidthCount = visible.filter((pane) => !pane.fullWidth).length;
-  // Field / subcontractor / client dashboards stack panes vertically.
-  const stackPanes = role === "field_supervisor" || role === "subcontractor" || role === "client";
+  const stackPanes =
+    stackPanesProp ??
+    (role === "field_supervisor" || role === "subcontractor" || role === "client");
   const columns = stackPanes ? 1 : paneGridColumns(nonFullWidthCount);
-  // Prefer chart-pane count so KPI strips don't shrink graphs.
   const chartLikeCount = Math.max(1, nonFullWidthCount);
   const chartHeight = chartPanelHeight(chartLikeCount);
   const colClass =

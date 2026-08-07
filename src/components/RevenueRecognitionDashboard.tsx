@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Bar,
   Cell,
@@ -95,12 +95,23 @@ export type WIPDashboardData = {
   retainageByProject: Record<string, number>;
 };
 
-export function RevenueRecognitionDashboard({
+export type WipAnalyticsPaneId =
+  | "kpi_summary"
+  | "chart_earned_vs_billed"
+  | "chart_est_vs_actual"
+  | "chart_project_status"
+  | "project_health";
+
+/** Builds KPI / chart / health panes for the customizable WIP page. */
+export function WipAnalyticsPanes({
   projects,
   costsByProject,
   billedByProject,
   retainageByProject,
-}: WIPDashboardData) {
+  children,
+}: WIPDashboardData & {
+  children: (panes: Record<WipAnalyticsPaneId, ReactNode> | null) => ReactNode;
+}) {
   const [showAllHealth, setShowAllHealth] = useState(false);
   const [healthProjectFilter, setHealthProjectFilter] = useState("");
 
@@ -221,12 +232,7 @@ export function RevenueRecognitionDashboard({
     : "overflow-auto max-h-[calc(4.5rem+10*1.85rem)] table-sticky-head table-freeze-first";
 
   if (metrics.length === 0) {
-    return (
-      <EmptyState
-        title="No revenue recognition data"
-        message={`Add projects (and related costs / billings) to populate this dashboard.`}
-      />
-    );
+    return <>{children(null)}</>;
   }
 
   const kpiItems = [
@@ -270,135 +276,145 @@ export function RevenueRecognitionDashboard({
     },
   ];
 
-  return (
-    <div className="space-y-3">
+  const panes: Record<WipAnalyticsPaneId, ReactNode> = {
+    kpi_summary: (
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         {kpiItems.map((kpi) => (
           <div
             key={kpi.title}
             className="rounded-box border border-base-300 bg-base-100 px-2.5 py-2 min-w-0"
           >
-            <p className="text-[10px] uppercase tracking-wide opacity-60 leading-tight truncate" title={kpi.title}>
+            <p
+              className="text-[10px] uppercase tracking-wide opacity-60 leading-tight truncate"
+              title={kpi.title}
+            >
               {kpi.title}
             </p>
-            <p className={`text-sm sm:text-base font-semibold tabular-nums truncate ${kpi.valueClass ?? ""}`}>
+            <p
+              className={`text-sm sm:text-base font-semibold tabular-nums truncate ${kpi.valueClass ?? ""}`}
+            >
               {kpi.value}
             </p>
             <p className="text-[10px] opacity-55 truncate">{kpi.desc}</p>
           </div>
         ))}
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <SectionCard compact title="Revenue Earned vs Billed">
-          <ExpandableChart
-            title="Revenue Earned vs Billed"
-            actionLabel="Show full graph"
-            previewHeight={CHART_PANEL_H}
-            heightBoost={28}
-            moreCount={Math.max(0, earnedVsBilledData.length - CHART_PREVIEW_ROWS)}
-            hasData={earnedVsBilledData.length > 0}
-            empty={
-              <p className="text-sm opacity-60 py-8 text-center">No earned/billed data to chart yet.</p>
-            }
-          >
-            {(height, mode) => (
-              <ScrollableBarChart
-                data={takeChartPreview(earnedVsBilledData, mode)}
-                panelHeight={height}
-                valueFormatter={(v) => moneyExact(v)}
+    ),
+    chart_earned_vs_billed: (
+      <SectionCard compact title="Revenue Earned vs Billed">
+        <ExpandableChart
+          title="Revenue Earned vs Billed"
+          actionLabel="Show full graph"
+          previewHeight={CHART_PANEL_H}
+          heightBoost={28}
+          moreCount={Math.max(0, earnedVsBilledData.length - CHART_PREVIEW_ROWS)}
+          hasData={earnedVsBilledData.length > 0}
+          empty={
+            <p className="text-sm opacity-60 py-8 text-center">No earned/billed data to chart yet.</p>
+          }
+        >
+          {(height, mode) => (
+            <ScrollableBarChart
+              data={takeChartPreview(earnedVsBilledData, mode)}
+              panelHeight={height}
+              valueFormatter={(v) => moneyExact(v)}
+            >
+              <Legend verticalAlign="top" height={28} />
+              <Bar dataKey="Earned" fill={CHART_COLORS.earned} radius={[0, 5, 5, 0]} />
+              <Bar dataKey="Billed" fill={CHART_COLORS.billed} radius={[0, 5, 5, 0]} />
+            </ScrollableBarChart>
+          )}
+        </ExpandableChart>
+      </SectionCard>
+    ),
+    chart_est_vs_actual: (
+      <SectionCard compact title="Estimated vs Actual Cost">
+        <ExpandableChart
+          title="Estimated vs Actual Cost"
+          actionLabel="Show full graph"
+          previewHeight={CHART_PANEL_H}
+          heightBoost={28}
+          moreCount={Math.max(0, costData.length - CHART_PREVIEW_ROWS)}
+          hasData={costData.length > 0}
+          empty={
+            <p className="text-sm opacity-60 py-8 text-center">No cost data to chart yet.</p>
+          }
+        >
+          {(height, mode) => (
+            <ScrollableBarChart
+              data={takeChartPreview(costData, mode)}
+              panelHeight={height}
+              valueFormatter={(v) => moneyExact(v)}
+            >
+              <Legend verticalAlign="top" height={28} />
+              <Bar dataKey="Estimated" fill={CHART_COLORS.estimated} radius={[0, 5, 5, 0]} />
+              <Bar dataKey="Actual" fill={CHART_COLORS.actual} radius={[0, 5, 5, 0]} />
+            </ScrollableBarChart>
+          )}
+        </ExpandableChart>
+      </SectionCard>
+    ),
+    chart_project_status: (
+      <SectionCard compact title="Project Status">
+        <ExpandableChart
+          title="Project Status"
+          actionLabel="Show full graph"
+          previewHeight={CHART_PANEL_H}
+          hasData={statusPieData.length > 0}
+          empty={<p className="text-sm opacity-60 py-8 text-center">No status data.</p>}
+        >
+          {(height, mode) => {
+            const radius =
+              mode === "full"
+                ? Math.min(180, Math.round(height * 0.34))
+                : Math.min(62, Math.round(height * 0.34));
+            return (
+              <div
+                className="grid grid-cols-[1fr_auto] gap-2 items-center min-h-0"
+                style={{ height }}
               >
-                <Legend verticalAlign="top" height={28} />
-                <Bar dataKey="Earned" fill={CHART_COLORS.earned} radius={[0, 5, 5, 0]} />
-                <Bar dataKey="Billed" fill={CHART_COLORS.billed} radius={[0, 5, 5, 0]} />
-              </ScrollableBarChart>
-            )}
-          </ExpandableChart>
-        </SectionCard>
-
-        <SectionCard compact title="Estimated vs Actual Cost">
-          <ExpandableChart
-            title="Estimated vs Actual Cost"
-            actionLabel="Show full graph"
-            previewHeight={CHART_PANEL_H}
-            heightBoost={28}
-            moreCount={Math.max(0, costData.length - CHART_PREVIEW_ROWS)}
-            hasData={costData.length > 0}
-            empty={
-              <p className="text-sm opacity-60 py-8 text-center">No cost data to chart yet.</p>
-            }
-          >
-            {(height, mode) => (
-              <ScrollableBarChart
-                data={takeChartPreview(costData, mode)}
-                panelHeight={height}
-                valueFormatter={(v) => moneyExact(v)}
-              >
-                <Legend verticalAlign="top" height={28} />
-                <Bar dataKey="Estimated" fill={CHART_COLORS.estimated} radius={[0, 5, 5, 0]} />
-                <Bar dataKey="Actual" fill={CHART_COLORS.actual} radius={[0, 5, 5, 0]} />
-              </ScrollableBarChart>
-            )}
-          </ExpandableChart>
-        </SectionCard>
-
-        <SectionCard compact title="Project Status">
-          <ExpandableChart
-            title="Project Status"
-            actionLabel="Show full graph"
-            previewHeight={CHART_PANEL_H}
-            hasData={statusPieData.length > 0}
-            empty={<p className="text-sm opacity-60 py-8 text-center">No status data.</p>}
-          >
-            {(height, mode) => {
-              const radius =
-                mode === "full"
-                  ? Math.min(180, Math.round(height * 0.34))
-                  : Math.min(62, Math.round(height * 0.34));
-              return (
-                <div className="grid grid-cols-[1fr_auto] gap-2 items-center min-h-0" style={{ height }}>
-                  <div className="h-full w-full min-w-0">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={120}>
-                      <PieChart>
-                        <Pie
-                          data={statusPieData}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={radius}
-                          label={({ name, percent: pct }) =>
-                            `${name} ${((pct ?? 0) * 100).toFixed(0)}%`
-                          }
-                        >
-                          {statusPieData.map((entry) => (
-                            <Cell key={entry.name} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => [`${Number(value)} project(s)`, "Count"]} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <ul className="space-y-1.5 text-xs px-1 shrink-0">
-                    {statusPieData.map((entry) => (
-                      <li key={entry.name} className="flex items-center gap-1.5">
-                        <span
-                          className="inline-block size-2.5 rounded-sm shrink-0"
-                          style={{ backgroundColor: entry.color }}
-                          aria-hidden
-                        />
-                        <span className="font-medium">{entry.name}</span>
-                        <span className="opacity-70 tabular-nums">{entry.value}</span>
-                      </li>
-                    ))}
-                  </ul>
+                <div className="h-full w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={120}>
+                    <PieChart>
+                      <Pie
+                        data={statusPieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={radius}
+                        label={({ name, percent: pct }) =>
+                          `${name} ${((pct ?? 0) * 100).toFixed(0)}%`
+                        }
+                      >
+                        {statusPieData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${Number(value)} project(s)`, "Count"]} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              );
-            }}
-          </ExpandableChart>
-        </SectionCard>
-      </div>
-
+                <ul className="space-y-1.5 text-xs px-1 shrink-0">
+                  {statusPieData.map((entry) => (
+                    <li key={entry.name} className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block size-2.5 rounded-sm shrink-0"
+                        style={{ backgroundColor: entry.color }}
+                        aria-hidden
+                      />
+                      <span className="font-medium">{entry.name}</span>
+                      <span className="opacity-70 tabular-nums">{entry.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          }}
+        </ExpandableChart>
+      </SectionCard>
+    ),
+    project_health: (
       <SectionCard compact title="Project Health">
         <div className={`rounded-box border border-base-300 bg-base-100 ${healthScrollClass}`}>
           <table className="table table-xs table-fixed w-full text-[11px]">
@@ -426,34 +442,34 @@ export function RevenueRecognitionDashboard({
                 </tr>
               ) : (
                 filteredHealthRows.map(({ project, projectId, calcs, health }) => (
-                <tr key={projectId} className="hover:bg-base-200/60">
-                  <td className="font-medium truncate">{colStr(project, P.name)}</td>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <progress
-                        className="progress progress-primary w-full max-w-[160px]"
-                        value={Math.round(calcs.completionPercentage)}
-                        max={100}
-                      />
-                      <span className="text-xs tabular-nums w-12 text-right">
-                        {calcs.completionPercentage.toFixed(1)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td
-                    className={`text-right tabular-nums ${
-                      calcs.projectedMargin < 0
-                        ? "text-error"
-                        : calcs.projectedMargin <= 10
-                          ? "text-warning"
-                          : "text-success"
-                    }`}
-                  >
-                    {percent(calcs.projectedMargin / 100)}
-                  </td>
-                  <td className="text-center">{healthBadge(health)}</td>
-                </tr>
-              ))
+                  <tr key={projectId} className="hover:bg-base-200/60">
+                    <td className="font-medium truncate">{colStr(project, P.name)}</td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <progress
+                          className="progress progress-primary w-full max-w-[160px]"
+                          value={Math.round(calcs.completionPercentage)}
+                          max={100}
+                        />
+                        <span className="text-xs tabular-nums w-12 text-right">
+                          {calcs.completionPercentage.toFixed(1)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td
+                      className={`text-right tabular-nums ${
+                        calcs.projectedMargin < 0
+                          ? "text-error"
+                          : calcs.projectedMargin <= 10
+                            ? "text-warning"
+                            : "text-success"
+                      }`}
+                    >
+                      {percent(calcs.projectedMargin / 100)}
+                    </td>
+                    <td className="text-center">{healthBadge(health)}</td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -470,6 +486,37 @@ export function RevenueRecognitionDashboard({
           </div>
         ) : null}
       </SectionCard>
-    </div>
+    ),
+  };
+
+  return <>{children(panes)}</>;
+}
+
+/** Stacked layout (all analytics panes). Prefer `WipAnalyticsPanes` for customization. */
+export function RevenueRecognitionDashboard(props: WIPDashboardData) {
+  return (
+    <WipAnalyticsPanes {...props}>
+      {(panes) => {
+        if (!panes) {
+          return (
+            <EmptyState
+              title="No revenue recognition data"
+              message="Add projects (and related costs / billings) to populate this dashboard."
+            />
+          );
+        }
+        return (
+          <div className="space-y-3">
+            {panes.kpi_summary}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              {panes.chart_earned_vs_billed}
+              {panes.chart_est_vs_actual}
+              {panes.chart_project_status}
+            </div>
+            {panes.project_health}
+          </div>
+        );
+      }}
+    </WipAnalyticsPanes>
   );
 }

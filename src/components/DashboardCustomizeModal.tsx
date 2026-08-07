@@ -20,7 +20,15 @@ import {
 import type { UserRole } from "@/lib/types";
 
 function PaneMockPreview({ pane }: { pane: DashboardPaneDef }) {
-  if (pane.id.includes("kpi") || pane.id.includes("pulse") || pane.id.includes("controls") || pane.id === "operations") {
+  if (
+    pane.id.includes("kpi") ||
+    pane.id.includes("pulse") ||
+    pane.id.includes("controls") ||
+    pane.id === "operations" ||
+    pane.id === "kpi_summary" ||
+    pane.id === "project_health" ||
+    pane.id === "wip_schedule"
+  ) {
     return (
       <div className="mt-2 h-16 grid grid-cols-2 gap-1.5 content-start">
         {Array.from({ length: 4 }).map((_, i) => (
@@ -53,12 +61,23 @@ export function DashboardCustomizeModal({
   layout,
   onClose,
   onSave,
+  catalog: catalogProp,
+  defaultLayout: defaultLayoutProp,
+  title = "Customize dashboard",
+  previewLabel = "Dashboard preview",
+  unusedEmptyLabel = "All panes are on the dashboard.",
 }: {
   open: boolean;
-  role: UserRole;
+  role?: UserRole;
   layout: DashboardLayoutPrefs;
   onClose: () => void;
   onSave: (next: DashboardLayoutPrefs) => void;
+  /** When set, used instead of role-based dashboard panes. */
+  catalog?: DashboardPaneDef[];
+  defaultLayout?: () => DashboardLayoutPrefs;
+  title?: string;
+  previewLabel?: string;
+  unusedEmptyLabel?: string;
 }) {
   const [draft, setDraft] = useState<DashboardLayoutPrefs>(layout);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -74,7 +93,15 @@ export function DashboardCustomizeModal({
     }
   }, [open, layout]);
 
-  const catalog = useMemo(() => panesForRole(role), [role]);
+  const catalog = useMemo(
+    () => catalogProp ?? (role ? panesForRole(role) : []),
+    [catalogProp, role]
+  );
+  const resolveDefaultLayout = () => {
+    if (defaultLayoutProp) return defaultLayoutProp();
+    if (role) return defaultLayoutForRole(role);
+    return { panes: catalog.map((pane) => pane.id) };
+  };
   const byId = useMemo(() => new Map(catalog.map((pane) => [pane.id, pane])), [catalog]);
 
   const enabledPanes = useMemo(
@@ -186,7 +213,7 @@ export function DashboardCustomizeModal({
     <div className="modal modal-open z-50">
       <div className="modal-box w-[min(96vw,72rem)] max-w-6xl max-h-[92vh] flex flex-col p-0 overflow-hidden border border-base-300 shadow-xl">
         <div className="px-5 pt-5 pb-3 border-b border-base-300 shrink-0">
-          <h3 className="font-semibold text-lg tracking-tight">Customize dashboard</h3>
+          <h3 className="font-semibold text-lg tracking-tight">{title}</h3>
           <p className="mt-1 text-sm opacity-65">
             Drag panes to rearrange this mock layout. Unused panes sit above the preview — drop
             them onto the board to show, or drop preview panes into Unused to hide. Saved only for
@@ -219,7 +246,7 @@ export function DashboardCustomizeModal({
               <p className="text-[11px] opacity-50">Drop here to hide · drag onto preview to show</p>
             </div>
             {unusedPanes.length === 0 ? (
-              <p className="text-sm opacity-50 py-3 text-center">All panes are on the dashboard.</p>
+              <p className="text-sm opacity-50 py-3 text-center">{unusedEmptyLabel}</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {unusedPanes.map((pane) => (
@@ -251,24 +278,26 @@ export function DashboardCustomizeModal({
             <div className="flex items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-200/60">
               <LayoutDashboard className="h-4 w-4 opacity-50" aria-hidden />
               <span className="text-xs font-semibold uppercase tracking-wide opacity-60">
-                Dashboard preview
+                {previewLabel}
               </span>
             </div>
 
             <div className="p-3 space-y-3">
-              <div className="flex flex-wrap gap-1.5 opacity-60 pointer-events-none select-none">
-                {["Quick link", "Quick link", "Quick link"].map((label, i) => (
-                  <span
-                    key={i}
-                    className="btn btn-outline btn-xs pointer-events-none cursor-default opacity-80"
-                  >
-                    {label}
+              {catalogProp ? null : (
+                <div className="flex flex-wrap gap-1.5 opacity-60 pointer-events-none select-none">
+                  {["Quick link", "Quick link", "Quick link"].map((label, i) => (
+                    <span
+                      key={i}
+                      className="btn btn-outline btn-xs pointer-events-none cursor-default opacity-80"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                  <span className="text-[10px] uppercase tracking-wide opacity-50 self-center ml-1">
+                    Fixed quick links
                   </span>
-                ))}
-                <span className="text-[10px] uppercase tracking-wide opacity-50 self-center ml-1">
-                  Fixed quick links
-                </span>
-              </div>
+                </div>
+              )}
 
               {enabledPanes.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-base-300 py-10 text-center text-sm opacity-60">
@@ -362,7 +391,7 @@ export function DashboardCustomizeModal({
           <button
             type="button"
             className="btn btn-ghost btn-sm gap-1.5"
-            onClick={() => setDraft(defaultLayoutForRole(role))}
+            onClick={() => setDraft(resolveDefaultLayout())}
           >
             <RotateCcw className="h-3.5 w-3.5" />
             Reset defaults

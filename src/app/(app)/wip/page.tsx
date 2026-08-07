@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Download, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { RevenueRecognitionDashboard } from "@/components/RevenueRecognitionDashboard";
+import { WipAnalyticsPanes } from "@/components/RevenueRecognitionDashboard";
+import { DashboardCustomizeModal } from "@/components/DashboardCustomizeModal";
+import { DashboardPaneGrid } from "@/components/DashboardPaneGrid";
 import {
   ColumnAutocompleteHeader,
   ColumnCheckboxFilterHeader,
@@ -14,10 +16,12 @@ import {
 } from "@/components/ColumnAutocompleteHeader";
 import { compareValues } from "@/components/FilterSortBar";
 import { AlertBanner, EmptyState, PageHeader, SectionCard } from "@/components/ui";
+import { useWipLayout } from "@/hooks/useWipLayout";
 import { downloadCsv } from "@/lib/export";
 import { moneyExact, percent } from "@/lib/metrics";
 import { canViewCosts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
+import { WIP_PANES, defaultWipLayout } from "@/lib/wipLayout";
 import {
   WIP_DB,
   colNum,
@@ -87,6 +91,8 @@ function healthBadge(health: WIPRow["health"]) {
 
 export default function WIPSchedulePage() {
   const { user, effectiveRole } = useAuth();
+  const { layout, setLayout } = useWipLayout();
+  const [customizeOpen, setCustomizeOpen] = useState(false);
   const [projects, setProjects] = useState<DbRow[]>([]);
   const [costsByProject, setCostsByProject] = useState<Record<string, number>>({});
   const [billedByProject, setBilledByProject] = useState<Record<string, number>>({});
@@ -388,43 +394,19 @@ export default function WIPSchedulePage() {
     ? "overflow-visible table-sticky-head table-freeze-first"
     : "overflow-auto max-h-[calc(4.5rem+10*1.85rem)] table-sticky-head table-freeze-first";
 
-  return (
-    <div className="space-y-3">
-      <PageHeader
-        compact
-        title="WIP Schedule"
-        actions={
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={exportCsv}
-            disabled={rows.length === 0}
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </button>
+  const schedulePane: ReactNode =
+    rows.length === 0 ? (
+      <EmptyState
+        title="No projects yet"
+        message={`No rows in ${P.table} for your user. Create a project and add ${C.table} / ${B.table} entries.`}
+        action={
+          <Link href="/projects" className="btn btn-primary btn-sm mt-2">
+            Go to Projects
+          </Link>
         }
       />
-
-      <RevenueRecognitionDashboard
-        projects={projects}
-        costsByProject={costsByProject}
-        billedByProject={billedByProject}
-        retainageByProject={retainageByProject}
-      />
-
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No projects yet"
-          message={`No rows in ${P.table} for your user. Create a project and add ${C.table} / ${B.table} entries.`}
-          action={
-            <Link href="/projects" className="btn btn-primary btn-sm mt-2">
-              Go to Projects
-            </Link>
-          }
-        />
-      ) : (
-        <SectionCard compact title="WIP Schedule">
+    ) : (
+      <SectionCard compact title="WIP Schedule">
         <div className={`rounded-box border border-base-300 bg-base-100 ${tableScrollClass}`}>
           <table className="table table-xs table-fixed w-full text-[11px]">
             <thead>
@@ -534,86 +516,92 @@ export default function WIPSchedulePage() {
                 </tr>
               ) : (
                 sortedRows.map(({ project, projectId, calcs, health }) => (
-                <tr key={projectId} className="hover:bg-base-200/60">
-                  <td className="text-center">{healthBadge(health)}</td>
-                  <td className="font-medium truncate">{colStr(project, P.name)}</td>
-                  <td className="text-right whitespace-nowrap tabular-nums">
-                    {moneyExact(colNum(project, P.contractValue))}
-                  </td>
-                  <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
-                    {moneyExact(colNum(project, P.estimatedCost))}
-                  </td>
-                  <td className="text-right whitespace-nowrap tabular-nums">
-                    {moneyExact(calcs.actualCostsToDate)}
-                  </td>
-                  <td>
-                    <div className="flex items-center gap-2 min-w-[120px]">
-                      <progress
-                        className="progress progress-primary w-full"
-                        value={Math.round(calcs.completionPercentage)}
-                        max={100}
-                      />
-                      <span className="text-xs tabular-nums w-12 text-right shrink-0">
-                        {calcs.completionPercentage.toFixed(1)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(calcs.revenueEarned)}</td>
-                  <td
-                    className="text-right whitespace-nowrap tabular-nums"
-                    title={`Over: ${calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"} · Under: ${calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"} · Retainage receivable: ${moneyExact(calcs.retainageHeld)}`}
-                  >
-                    {moneyExact(calcs.billedToDate)}
-                  </td>
-                  <td
-                    className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
-                      calcs.overbilling > 0 ? "text-error font-semibold" : ""
-                    }`}
-                  >
-                    {calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"}
-                  </td>
-                  <td
-                    className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
-                      calcs.underbilling > 0 ? "text-success font-semibold" : ""
-                    }`}
-                  >
-                    {calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"}
-                  </td>
-                  <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
-                    {moneyExact(calcs.retainageHeld)}
-                  </td>
-                  <td
-                    className={`text-right whitespace-nowrap tabular-nums ${
-                      calcs.projectedProfit < 0 ? "text-error" : ""
-                    }`}
-                    title={`Margin: ${percent(calcs.projectedMargin / 100)} · Est. cost: ${moneyExact(colNum(project, P.estimatedCost))}`}
-                  >
-                    {moneyExact(calcs.projectedProfit)}
-                  </td>
-                  <td
-                    className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
-                      calcs.projectedMargin < 0
-                        ? "text-error"
-                        : calcs.projectedMargin <= 10
-                          ? "text-warning"
-                          : "text-success"
-                    }`}
-                  >
-                    {percent(calcs.projectedMargin / 100)}
-                  </td>
-                </tr>
-              ))
+                  <tr key={projectId} className="hover:bg-base-200/60">
+                    <td className="text-center">{healthBadge(health)}</td>
+                    <td className="font-medium truncate">{colStr(project, P.name)}</td>
+                    <td className="text-right whitespace-nowrap tabular-nums">
+                      {moneyExact(colNum(project, P.contractValue))}
+                    </td>
+                    <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
+                      {moneyExact(colNum(project, P.estimatedCost))}
+                    </td>
+                    <td className="text-right whitespace-nowrap tabular-nums">
+                      {moneyExact(calcs.actualCostsToDate)}
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2 min-w-[120px]">
+                        <progress
+                          className="progress progress-primary w-full"
+                          value={Math.round(calcs.completionPercentage)}
+                          max={100}
+                        />
+                        <span className="text-xs tabular-nums w-12 text-right shrink-0">
+                          {calcs.completionPercentage.toFixed(1)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="text-right whitespace-nowrap tabular-nums">
+                      {moneyExact(calcs.revenueEarned)}
+                    </td>
+                    <td
+                      className="text-right whitespace-nowrap tabular-nums"
+                      title={`Over: ${calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"} · Under: ${calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"} · Retainage receivable: ${moneyExact(calcs.retainageHeld)}`}
+                    >
+                      {moneyExact(calcs.billedToDate)}
+                    </td>
+                    <td
+                      className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
+                        calcs.overbilling > 0 ? "text-error font-semibold" : ""
+                      }`}
+                    >
+                      {calcs.overbilling > 0 ? moneyExact(calcs.overbilling) : "—"}
+                    </td>
+                    <td
+                      className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
+                        calcs.underbilling > 0 ? "text-success font-semibold" : ""
+                      }`}
+                    >
+                      {calcs.underbilling > 0 ? moneyExact(calcs.underbilling) : "—"}
+                    </td>
+                    <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
+                      {moneyExact(calcs.retainageHeld)}
+                    </td>
+                    <td
+                      className={`text-right whitespace-nowrap tabular-nums ${
+                        calcs.projectedProfit < 0 ? "text-error" : ""
+                      }`}
+                      title={`Margin: ${percent(calcs.projectedMargin / 100)} · Est. cost: ${moneyExact(colNum(project, P.estimatedCost))}`}
+                    >
+                      {moneyExact(calcs.projectedProfit)}
+                    </td>
+                    <td
+                      className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
+                        calcs.projectedMargin < 0
+                          ? "text-error"
+                          : calcs.projectedMargin <= 10
+                            ? "text-warning"
+                            : "text-success"
+                      }`}
+                    >
+                      {percent(calcs.projectedMargin / 100)}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
             <tfoot>
               <tr className="font-semibold bg-base-200/50">
                 <td />
                 <td>TOTALS</td>
-                <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(totals.contractValue)}</td>
+                <td className="text-right whitespace-nowrap tabular-nums">
+                  {moneyExact(totals.contractValue)}
+                </td>
                 <td className="text-right whitespace-nowrap tabular-nums hidden xl:table-cell">
                   {moneyExact(totals.estimatedCost)}
                 </td>
-                <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(totals.costsToDate)}</td>
+                <td className="text-right whitespace-nowrap tabular-nums">
+                  {moneyExact(totals.costsToDate)}
+                </td>
                 <td>
                   <div className="flex items-center gap-2 min-w-[120px]">
                     <progress
@@ -626,8 +614,12 @@ export default function WIPSchedulePage() {
                     </span>
                   </div>
                 </td>
-                <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(totals.revenueEarned)}</td>
-                <td className="text-right whitespace-nowrap tabular-nums">{moneyExact(totals.billedToDate)}</td>
+                <td className="text-right whitespace-nowrap tabular-nums">
+                  {moneyExact(totals.revenueEarned)}
+                </td>
+                <td className="text-right whitespace-nowrap tabular-nums">
+                  {moneyExact(totals.billedToDate)}
+                </td>
                 <td
                   className={`text-right whitespace-nowrap tabular-nums hidden xl:table-cell ${
                     totalsOverbilling > 0 ? "text-error" : ""
@@ -670,8 +662,71 @@ export default function WIPSchedulePage() {
             </button>
           </div>
         ) : null}
-        </SectionCard>
-      )}
+      </SectionCard>
+    );
+
+  return (
+    <div className="space-y-3">
+      <PageHeader
+        compact
+        title="WIP Schedule"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm gap-1.5"
+              onClick={() => setCustomizeOpen(true)}
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Customize
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={exportCsv}
+              disabled={rows.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </button>
+          </div>
+        }
+      />
+
+      <WipAnalyticsPanes
+        projects={projects}
+        costsByProject={costsByProject}
+        billedByProject={billedByProject}
+        retainageByProject={retainageByProject}
+      >
+        {(analyticsPanes) => (
+          <DashboardPaneGrid
+            layout={layout}
+            catalog={WIP_PANES}
+            stackPanes={false}
+            onCustomize={() => setCustomizeOpen(true)}
+            emptyTitle="No WIP panes"
+            emptyMessage="Turn on one or more panes in Customize to build your WIP view."
+            customizeLabel="Customize WIP"
+            panes={{
+              ...(analyticsPanes ?? {}),
+              wip_schedule: schedulePane,
+            }}
+          />
+        )}
+      </WipAnalyticsPanes>
+
+      <DashboardCustomizeModal
+        open={customizeOpen}
+        layout={layout}
+        catalog={WIP_PANES}
+        defaultLayout={defaultWipLayout}
+        title="Customize WIP"
+        previewLabel="WIP preview"
+        unusedEmptyLabel="All panes are on the WIP page."
+        onClose={() => setCustomizeOpen(false)}
+        onSave={setLayout}
+      />
     </div>
   );
 }
