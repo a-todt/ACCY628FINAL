@@ -21,6 +21,7 @@ import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
 import { useToast } from "@/components/ToastProvider";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
+import { CHANGE_ORDER_PENDING_BILLING_NOTE } from "@/lib/approvalThresholds";
 import {
   remainingBillableCapacity,
   validateInvoiceBillingAmount,
@@ -240,6 +241,26 @@ export default function InvoicesPage() {
         contract?.retainage_percent != null ? String(contract.retainage_percent) : prev.retainage_percent,
     }));
   };
+
+  const selectedContractBilling = useMemo(() => {
+    if (!invoiceForm.contract_id) return null;
+    const contract = contracts.find((c) => c.id === invoiceForm.contract_id);
+    if (!contract) return null;
+    const related = changeOrders.filter((co) => co.contract_id === contract.id);
+    const approved = related
+      .filter((co) => co.status === "approved")
+      .reduce((sum, co) => sum + Number(co.amount ?? 0), 0);
+    const pending = related
+      .filter((co) => co.status === "pending")
+      .reduce((sum, co) => sum + Number(co.amount ?? 0), 0);
+    const original = Number(contract.original_value ?? 0);
+    return {
+      original,
+      approvedCos: approved,
+      pendingCos: pending,
+      revisedValue: original + approved,
+    };
+  }, [invoiceForm.contract_id, contracts, changeOrders]);
 
   const setInvoiceStatus = async (
     invoice: Invoice,
@@ -640,6 +661,7 @@ export default function InvoicesPage() {
           <div id="invoice-create-form">
             {invoiceError ? <AlertBanner type="error">{invoiceError}</AlertBanner> : null}
             {invoiceSuccess ? <AlertBanner type="success">{invoiceSuccess}</AlertBanner> : null}
+            <AlertBanner type="info">{CHANGE_ORDER_PENDING_BILLING_NOTE}</AlertBanner>
             <form onSubmit={onSubmitInvoice} className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField stacked label="Contract">
@@ -657,6 +679,26 @@ export default function InvoicesPage() {
                     ))}
                   </select>
                 </FormField>
+                {selectedContractBilling ? (
+                  <div className="sm:col-span-2 rounded-box border border-base-300 bg-base-200/50 px-3 py-2 text-xs space-y-1">
+                    <p>
+                      <span className="opacity-60">Original value:</span>{" "}
+                      {money(selectedContractBilling.original)}
+                      {" · "}
+                      <span className="opacity-60">Approved COs:</span>{" "}
+                      {money(selectedContractBilling.approvedCos)}
+                      {" · "}
+                      <span className="font-medium">Revised (billable basis):</span>{" "}
+                      {money(selectedContractBilling.revisedValue)}
+                    </p>
+                    {selectedContractBilling.pendingCos !== 0 ? (
+                      <p className="text-warning">
+                        Pending COs {money(selectedContractBilling.pendingCos)} are excluded until
+                        approved.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <FormField stacked label="Invoice Number">
                   <input
                     className="input input-bordered w-full"

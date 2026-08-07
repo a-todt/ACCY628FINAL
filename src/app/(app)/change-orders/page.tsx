@@ -22,6 +22,12 @@ import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
 import { useToast } from "@/components/ToastProvider";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
+import {
+  CHANGE_ORDER_APPROVAL_POLICY,
+  CHANGE_ORDER_PENDING_BILLING_NOTE,
+  canApproveChangeOrderForAmount,
+  changeOrderApprovalBlockedReason,
+} from "@/lib/approvalThresholds";
 import { labelize, money } from "@/lib/metrics";
 import { canCreateChangeOrders, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
@@ -259,6 +265,12 @@ export default function ChangeOrdersPage() {
     { silent = false } = {}
   ) => {
     if (co.status === status) return;
+
+    if (status === "approved") {
+      const blocked = changeOrderApprovalBlockedReason(effectiveRole, co.amount);
+      if (blocked) throw new Error(blocked);
+    }
+
     setActionError(null);
     setActionSuccess(null);
     setBusyId(co.id);
@@ -278,6 +290,11 @@ export default function ChangeOrdersPage() {
         contract_name: co.contracts?.contract_name,
         from_status: co.status,
         to_status: status,
+        amount: co.amount,
+        required_owner_approval:
+          status === "approved"
+            ? !canApproveChangeOrderForAmount("project_manager", co.amount)
+            : false,
       });
       if (!silent) {
         setActionSuccess(
@@ -347,6 +364,22 @@ export default function ChangeOrdersPage() {
     setActionError(null);
     setActionSuccess(null);
     try {
+      if (action === "approved") {
+        const blocked = selectedRows.filter(
+          (co) => !canApproveChangeOrderForAmount(effectiveRole, co.amount)
+        );
+        if (blocked.length > 0) {
+          const sample = blocked
+            .slice(0, 3)
+            .map((co) => co.change_order_number || "CO")
+            .join(", ");
+          throw new Error(
+            `${blocked.length} selected change order${blocked.length === 1 ? "" : "s"} ` +
+              `require Accounting or Owner approval (${sample}${blocked.length > 3 ? "…" : ""}).`
+          );
+        }
+      }
+
       for (const co of selectedRows) {
         if (action === "delete") {
           await deleteChangeOrder(co, { silent: true });
@@ -376,6 +409,17 @@ export default function ChangeOrdersPage() {
     if (!form.contract_id) {
       setFormError("Please select a contract.");
       return;
+    }
+
+    if (form.status === "approved") {
+      const blocked = changeOrderApprovalBlockedReason(
+        effectiveRole,
+        form.amount ? Number(form.amount) : 0
+      );
+      if (blocked) {
+        setFormError(blocked);
+        return;
+      }
     }
 
     setSaving(true);
@@ -422,6 +466,17 @@ export default function ChangeOrdersPage() {
     if (!editForm.contract_id) {
       setEditError("Please select a contract.");
       return;
+    }
+
+    if (editForm.status === "approved") {
+      const blocked = changeOrderApprovalBlockedReason(
+        effectiveRole,
+        editForm.amount ? Number(editForm.amount) : 0
+      );
+      if (blocked) {
+        setEditError(blocked);
+        return;
+      }
     }
 
     setEditSaving(true);
@@ -546,7 +601,12 @@ export default function ChangeOrdersPage() {
 
       {isClient ? (
         <AlertBanner type="info">You are viewing approved change orders only.</AlertBanner>
-      ) : null}
+      ) : (
+        <>
+          <AlertBanner type="info">{CHANGE_ORDER_APPROVAL_POLICY}</AlertBanner>
+          <AlertBanner type="info">{CHANGE_ORDER_PENDING_BILLING_NOTE}</AlertBanner>
+        </>
+      )}
       {actionError ? <AlertBanner type="error">{actionError}</AlertBanner> : null}
       {actionSuccess ? <AlertBanner type="success">{actionSuccess}</AlertBanner> : null}
 
@@ -605,17 +665,40 @@ export default function ChangeOrdersPage() {
                 />
               </label>
             </FormField>
-            <FormField label="Status">
+            <FormField
+              label="Status"
+              hint={
+                form.status === "approved" &&
+                !canApproveChangeOrderForAmount(
+                  effectiveRole,
+                  form.amount ? Number(form.amount) : 0
+                )
+                  ? changeOrderApprovalBlockedReason(
+                      effectiveRole,
+                      form.amount ? Number(form.amount) : 0
+                    ) ?? undefined
+                  : undefined
+              }
+            >
               <select
                 className="select select-bordered"
                 value={form.status}
                 onChange={(e) => updateField("status", e.target.value as ChangeOrderStatus)}
               >
-                {STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
-                    {labelize(status)}
-                  </option>
-                ))}
+                {STATUS_OPTIONS.map((status) => {
+                  const approveBlocked =
+                    status === "approved" &&
+                    !canApproveChangeOrderForAmount(
+                      effectiveRole,
+                      form.amount ? Number(form.amount) : 0
+                    );
+                  return (
+                    <option key={status} value={status} disabled={approveBlocked}>
+                      {labelize(status)}
+                      {approveBlocked ? " (Accounting / Owner required)" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </FormField>
             <FormField label="Date Submitted">
@@ -846,11 +929,24 @@ export default function ChangeOrdersPage() {
                                 tabIndex={0}
                                 className="dropdown-content menu bg-base-100 rounded-box z-40 w-44 p-2 shadow border border-base-300"
                               >
-                                {STATUS_OPTIONS.map((status) => (
+                                {STATUS_OPTIONS.map((status) => {
+                                  const approveBlocked =
+                                    status === "approved" &&
+                                    !canApproveChangeOrderForAmount(effectiveRole, co.amount);
+                                  const reason = approveBlocked
+                                    ? changeOrderApprovalBlockedReason(effectiveRole, co.amount)
+                                    : null;
+                                  return (
                                   <li key={status}>
                                     <button
                                       type="button"
-                                      disabled={busyId === co.id || busy || co.status === status}
+                                      disabled={
+                                        busyId === co.id ||
+                                        busy ||
+                                        co.status === status ||
+                                        !!approveBlocked
+                                      }
+                                      title={reason ?? undefined}
                                       onClick={() =>
                                         void setChangeOrderStatus(co, status).catch((err) => {
                                           setActionError(
@@ -863,9 +959,11 @@ export default function ChangeOrdersPage() {
                                     >
                                       {labelize(status)}
                                       {co.status === status ? " ✓" : ""}
+                                      {approveBlocked ? " · Acct/Owner" : ""}
                                     </button>
                                   </li>
-                                ))}
+                                  );
+                                })}
                               </ul>
                             </div>
                             <div className="dropdown dropdown-end">
@@ -1042,17 +1140,40 @@ export default function ChangeOrdersPage() {
                   />
                 </label>
               </FormField>
-              <FormField label="Status">
+              <FormField
+                label="Status"
+                hint={
+                  editForm.status === "approved" &&
+                  !canApproveChangeOrderForAmount(
+                    effectiveRole,
+                    editForm.amount ? Number(editForm.amount) : 0
+                  )
+                    ? changeOrderApprovalBlockedReason(
+                        effectiveRole,
+                        editForm.amount ? Number(editForm.amount) : 0
+                      ) ?? undefined
+                    : undefined
+                }
+              >
                 <select
                   className="select select-bordered select-sm w-full"
                   value={editForm.status}
                   onChange={(e) => updateEditField("status", e.target.value as ChangeOrderStatus)}
                 >
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {labelize(status)}
-                    </option>
-                  ))}
+                  {STATUS_OPTIONS.map((status) => {
+                    const approveBlocked =
+                      status === "approved" &&
+                      !canApproveChangeOrderForAmount(
+                        effectiveRole,
+                        editForm.amount ? Number(editForm.amount) : 0
+                      );
+                    return (
+                      <option key={status} value={status} disabled={approveBlocked}>
+                        {labelize(status)}
+                        {approveBlocked ? " (Accounting / Owner required)" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </FormField>
               <div className="grid sm:grid-cols-2 gap-3">
