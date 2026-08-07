@@ -85,10 +85,10 @@ function formatAmountForInput(amount: number): string {
 }
 
 /**
- * Defaults when a contract is selected. Dates, description, and amount only fill
- * when empty. Retainage and invoice number always follow the selected contract.
- * Invoice amount defaults to remaining billable capacity (revised contract value
- * less amounts already invoiced) — the full project total when nothing is billed yet.
+ * Defaults when a contract is selected. Dates and description only fill when empty.
+ * Retainage, invoice number, and invoice amount always follow the selected contract.
+ * Invoice amount is remaining billable capacity (revised contract value less amounts
+ * already invoiced) — the full project total when nothing is billed yet.
  */
 export function contractInvoiceDefaults(
   contract: Pick<Contract, "id" | "contract_name" | "retainage_percent" | "original_value">,
@@ -118,8 +118,7 @@ export function contractInvoiceDefaults(
     invoices,
     { excludeInvoiceId: options?.excludeInvoiceId }
   );
-  const invoiceAmount =
-    current.invoice_amount.trim() || formatAmountForInput(remaining);
+  const invoiceAmount = formatAmountForInput(remaining);
 
   return {
     retainage_percent:
