@@ -215,6 +215,26 @@ export interface Subcontractor {
   contracts?: { contract_name: string } | null;
 }
 
+/** AP payment recorded against a subcontractor engagement. */
+export interface SubcontractorPayment {
+  id: string;
+  subcontractor_id: string;
+  payment_amount: number | null;
+  payment_date: string | null;
+  payment_method: string | null;
+  reference_number: string | null;
+  notes: string | null;
+  recorded_by?: string | null;
+  created_at: string;
+  subcontractors?: {
+    company_name: string;
+    trade: string | null;
+    contract_id: string | null;
+    user_id: string | null;
+    contracts?: { contract_name: string } | null;
+  } | null;
+}
+
 export interface BidPackage {
   id: string;
   contract_id: string;

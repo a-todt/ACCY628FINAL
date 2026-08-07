@@ -381,6 +381,16 @@ export default function SubcontractorsPage() {
       setFormError("Contract and company name are required.");
       return;
     }
+    const paidAmt = form.amount_paid ? Number(form.amount_paid) : 0;
+    const valueAmt = form.subcontract_value ? Number(form.subcontract_value) : 0;
+    if (paidAmt < -0.005) {
+      setFormError("Amount paid cannot be negative.");
+      return;
+    }
+    if (valueAmt > 0 && paidAmt > valueAmt + 0.005) {
+      setFormError("Amount paid cannot exceed subcontract value. Use Vendor Payables to record payments.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -432,6 +442,16 @@ export default function SubcontractorsPage() {
 
     if (!editForm.contract_id || !editForm.company_name.trim()) {
       setEditError("Contract and company name are required.");
+      return;
+    }
+    const paidAmt = editForm.amount_paid ? Number(editForm.amount_paid) : 0;
+    const valueAmt = editForm.subcontract_value ? Number(editForm.subcontract_value) : 0;
+    if (paidAmt < -0.005) {
+      setEditError("Amount paid cannot be negative.");
+      return;
+    }
+    if (valueAmt > 0 && paidAmt > valueAmt + 0.005) {
+      setEditError("Amount paid cannot exceed subcontract value. Use Vendor Payables to record payments.");
       return;
     }
 

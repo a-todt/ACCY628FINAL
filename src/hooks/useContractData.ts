@@ -18,6 +18,7 @@ import type {
   Milestone,
   Payment,
   Subcontractor,
+  SubcontractorPayment,
   UserProfile,
 } from "@/lib/types";
 
@@ -25,6 +26,7 @@ interface ContractDataState {
   contracts: Contract[];
   changeOrders: ChangeOrder[];
   subcontractors: Subcontractor[];
+  subcontractorPayments: SubcontractorPayment[];
   costEntries: CostEntry[];
   invoices: Invoice[];
   payments: Payment[];
@@ -38,6 +40,7 @@ const EMPTY_STATE: ContractDataState = {
   contracts: [],
   changeOrders: [],
   subcontractors: [],
+  subcontractorPayments: [],
   costEntries: [],
   invoices: [],
   payments: [],
@@ -63,6 +66,7 @@ export function useContractData() {
         contractsRes,
         changeOrdersRes,
         subcontractorsRes,
+        subPaymentsRes,
         costEntriesRes,
         invoicesRes,
         paymentsRes,
@@ -80,6 +84,12 @@ export function useContractData() {
           .from("subcontractors")
           .select("*, contracts(contract_name)")
           .order("created_at", { ascending: false }),
+        supabase
+          .from("subcontractor_payments")
+          .select(
+            "*, subcontractors(company_name, trade, contract_id, user_id, contracts(contract_name))"
+          )
+          .order("payment_date", { ascending: false }),
         supabase
           .from("cost_entries")
           .select("*, contracts(contract_name), user_profiles(full_name, email)")
@@ -105,6 +115,7 @@ export function useContractData() {
         contractsRes.error ??
         changeOrdersRes.error ??
         subcontractorsRes.error ??
+        subPaymentsRes.error ??
         costEntriesRes.error ??
         invoicesRes.error ??
         paymentsRes.error ??
@@ -119,6 +130,7 @@ export function useContractData() {
         contracts: (contractsRes.data as Contract[]) ?? [],
         changeOrders: (changeOrdersRes.data as ChangeOrder[]) ?? [],
         subcontractors: (subcontractorsRes.data as Subcontractor[]) ?? [],
+        subcontractorPayments: (subPaymentsRes.data as SubcontractorPayment[]) ?? [],
         costEntries: (costEntriesRes.data as CostEntry[]) ?? [],
         invoices: (invoicesRes.data as Invoice[]) ?? [],
         payments: (paymentsRes.data as Payment[]) ?? [],
