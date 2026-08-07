@@ -5,8 +5,9 @@ export function isPostedPayment(payment: Payment): boolean {
 }
 
 export function nextInvoiceStatus(amountPaid: number, netAmountDue: number): InvoiceStatus {
-  if (netAmountDue > 0 && amountPaid >= netAmountDue) return "paid";
-  if (amountPaid > 0) return "partially_paid";
+  // Zero/blank invoices cannot become "paid" via AR math alone.
+  if (netAmountDue > 0.005 && amountPaid + 0.005 >= netAmountDue) return "paid";
+  if (amountPaid > 0.005) return "partially_paid";
   return "unpaid";
 }
 
