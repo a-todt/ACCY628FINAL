@@ -11,6 +11,11 @@ function contractRevisedValue(contract: Contract, changeOrders: ChangeOrder[]): 
   return Number(contract.original_value ?? 0) + approvedCos;
 }
 
+/** Pending + approved reserve capacity; rejected invoices do not. */
+function countsTowardBillableCapacity(invoice: Invoice): boolean {
+  return (invoice.approval_status ?? "approved") !== "rejected";
+}
+
 /** Remaining contract value that can still be billed (revised − already billed). */
 export function remainingBillableCapacity(
   contract: Contract,
@@ -21,7 +26,12 @@ export function remainingBillableCapacity(
   const revisedValue = contractRevisedValue(contract, changeOrders);
   const excludeId = options?.excludeInvoiceId ?? null;
   const billedOthers = invoices
-    .filter((i) => i.contract_id === contract.id && i.id !== excludeId)
+    .filter(
+      (i) =>
+        i.contract_id === contract.id &&
+        i.id !== excludeId &&
+        countsTowardBillableCapacity(i)
+    )
     .reduce((sum, i) => sum + Number(i.invoice_amount ?? 0), 0);
   return Math.max(0, revisedValue - billedOthers);
 }

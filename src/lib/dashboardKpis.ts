@@ -1,4 +1,4 @@
-import { isPostedPayment } from "@/lib/payments";
+import { isApprovedInvoice, isPostedPayment } from "@/lib/payments";
 import {
   computeContractMetrics,
   computeScheduleStatus,
@@ -118,7 +118,9 @@ export function computeCashControlsKpis(
   const overdueAr = invoices
     .filter(
       (i) =>
-        (i.status === "unpaid" || i.status === "partially_paid") && daysPastDue(i.due_date) > 0
+        isApprovedInvoice(i) &&
+        (i.status === "unpaid" || i.status === "partially_paid") &&
+        daysPastDue(i.due_date) > 0
     )
     .reduce((sum, i) => sum + invoiceOpenAr(i), 0);
 
