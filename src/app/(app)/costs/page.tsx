@@ -12,11 +12,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bar,
+  CartesianGrid,
   Cell,
+  ComposedChart,
+  Line,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import {
@@ -67,12 +72,67 @@ const EMPTY_FORM = {
 type ViewMode = "by_job" | "by_category" | "matrix" | "entries";
 type SortKey = "date" | "category" | "contract" | "amount" | "description" | "submittedBy";
 
+type YoyAverageChart = {
+  rows: Array<{ year: string; average: number; trend: number }>;
+};
+
 function submitterLabel(
   cost: CostEntry,
   profiles: Array<{ id: string; full_name: string | null; email: string | null }>
 ): string {
   const profile = profiles.find((p) => p.id === cost.user_id);
   return profile?.full_name || profile?.email || "—";
+}
+
+/** Year-over-year average job cost with a fitted trend series (for charting only). */
+function buildYoyAverageChart(entries: CostEntry[]): YoyAverageChart {
+  const byYearJob = new Map<number, Map<string, number>>();
+
+  for (const cost of entries) {
+    const raw = cost.date_incurred;
+    if (!raw) continue;
+    const year = Number(String(raw).slice(0, 4));
+    if (!Number.isFinite(year)) continue;
+    const amount = Number(cost.amount ?? 0);
+    const jobKey = cost.contract_id;
+
+    let jobs = byYearJob.get(year);
+    if (!jobs) {
+      jobs = new Map();
+      byYearJob.set(year, jobs);
+    }
+    jobs.set(jobKey, (jobs.get(jobKey) ?? 0) + amount);
+  }
+
+  const points = Array.from(byYearJob.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([year, jobs]) => {
+      const totals = Array.from(jobs.values());
+      const average = totals.length > 0 ? totals.reduce((sum, v) => sum + v, 0) / totals.length : 0;
+      return { year, average };
+    });
+
+  if (points.length === 0) return { rows: [] };
+
+  const n = points.length;
+  const meanX = points.reduce((sum, p) => sum + p.year, 0) / n;
+  const meanY = points.reduce((sum, p) => sum + p.average, 0) / n;
+  let numerator = 0;
+  let denominator = 0;
+  for (const p of points) {
+    numerator += (p.year - meanX) * (p.average - meanY);
+    denominator += (p.year - meanX) ** 2;
+  }
+  const slope = denominator === 0 ? 0 : numerator / denominator;
+  const intercept = meanY - slope * meanX;
+
+  return {
+    rows: points.map((p) => ({
+      year: String(p.year),
+      average: p.average,
+      trend: slope * p.year + intercept,
+    })),
+  };
 }
 
 export default function CostsPage() {
@@ -247,9 +307,13 @@ export default function CostsPage() {
       values: {
         average: row.entryCount > 0 ? row.total / row.entryCount : 0,
         contractId: row.contractId,
+        href: `/contracts/${row.contractId}`,
       },
     }))
   );
+
+  const yoyChart = useMemo(() => buildYoyAverageChart(scopedEntries), [scopedEntries]);
+  const useYoyChart = yoyChart.rows.length >= 2;
 
   const jobColumnOptions = useMemo(
     () => uniqueSorted(scopedEntries.map((c) => c.contracts?.contract_name)),
@@ -663,21 +727,66 @@ export default function CostsPage() {
 
           <div className="mt-4 flex min-h-0 flex-col overflow-hidden rounded-box border border-base-300 bg-base-100 lg:absolute lg:inset-y-0 lg:right-0 lg:mt-0 lg:w-[calc(50%-0.5rem)]">
             <div className="shrink-0 border-b border-base-300 px-3 py-2 text-sm font-semibold">
-              Job Cost Chart
+              {useYoyChart ? "Average Job Cost by Year" : "Job Cost Chart"}
             </div>
             <div className="flex min-h-0 flex-1 flex-col p-3 max-lg:min-h-[16rem]">
               <ExpandableChart
-                title="Job Cost Chart"
+                title={useYoyChart ? "Average Job Cost by Year" : "Job Cost Chart"}
                 actionLabel="Show all"
                 fill
                 previewHeight={220}
-                moreCount={Math.max(0, jobChartData.length - 10)}
-                hasData={jobChartData.length > 0}
+                moreCount={useYoyChart ? 0 : Math.max(0, jobChartData.length - 10)}
+                hasData={useYoyChart ? yoyChart.rows.length > 0 : jobChartData.length > 0}
                 empty={
                   <p className="text-sm opacity-60 py-8 text-center">No job costs to chart yet.</p>
                 }
               >
                 {(height, mode) => {
+                  if (useYoyChart) {
+                    return (
+                      <div className="w-full" style={{ height }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart
+                            data={yoyChart.rows}
+                            margin={{ top: 12, right: 16, left: 4, bottom: 4 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.12} />
+                            <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                            <YAxis
+                              tick={{ fontSize: 11 }}
+                              width={64}
+                              tickFormatter={(v) => money(Number(v))}
+                            />
+                            <Tooltip
+                              formatter={(value, _name, item) => {
+                                if (item?.dataKey === "trend") return null;
+                                return [money(Number(value ?? 0)), "Average job cost"];
+                              }}
+                              labelFormatter={(label) => `Year ${label}`}
+                            />
+                            <Bar
+                              dataKey="average"
+                              fill={CHART_SERIES.primary}
+                              radius={[5, 5, 0, 0]}
+                              name="Average job cost"
+                              maxBarSize={56}
+                            />
+                            <Line
+                              type="linear"
+                              dataKey="trend"
+                              stroke={CHART_SERIES.secondary}
+                              strokeWidth={2}
+                              dot={false}
+                              legendType="none"
+                              name="trend"
+                              isAnimationActive={false}
+                            />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    );
+                  }
+
                   const rows =
                     mode === "full" || jobChartData.length <= 10
                       ? jobChartData

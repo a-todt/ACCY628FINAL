@@ -331,22 +331,27 @@ function CategoryTick({
   onRowClick?: (row: NamedBarRow) => void;
 }) {
   const row = data.find((d) => d.shortName === payload?.value);
-  const clickable = Boolean(onRowClick && row);
+  const href =
+    (typeof row?.href === "string" && row.href) ||
+    (typeof row?.contractId === "string" && row.contractId
+      ? `/contracts/${row.contractId}`
+      : undefined);
+  const linked = Boolean(row && href);
 
-  return (
+  const label = (
     <text
       x={x}
       y={y}
       dy={4}
       textAnchor="end"
       fontSize={11}
-      className={clickable ? "fill-current cursor-pointer hover:fill-primary" : "fill-current"}
-      style={clickable ? { cursor: "pointer" } : undefined}
+      className={linked ? "fill-primary underline" : "fill-current"}
+      style={linked ? { cursor: "pointer" } : undefined}
       onClick={
-        clickable
+        !linked && onRowClick && row
           ? (event) => {
               event.stopPropagation();
-              onRowClick?.(row!);
+              onRowClick(row);
             }
           : undefined
       }
@@ -354,6 +359,28 @@ function CategoryTick({
       {payload?.value}
     </text>
   );
+
+  if (linked && row && href) {
+    return (
+      <a
+        href={href}
+        className="cursor-pointer"
+        onClick={(event) => {
+          if (!onRowClick) return;
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          onRowClick(row);
+        }}
+      >
+        {label}
+      </a>
+    );
+  }
+
+  return label;
 }
 
 export function ScrollableBarChart({
