@@ -8,6 +8,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { AlertBanner, EmptyState, PageHeader, SectionCard } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
+import { notifyPmInvoiceDecision } from "@/lib/invoiceNotifications";
 import { money } from "@/lib/metrics";
 import {
   HIGH_VALUE_APPROVAL_THRESHOLD,
@@ -15,6 +16,7 @@ import {
   invoiceApprovalBadge,
   invoiceApprovalLabel,
   invoiceStatusAfterAccounting,
+  isApprovedInvoice,
   isInvoiceAwaitingAccounting,
   isInvoiceAwaitingAdmin,
   isPaymentAwaitingAccounting,
@@ -30,7 +32,7 @@ import {
   canViewApprovals,
 } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
-import type { Invoice, Payment } from "@/lib/types";
+import type { Invoice, Payment, UserRole } from "@/lib/types";
 
 type QueueTab = "accounting" | "admin";
 
@@ -112,10 +114,18 @@ export default function ApprovalsPage() {
           next_status: next,
           invoice_amount: amount,
         });
+        if (next === "approved" && user?.id) {
+          await notifyPmInvoiceDecision({
+            invoice,
+            decision: "approved",
+            actorId: user.id,
+            actorRole: effectiveRole as UserRole,
+          });
+        }
         setActionSuccess(
           next === "pending_admin"
             ? "Invoice cleared by Accounting — awaiting Admin / Owner (≥ $250k)."
-            : "Invoice approved and now billable."
+            : "Invoice approved and now billable. Project manager notified."
         );
       } else {
         const { error: updateError } = await supabase
@@ -132,7 +142,15 @@ export default function ApprovalsPage() {
         await writeAuditLog("invoice_admin_approved", "invoice", invoice.id, {
           invoice_amount: amount,
         });
-        setActionSuccess("High-value invoice approved by Admin / Owner.");
+        if (user?.id) {
+          await notifyPmInvoiceDecision({
+            invoice,
+            decision: "approved",
+            actorId: user.id,
+            actorRole: effectiveRole as UserRole,
+          });
+        }
+        setActionSuccess("High-value invoice approved by Admin / Owner. Project manager notified.");
       }
       await refresh();
     } catch (err) {
@@ -173,7 +191,16 @@ export default function ApprovalsPage() {
         step,
         reason: reason.trim() || null,
       });
-      setActionSuccess("Invoice rejected — not billable.");
+      if (user?.id) {
+        await notifyPmInvoiceDecision({
+          invoice,
+          decision: "rejected",
+          actorId: user.id,
+          actorRole: effectiveRole as UserRole,
+          reason: reason.trim() || null,
+        });
+      }
+      setActionSuccess("Invoice rejected — not billable. Project manager notified.");
       await refresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to reject invoice.");
@@ -192,8 +219,8 @@ export default function ApprovalsPage() {
       setActionError("Invoice for this payment could not be found.");
       return;
     }
-    if (!isApprovedInvoiceSafe(invoice) && step === "admin") {
-      // Allow posting payment even if somehow invoice pending — prefer approved
+    if (!isApprovedInvoice(invoice) && step === "admin") {
+      // Prefer approving payments only after the invoice is approved.
     }
 
     setBusyId(payment.id);
@@ -500,8 +527,4 @@ export default function ApprovalsPage() {
       </SectionCard>
     </div>
   );
-}
-
-function isApprovedInvoiceSafe(invoice: Invoice): boolean {
-  return (invoice.approval_status ?? "approved") === "approved";
 }

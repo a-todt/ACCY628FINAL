@@ -73,7 +73,7 @@ export interface ContractAssignment {
   id: string;
   contract_id: string;
   user_id: string;
-  assignment_role: "project_manager" | "field_supervisor";
+  assignment_role: "project_manager" | "field_supervisor" | "owner";
   created_at: string;
   contracts?: { contract_name: string } | null;
   user_profiles?: { full_name: string | null; email: string | null; role: UserRole } | null;

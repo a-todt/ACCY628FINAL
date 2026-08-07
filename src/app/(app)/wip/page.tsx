@@ -19,7 +19,7 @@ import { AlertBanner, EmptyState, PageHeader, SectionCard } from "@/components/u
 import { useWipLayout } from "@/hooks/useWipLayout";
 import { downloadCsv } from "@/lib/export";
 import { moneyExact, percent } from "@/lib/metrics";
-import { canViewCosts } from "@/lib/roles";
+import { canListCompanyProjects, canViewCosts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import { WIP_PANES, defaultWipLayout } from "@/lib/wipLayout";
 import {
@@ -106,6 +106,7 @@ export default function WIPSchedulePage() {
   const [showAllRows, setShowAllRows] = useState(false);
 
   const allowed = canViewCosts(effectiveRole);
+  const listCompanyProjects = canListCompanyProjects(effectiveRole);
 
   useEffect(() => {
     setShowAllRows(false);
@@ -143,11 +144,14 @@ export default function WIPSchedulePage() {
         P.createdAt
       );
 
-      const { data: projectRows, error: projectsError } = await supabase
+      let projectQuery = supabase
         .from(P.table)
         .select(projectSelect)
-        .eq(P.userId, user.id)
         .order(P.name, { ascending: true });
+      if (!listCompanyProjects) {
+        projectQuery = projectQuery.eq(P.userId, user.id);
+      }
+      const { data: projectRows, error: projectsError } = await projectQuery;
 
       if (projectsError) throw projectsError;
 
@@ -163,18 +167,19 @@ export default function WIPSchedulePage() {
 
       const ids = list.map((row) => String(row[P.pk]));
 
-      const [costsRes, billingsRes] = await Promise.all([
-        supabase
-          .from(C.table)
-          .select(selectList(C.fk, C.amount))
-          .eq(C.userId, user.id)
-          .in(C.fk, ids),
-        supabase
-          .from(B.table)
-          .select(selectList(B.fk, B.amountBilled, B.retainageHeld))
-          .eq(B.userId, user.id)
-          .in(B.fk, ids),
-      ]);
+      let costsQuery = supabase
+        .from(C.table)
+        .select(selectList(C.fk, C.amount))
+        .in(C.fk, ids);
+      let billingsQuery = supabase
+        .from(B.table)
+        .select(selectList(B.fk, B.amountBilled, B.retainageHeld))
+        .in(B.fk, ids);
+      if (!listCompanyProjects) {
+        costsQuery = costsQuery.eq(C.userId, user.id);
+        billingsQuery = billingsQuery.eq(B.userId, user.id);
+      }
+      const [costsRes, billingsRes] = await Promise.all([costsQuery, billingsQuery]);
 
       if (costsRes.error) throw costsRes.error;
       if (billingsRes.error) throw billingsRes.error;
@@ -202,7 +207,7 @@ export default function WIPSchedulePage() {
     } finally {
       setLoading(false);
     }
-  }, [user, allowed]);
+  }, [user, allowed, listCompanyProjects]);
 
   useEffect(() => {
     void load();

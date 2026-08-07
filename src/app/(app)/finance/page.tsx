@@ -9,6 +9,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { daysPastDue, invoiceRetainageReceivable, labelize, money } from "@/lib/metrics";
+import { isApprovedInvoice } from "@/lib/payments";
 import { canViewCosts, canViewInvoices, statusBadgeClass } from "@/lib/roles";
 
 export default function FinanceOverviewPage() {
@@ -18,24 +19,28 @@ export default function FinanceOverviewPage() {
   const showCosts = canViewCosts(effectiveRole);
   const showInvoices = canViewInvoices(effectiveRole);
 
+  const billableInvoices = useMemo(
+    () => (showInvoices ? invoices.filter(isApprovedInvoice) : []),
+    [invoices, showInvoices]
+  );
+
   const invoiceStatuses = useMemo(() => {
-    if (!showInvoices) return [];
-    return invoices.map((invoice) => {
+    return billableInvoices.map((invoice) => {
       const overdue =
         (invoice.status === "unpaid" || invoice.status === "partially_paid") &&
         daysPastDue(invoice.due_date) > 0;
       return overdue ? "overdue" : invoice.status;
     });
-  }, [invoices, showInvoices]);
+  }, [billableInvoices]);
 
   const totalCosts = costEntries.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
-  const totalBilled = invoices.reduce((sum, i) => sum + Number(i.invoice_amount ?? 0), 0);
-  const totalCollected = invoices.reduce((sum, i) => sum + Number(i.amount_paid ?? 0), 0);
+  const totalBilled = billableInvoices.reduce((sum, i) => sum + Number(i.invoice_amount ?? 0), 0);
+  const totalCollected = billableInvoices.reduce((sum, i) => sum + Number(i.amount_paid ?? 0), 0);
   const totalPayments = payments
     .filter((p) => (p.approval_status ?? "posted") === "posted")
     .reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0);
   const overdueCount = invoiceStatuses.filter((status) => status === "overdue").length;
-  const retainageReceivable = invoices.reduce(
+  const retainageReceivable = billableInvoices.reduce(
     (sum, i) => sum + invoiceRetainageReceivable(i),
     0
   );
@@ -81,7 +86,7 @@ export default function FinanceOverviewPage() {
                     : []),
                   ...(showInvoices
                     ? [
-                        { Metric: "Total Billed", Value: totalBilled, Count: invoices.length },
+                        { Metric: "Total Billed", Value: totalBilled, Count: billableInvoices.length },
                         {
                           Metric: "Collected",
                           Value: Math.max(totalCollected, totalPayments),
@@ -147,7 +152,7 @@ export default function FinanceOverviewPage() {
             compact
             title="Total Billed"
             value={money(totalBilled)}
-            hint={`${invoices.length} invoices`}
+            hint={`${billableInvoices.length} approved invoices`}
             icon={Receipt}
             href="/invoices"
           />

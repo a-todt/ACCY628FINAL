@@ -1,4 +1,5 @@
 import { daysPastDue, labelize, money } from "@/lib/metrics";
+import { isApprovedInvoice } from "@/lib/payments";
 import { canViewFraudAlerts } from "@/lib/roles";
 import { isBadWeather } from "@/lib/weather";
 import type {
@@ -8,11 +9,14 @@ import type {
   FieldLog,
   Invoice,
   Payment,
+  UserProfile,
   UserRole,
 } from "@/lib/types";
 
 export type AlertSeverity = "critical" | "warning" | "info";
 export type AlertCategory = "invoice" | "weather" | "change_order" | "fraud";
+
+export type FraudCompareKind = "invoice" | "payment" | "cost" | "mixed";
 
 export interface AlertItem {
   id: string;
@@ -33,6 +37,12 @@ export interface AlertSourceData {
   payments?: Payment[];
   costEntries?: CostEntry[];
   contracts?: Contract[];
+  assignments?: Array<{
+    contract_id: string;
+    user_id: string;
+    assignment_role?: string | null;
+  }>;
+  userProfiles?: UserProfile[];
 }
 
 function canSeeFinancialAlerts(role: UserRole): boolean {
@@ -41,6 +51,37 @@ function canSeeFinancialAlerts(role: UserRole): boolean {
 
 function encodeQuery(value: string): string {
   return encodeURIComponent(value);
+}
+
+/** Side-by-side review URL for clustered fraud / duplicate alerts. */
+export function fraudCompareHref(args: {
+  kind: FraudCompareKind;
+  invoiceIds?: string[];
+  paymentIds?: string[];
+  costIds?: string[];
+}): string {
+  const params = new URLSearchParams();
+  params.set("kind", args.kind);
+  if (args.invoiceIds?.length) params.set("invoices", args.invoiceIds.join(","));
+  if (args.paymentIds?.length) params.set("payments", args.paymentIds.join(","));
+  if (args.costIds?.length) params.set("costs", args.costIds.join(","));
+  return `/alerts/compare?${params.toString()}`;
+}
+
+function moneyKey(amount: number): string {
+  return (Math.round(amount * 100) / 100).toFixed(2);
+}
+
+const EXACT_STRUCTURING_AMOUNT = 249_999;
+const BAND_MIN = 240_000;
+const BAND_MAX = 250_000;
+
+function inStructuringBand(amount: number): boolean {
+  return amount >= BAND_MIN - 0.005 && amount <= BAND_MAX + 0.005;
+}
+
+function isExactStructuringAmount(amount: number): boolean {
+  return Math.abs(amount - EXACT_STRUCTURING_AMOUNT) < 0.005;
 }
 
 /** Adverse field-log weather — shown in the PM weather inbox, not the main alerts feed. */
@@ -76,6 +117,16 @@ export function buildWeatherAlerts(fieldLogs: FieldLog[]): AlertItem[] {
 const LARGE_CO_THRESHOLD = 50_000;
 const COST_SPIKE_RATIO = 1.15;
 
+type ChargeRef = {
+  kind: "cost" | "invoice" | "payment";
+  id: string;
+  amount: number;
+  actorId: string;
+  actorLabel: string;
+  label: string;
+  createdAt: string;
+};
+
 /** Rule-based fraud / control exceptions — owner + admin inbox (no ML scoring). */
 function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   const alerts: AlertItem[] = [];
@@ -83,6 +134,21 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   const costs = data.costEntries ?? [];
   const contracts = data.contracts ?? [];
   const invoices = data.invoices;
+  const assignments = data.assignments ?? [];
+  const profiles = data.userProfiles ?? [];
+
+  const profileName = (userId: string | null | undefined) => {
+    if (!userId) return "Unknown user";
+    const profile = profiles.find((p) => p.id === userId);
+    return profile?.full_name?.trim() || profile?.email || "Project manager";
+  };
+
+  const pmForContract = (contractId: string): string | null => {
+    const row = assignments.find(
+      (a) => a.contract_id === contractId && a.assignment_role === "project_manager"
+    );
+    return row?.user_id ?? null;
+  };
 
   // 1) Payments awaiting Accounting or Admin dual-approval
   for (const payment of payments) {
@@ -129,7 +195,48 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     });
   }
 
-  // 3) Duplicate invoice numbers across contracts
+  // 2b) Zero-dollar or negative payments
+  for (const payment of payments) {
+    const amount = Number(payment.payment_amount ?? 0);
+    if (amount > 0.005) continue;
+    if ((payment.approval_status ?? "posted") === "rejected") continue;
+    const invoice = invoices.find((i) => i.id === payment.invoice_id);
+    const number = invoice?.invoice_number?.trim() || "Invoice";
+    alerts.push({
+      id: `fraud-payment-zero-${payment.id}`,
+      severity: "critical",
+      category: "fraud",
+      title: `Potential fraud — $0 / blank payment on ${number}`,
+      detail: `${invoice?.contracts?.contract_name ?? "Project"} · Payment amount ${money(amount)}`,
+      action: "Delete or correct this payment — zero-dollar payments are not allowed",
+      href: `/invoices/${payment.invoice_id}?tab=payments`,
+      createdAt: payment.submitted_at ?? payment.created_at ?? now,
+    });
+  }
+
+  // 2c) Single payment larger than the invoice net due
+  for (const payment of payments) {
+    if ((payment.approval_status ?? "posted") === "rejected") continue;
+    const amount = Number(payment.payment_amount ?? 0);
+    if (amount <= 0.005) continue;
+    const invoice = invoices.find((i) => i.id === payment.invoice_id);
+    if (!invoice) continue;
+    const net = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
+    if (net <= 0 || amount <= net + 0.01) continue;
+    const number = invoice.invoice_number?.trim() || "Invoice";
+    alerts.push({
+      id: `fraud-payment-oversize-${payment.id}`,
+      severity: "critical",
+      category: "fraud",
+      title: `Potential fraud — payment ${money(amount)} exceeds ${number} net due`,
+      detail: `${invoice.contracts?.contract_name ?? "Project"} · Net due ${money(net)}`,
+      action: "Reject or reverse this payment — amount exceeds the invoice",
+      href: `/invoices/${payment.invoice_id}?tab=payments`,
+      createdAt: payment.submitted_at ?? payment.created_at ?? now,
+    });
+  }
+
+  // 3) Duplicate invoice numbers — open side-by-side
   const byNumber = new Map<string, Invoice[]>();
   for (const invoice of invoices) {
     const key = (invoice.invoice_number ?? "").trim().toLowerCase();
@@ -147,9 +254,172 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
       category: "fraud",
       title: `Potential fraud — duplicate invoice number “${first.invoice_number}”`,
       detail: `${list.length} invoices share this number — possible duplicate billing`,
-      action: "Open invoices and verify each billing is unique",
-      href: `/invoices`,
+      action: "Compare the duplicate invoices side by side",
+      href: fraudCompareHref({
+        kind: "invoice",
+        invoiceIds: list.map((i) => i.id),
+      }),
       createdAt: first.created_at ?? now,
+    });
+  }
+
+  // 3b) Duplicate payments
+  const paymentGroups = new Map<string, Payment[]>();
+  for (const payment of payments) {
+    if ((payment.approval_status ?? "posted") === "rejected") continue;
+    const amount = Number(payment.payment_amount ?? 0);
+    if (amount <= 0.005) continue;
+    const ref = (payment.reference_number ?? "").trim().toLowerCase();
+    const actor = payment.submitted_by ?? "unknown";
+    const groupKey = ref
+      ? `ref:${ref}:${moneyKey(amount)}`
+      : `actor:${actor}:${moneyKey(amount)}`;
+    const list = paymentGroups.get(groupKey) ?? [];
+    list.push(payment);
+    paymentGroups.set(groupKey, list);
+  }
+  for (const [groupKey, list] of paymentGroups) {
+    if (list.length < 2) continue;
+    const first = list[0];
+    const amount = Number(first.payment_amount ?? 0);
+    alerts.push({
+      id: `fraud-dup-payment-${groupKey}`,
+      severity: "critical",
+      category: "fraud",
+      title: `Potential fraud — duplicate payments of ${money(amount)}`,
+      detail: `${list.length} payments look the same${
+        first.reference_number ? ` · Ref ${first.reference_number}` : ""
+      }`,
+      action: "Compare the duplicate payments side by side",
+      href: fraudCompareHref({
+        kind: "payment",
+        paymentIds: list.map((p) => p.id),
+      }),
+      createdAt: first.created_at ?? now,
+    });
+  }
+
+  // 3c) Structuring: exact $249,999 by same PM (2+), and $240k–$250k clusters (3+)
+  const charges: ChargeRef[] = [];
+
+  for (const cost of costs) {
+    const amount = Number(cost.amount ?? 0);
+    if (amount <= 0) continue;
+    const actorId =
+      cost.user_id ?? pmForContract(cost.contract_id) ?? `contract:${cost.contract_id}`;
+    charges.push({
+      kind: "cost",
+      id: cost.id,
+      amount,
+      actorId,
+      actorLabel: profileName(cost.user_id ?? pmForContract(cost.contract_id)),
+      label: `${cost.contracts?.contract_name ?? "Project"} · ${cost.category ?? "cost"}`,
+      createdAt: cost.created_at ?? cost.date_incurred ?? now,
+    });
+  }
+
+  for (const invoice of invoices) {
+    const amount = Number(invoice.invoice_amount ?? 0);
+    if (amount <= 0) continue;
+    const pmId = pmForContract(invoice.contract_id);
+    const actorId = pmId ?? `contract:${invoice.contract_id}`;
+    charges.push({
+      kind: "invoice",
+      id: invoice.id,
+      amount,
+      actorId,
+      actorLabel: profileName(pmId),
+      label: `${invoice.invoice_number?.trim() || "Invoice"} · ${
+        invoice.contracts?.contract_name ?? "Project"
+      }`,
+      createdAt: invoice.created_at ?? invoice.invoice_date ?? now,
+    });
+  }
+
+  const byActorExact = new Map<string, ChargeRef[]>();
+  const byActorBand = new Map<string, ChargeRef[]>();
+  for (const charge of charges) {
+    if (isExactStructuringAmount(charge.amount)) {
+      const list = byActorExact.get(charge.actorId) ?? [];
+      list.push(charge);
+      byActorExact.set(charge.actorId, list);
+    }
+    if (inStructuringBand(charge.amount)) {
+      const list = byActorBand.get(charge.actorId) ?? [];
+      list.push(charge);
+      byActorBand.set(charge.actorId, list);
+    }
+  }
+
+  for (const [actorId, list] of byActorExact) {
+    if (list.length < 2) continue;
+    const invoiceIds = list.filter((c) => c.kind === "invoice").map((c) => c.id);
+    const costIds = list.filter((c) => c.kind === "cost").map((c) => c.id);
+    const kind: FraudCompareKind =
+      invoiceIds.length && costIds.length ? "mixed" : invoiceIds.length ? "invoice" : "cost";
+    alerts.push({
+      id: `fraud-exact-249999-${actorId}`,
+      severity: "critical",
+      category: "fraud",
+      title: `Potential fraud — repeated ${money(EXACT_STRUCTURING_AMOUNT)} charges`,
+      detail: `${list[0].actorLabel} · ${list.length} charges at exactly $249,999`,
+      action: "Compare these charges side by side",
+      href: fraudCompareHref({ kind, invoiceIds, costIds }),
+      createdAt: list[0].createdAt,
+    });
+  }
+
+  for (const [actorId, list] of byActorBand) {
+    if (list.length < 3) continue;
+    const invoiceIds = list.filter((c) => c.kind === "invoice").map((c) => c.id);
+    const costIds = list.filter((c) => c.kind === "cost").map((c) => c.id);
+    const kind: FraudCompareKind =
+      invoiceIds.length && costIds.length ? "mixed" : invoiceIds.length ? "invoice" : "cost";
+    alerts.push({
+      id: `fraud-band-240-250-${actorId}`,
+      severity: "warning",
+      category: "fraud",
+      title: `Suspicious activity — ${list.length} charges between $240k–$250k`,
+      detail: `${list[0].actorLabel} · amounts near approval thresholds`,
+      action: "Compare these invoices / charges side by side",
+      href: fraudCompareHref({ kind, invoiceIds, costIds }),
+      createdAt: list[0].createdAt,
+    });
+  }
+
+  const bandInvoices = invoices.filter((i) =>
+    inStructuringBand(Number(i.invoice_amount ?? 0))
+  );
+  if (bandInvoices.length >= 3) {
+    alerts.push({
+      id: `fraud-band-invoices-global`,
+      severity: "warning",
+      category: "fraud",
+      title: `Suspicious activity — ${bandInvoices.length} invoices between $240k–$250k`,
+      detail: "Multiple invoices sit just under a common $250k threshold",
+      action: "Compare these invoices side by side",
+      href: fraudCompareHref({
+        kind: "invoice",
+        invoiceIds: bandInvoices.map((i) => i.id),
+      }),
+      createdAt: bandInvoices[0]?.created_at ?? now,
+    });
+  }
+
+  const bandCosts = costs.filter((c) => inStructuringBand(Number(c.amount ?? 0)));
+  if (bandCosts.length >= 3) {
+    alerts.push({
+      id: `fraud-band-costs-global`,
+      severity: "warning",
+      category: "fraud",
+      title: `Suspicious activity — ${bandCosts.length} cost charges between $240k–$250k`,
+      detail: "Multiple cost entries sit just under a common $250k threshold",
+      action: "Compare these charges side by side",
+      href: fraudCompareHref({
+        kind: "cost",
+        costIds: bandCosts.map((c) => c.id),
+      }),
+      createdAt: bandCosts[0]?.created_at ?? now,
     });
   }
 
@@ -172,14 +442,14 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     });
   }
 
-  // 5) Job costs exceeding billed × spike ratio (or revised value if no billings)
+  // 5) Job costs exceeding billed × spike ratio
   for (const contract of contracts) {
     const contractCosts = costs
       .filter((c) => c.contract_id === contract.id)
       .reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
     if (contractCosts <= 0) continue;
     const billed = invoices
-      .filter((i) => i.contract_id === contract.id)
+      .filter((i) => i.contract_id === contract.id && isApprovedInvoice(i))
       .reduce((sum, i) => sum + Number(i.invoice_amount ?? 0), 0);
     const baseline = billed > 0 ? billed : Number(contract.original_value ?? 0);
     if (baseline <= 0) continue;
@@ -217,15 +487,22 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
 }
 
 export function alertBadgeLabel(alert: AlertItem): string {
-  if (alert.category === "fraud") return "Control";
+  if (alert.category === "fraud") {
+    if (alert.severity === "warning" && /suspicious/i.test(alert.title)) {
+      return "Suspicious";
+    }
+    return "Potential fraud";
+  }
   if (alert.category === "invoice" && alert.severity === "critical") return "Overdue";
   return labelize(alert.severity);
 }
 
-/** High-contrast fraud styling that stays readable on light backgrounds. */
 export function alertBadgeClass(alert: AlertItem, size: "xs" | "sm" = "sm"): string {
   const sizeClass = size === "xs" ? "badge-xs" : "badge-sm";
   if (alert.category === "fraud") {
+    if (alert.severity === "warning") {
+      return `${sizeClass} border border-amber-800 bg-amber-600 text-white font-semibold`;
+    }
     return `${sizeClass} border border-red-900 bg-red-700 text-white font-semibold`;
   }
   if (alert.severity === "critical") return `${sizeClass} badge-error`;
@@ -235,23 +512,36 @@ export function alertBadgeClass(alert: AlertItem, size: "xs" | "sm" = "sm"): str
 
 export function alertRowClass(alert: AlertItem): string {
   if (alert.category === "fraud") {
+    if (alert.severity === "warning") {
+      return "rounded-md bg-amber-50 border border-amber-200 border-l-[6px] border-l-amber-600 my-1 px-1.5";
+    }
     return "rounded-md bg-red-50 border border-red-200 border-l-[6px] border-l-red-700 my-1 px-1.5";
   }
   return "";
 }
 
 export function alertTitleClass(alert: AlertItem): string {
-  if (alert.category === "fraud") return "text-red-950 font-semibold";
+  if (alert.category === "fraud") {
+    return alert.severity === "warning"
+      ? "text-amber-950 font-semibold"
+      : "text-red-950 font-semibold";
+  }
   return "";
 }
 
 export function alertDetailClass(alert: AlertItem): string {
-  if (alert.category === "fraud") return "text-red-900";
+  if (alert.category === "fraud") {
+    return alert.severity === "warning" ? "text-amber-900" : "text-red-900";
+  }
   return "opacity-70";
 }
 
 export function alertMetaClass(alert: AlertItem): string {
-  if (alert.category === "fraud") return "text-red-800 font-medium";
+  if (alert.category === "fraud") {
+    return alert.severity === "warning"
+      ? "text-amber-800 font-medium"
+      : "text-red-800 font-medium";
+  }
   return "opacity-50";
 }
 
@@ -262,6 +552,7 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
 
   if (isClient || canSeeFinancialAlerts(role)) {
     for (const invoice of data.invoices) {
+      if (!isApprovedInvoice(invoice)) continue;
       const outstanding =
         Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0) -
         Number(invoice.amount_paid ?? 0);
@@ -286,6 +577,55 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
         href: `/invoices/${invoice.id}`,
         createdAt: invoice.due_date ?? invoice.created_at ?? now,
       });
+    }
+  }
+
+  // Tell PMs when their invoices are approved or rejected.
+  if (role === "project_manager") {
+    for (const invoice of data.invoices) {
+      const status = invoice.approval_status ?? "approved";
+      if (status !== "approved" && status !== "rejected") continue;
+      // Skip legacy approved rows that never went through the approval queue.
+      if (
+        status === "approved" &&
+        !invoice.accounting_approved_at &&
+        !invoice.admin_approved_at
+      ) {
+        continue;
+      }
+      const decidedAt =
+        invoice.admin_approved_at ??
+        invoice.accounting_approved_at ??
+        invoice.created_at ??
+        now;
+      const number = invoice.invoice_number?.trim() || "Invoice";
+      const project = invoice.contracts?.contract_name ?? "Project";
+      const amount = money(Number(invoice.invoice_amount ?? invoice.net_amount_due ?? 0));
+      if (status === "rejected") {
+        alerts.push({
+          id: `invoice-rejected-${invoice.id}`,
+          severity: "warning",
+          category: "invoice",
+          title: `${number} was rejected`,
+          detail: `${project} · ${amount}${
+            invoice.rejection_reason ? ` · ${invoice.rejection_reason}` : ""
+          }`,
+          action: "Review the rejection and resubmit if needed",
+          href: `/invoices/${invoice.id}`,
+          createdAt: decidedAt,
+        });
+      } else {
+        alerts.push({
+          id: `invoice-approved-${invoice.id}`,
+          severity: "info",
+          category: "invoice",
+          title: `${number} was approved`,
+          detail: `${project} · ${amount} is now billable`,
+          action: "Open invoice to track collection",
+          href: `/invoices/${invoice.id}`,
+          createdAt: decidedAt,
+        });
+      }
     }
   }
 

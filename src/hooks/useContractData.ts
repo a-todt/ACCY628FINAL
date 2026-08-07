@@ -82,7 +82,7 @@ export function useContractData() {
           .order("created_at", { ascending: false }),
         supabase
           .from("cost_entries")
-          .select("*, contracts(contract_name)")
+          .select("*, contracts(contract_name), user_profiles(full_name, email)")
           .order("date_incurred", { ascending: false }),
         supabase
           .from("invoices")
@@ -128,7 +128,16 @@ export function useContractData() {
         assignments: (assignmentsRes.data as ContractAssignmentRow[]) ?? [],
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load contract data");
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" &&
+              err !== null &&
+              "message" in err &&
+              typeof (err as { message: unknown }).message === "string"
+            ? (err as { message: string }).message
+            : "Failed to load contract data";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -152,6 +161,7 @@ export function useContractData() {
 
   return {
     ...scoped,
+    assignments: data.assignments,
     loading,
     error,
     refresh: load,

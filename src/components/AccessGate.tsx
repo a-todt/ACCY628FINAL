@@ -313,13 +313,11 @@ export function AccessGate({
         </>
       ) : null}
 
-      {access.status === "locked" &&
-      (access.role === "project_manager" || access.role === "field_supervisor") ? (
+      {access.status === "locked" && access.role === "field_supervisor" ? (
         <SectionCard title="Waiting for assignment">
           <p className="text-sm opacity-80">
-            Ask your Admin / Owner to assign you to a contract under{" "}
-            <strong>Company Management → Assignments</strong>. You will unlock automatically after
-            that.
+            Ask a Project Manager to assign you to a contract when they create or update a project.
+            You will unlock automatically after that.
           </p>
           <button type="button" className="btn btn-outline btn-sm mt-4" onClick={() => access.refresh()}>
             Check again

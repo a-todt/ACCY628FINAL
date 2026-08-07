@@ -11,6 +11,11 @@ function contractRevisedValue(contract: Contract, changeOrders: ChangeOrder[]): 
   return Number(contract.original_value ?? 0) + approvedCos;
 }
 
+/** Pending + approved reserve capacity; rejected invoices do not. */
+function countsTowardBillableCapacity(invoice: Invoice): boolean {
+  return (invoice.approval_status ?? "approved") !== "rejected";
+}
+
 /** Remaining contract value that can still be billed (revised − already billed). */
 export function remainingBillableCapacity(
   contract: Contract,
@@ -21,7 +26,12 @@ export function remainingBillableCapacity(
   const revisedValue = contractRevisedValue(contract, changeOrders);
   const excludeId = options?.excludeInvoiceId ?? null;
   const billedOthers = invoices
-    .filter((i) => i.contract_id === contract.id && i.id !== excludeId)
+    .filter(
+      (i) =>
+        i.contract_id === contract.id &&
+        i.id !== excludeId &&
+        countsTowardBillableCapacity(i)
+    )
     .reduce((sum, i) => sum + Number(i.invoice_amount ?? 0), 0);
   return Math.max(0, revisedValue - billedOthers);
 }
@@ -66,16 +76,31 @@ export function validateInvoiceBillingAmount(args: {
 
 export function validatePaymentAmount(
   amount: number,
-  invoice: Invoice
+  invoice: Invoice,
+  options?: { reservedPending?: number }
 ): string | null {
   const positive = validatePositiveAmount(amount, "Payment amount");
   if (positive) return positive;
-  const open = invoiceOpenAr(invoice);
+  const reserved = Math.max(0, Number(options?.reservedPending ?? 0));
+  const open = Math.max(0, invoiceOpenAr(invoice) - reserved);
   if (open <= MONEY_EPS) {
     return "This invoice has no open balance to pay.";
   }
   if (amount > open + MONEY_EPS) {
     return `Payment cannot exceed the open balance (${moneyExact(open)}).`;
+  }
+  return null;
+}
+
+/** Manual amount_paid edits cannot exceed net due (no silent overpay). */
+export function validateAmountPaid(
+  amountPaid: number,
+  netAmountDue: number
+): string | null {
+  if (!Number.isFinite(amountPaid)) return "Amount paid must be a valid number.";
+  if (amountPaid < -MONEY_EPS) return "Amount paid cannot be negative.";
+  if (amountPaid > netAmountDue + MONEY_EPS) {
+    return `Amount paid cannot exceed net due (${moneyExact(netAmountDue)}).`;
   }
   return null;
 }
