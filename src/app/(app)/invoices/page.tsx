@@ -27,6 +27,7 @@ import {
   validateInvoiceStatusChange,
   validatePaymentAmount,
 } from "@/lib/invoiceValidation";
+import { contractInvoiceDefaults } from "@/lib/invoices";
 import { daysPastDue, labelize, money, moneyExact } from "@/lib/metrics";
 import { invoiceAfterApplyingPayment, paymentNeedsOwnerApproval } from "@/lib/payments";
 import { canApprovePayments, canCreateInvoices, canRecordPayments, canSelfApprovePayment, statusBadgeClass } from "@/lib/roles";
@@ -160,6 +161,36 @@ export default function InvoicesPage() {
     [invoices]
   );
 
+  const invoicesForSuggestions = useMemo(() => {
+    if (!invoiceForm.contract_id) return invoices;
+    return invoices.filter((invoice) => invoice.contract_id === invoiceForm.contract_id);
+  }, [invoices, invoiceForm.contract_id]);
+
+  const invoiceNumberSuggestions = useMemo(
+    () => uniqueSorted(invoicesForSuggestions.map((invoice) => invoice.invoice_number)),
+    [invoicesForSuggestions]
+  );
+
+  const descriptionSuggestions = useMemo(
+    () => uniqueSorted(invoicesForSuggestions.map((invoice) => invoice.description)),
+    [invoicesForSuggestions]
+  );
+
+  const notesSuggestions = useMemo(
+    () => uniqueSorted(invoicesForSuggestions.map((invoice) => invoice.notes)),
+    [invoicesForSuggestions]
+  );
+
+  const paymentMethodSuggestions = useMemo(
+    () => uniqueSorted(payments.map((payment) => payment.payment_method)),
+    [payments]
+  );
+
+  const selectedContract = useMemo(
+    () => contracts.find((c) => c.id === invoiceForm.contract_id) ?? null,
+    [contracts, invoiceForm.contract_id]
+  );
+
   const selectedRows = useMemo(
     () => filtered.filter((invoice) => selectedIds.has(invoice.id)),
     [filtered, selectedIds]
@@ -233,12 +264,21 @@ export default function InvoicesPage() {
 
   const onContractChange = (contractId: string) => {
     const contract = contracts.find((c) => c.id === contractId);
-    setInvoiceForm((prev) => ({
-      ...prev,
-      contract_id: contractId,
-      retainage_percent:
-        contract?.retainage_percent != null ? String(contract.retainage_percent) : prev.retainage_percent,
-    }));
+    setInvoiceForm((prev) => {
+      if (!contract) {
+        return { ...prev, contract_id: contractId };
+      }
+      const defaults = contractInvoiceDefaults(contract, invoices, prev);
+      return {
+        ...prev,
+        contract_id: contractId,
+        retainage_percent: defaults.retainage_percent,
+        invoice_date: defaults.invoice_date ?? prev.invoice_date,
+        due_date: defaults.due_date ?? prev.due_date,
+        description: defaults.description ?? prev.description,
+        invoice_number: defaults.invoice_number ?? prev.invoice_number,
+      };
+    });
   };
 
   const setInvoiceStatus = async (
@@ -642,7 +682,15 @@ export default function InvoicesPage() {
             {invoiceSuccess ? <AlertBanner type="success">{invoiceSuccess}</AlertBanner> : null}
             <form onSubmit={onSubmitInvoice} className="mt-4 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField stacked label="Contract">
+                <FormField
+                  stacked
+                  label="Contract"
+                  hint={
+                    selectedContract?.client_name
+                      ? `Client: ${selectedContract.client_name}`
+                      : undefined
+                  }
+                >
                   <select
                     className="select select-bordered w-full"
                     value={invoiceForm.contract_id}
@@ -660,10 +708,17 @@ export default function InvoicesPage() {
                 <FormField stacked label="Invoice Number">
                   <input
                     className="input input-bordered w-full"
+                    list="invoice-number-suggestions"
                     value={invoiceForm.invoice_number}
                     onChange={(e) => updateInvoiceField("invoice_number", e.target.value)}
                     required
+                    autoComplete="off"
                   />
+                  <datalist id="invoice-number-suggestions">
+                    {invoiceNumberSuggestions.map((value) => (
+                      <option key={value} value={value} />
+                    ))}
+                  </datalist>
                 </FormField>
                 <FormField stacked label="Invoice Date">
                   <input
@@ -738,22 +793,34 @@ export default function InvoicesPage() {
                 </FormField>
                 <div className="sm:col-span-2">
                   <FormField stacked label="Description">
-                    <textarea
-                      className="textarea textarea-bordered w-full"
-                      rows={2}
+                    <input
+                      className="input input-bordered w-full"
+                      list="invoice-description-suggestions"
                       value={invoiceForm.description}
                       onChange={(e) => updateInvoiceField("description", e.target.value)}
+                      autoComplete="off"
                     />
+                    <datalist id="invoice-description-suggestions">
+                      {descriptionSuggestions.map((value) => (
+                        <option key={value} value={value} />
+                      ))}
+                    </datalist>
                   </FormField>
                 </div>
                 <div className="sm:col-span-2">
                   <FormField stacked label="Notes">
-                    <textarea
-                      className="textarea textarea-bordered w-full"
-                      rows={2}
+                    <input
+                      className="input input-bordered w-full"
+                      list="invoice-notes-suggestions"
                       value={invoiceForm.notes}
                       onChange={(e) => updateInvoiceField("notes", e.target.value)}
+                      autoComplete="off"
                     />
+                    <datalist id="invoice-notes-suggestions">
+                      {notesSuggestions.map((value) => (
+                        <option key={value} value={value} />
+                      ))}
+                    </datalist>
                   </FormField>
                 </div>
               </div>
@@ -890,10 +957,17 @@ export default function InvoicesPage() {
             <FormField label="Payment Method">
               <input
                 className="input input-bordered"
+                list="payment-method-suggestions"
                 value={paymentForm.payment_method}
                 onChange={(e) => updatePaymentField("payment_method", e.target.value)}
                 placeholder="e.g. ACH, Check, Wire"
+                autoComplete="off"
               />
+              <datalist id="payment-method-suggestions">
+                {paymentMethodSuggestions.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
             </FormField>
             <FormField label="Reference #">
               <input
