@@ -1,4 +1,5 @@
-import type { Contract, Invoice } from "@/lib/types";
+import { remainingBillableCapacity } from "@/lib/invoiceValidation";
+import type { ChangeOrder, Contract, Invoice } from "@/lib/types";
 
 /** Local calendar date as YYYY-MM-DD. */
 export function todayIsoDate(now = new Date()): string {
@@ -75,20 +76,33 @@ export type InvoiceContractDefaults = {
   due_date?: string;
   description?: string;
   invoice_number?: string;
+  invoice_amount?: string;
 };
 
+function formatAmountForInput(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  return String(Number(amount.toFixed(2)));
+}
+
 /**
- * Defaults when a contract is selected. Only fills empty text/date fields;
- * retainage always follows the contract.
+ * Defaults when a contract is selected. Dates, description, and amount only fill
+ * when empty. Retainage and invoice number always follow the selected contract.
+ * Invoice amount defaults to remaining billable capacity (revised contract value
+ * less amounts already invoiced) — the full project total when nothing is billed yet.
  */
 export function contractInvoiceDefaults(
-  contract: Pick<Contract, "id" | "contract_name" | "retainage_percent">,
-  invoices: Pick<Invoice, "contract_id" | "invoice_number">[],
+  contract: Pick<Contract, "id" | "contract_name" | "retainage_percent" | "original_value">,
+  invoices: Invoice[],
   current: {
     invoice_date: string;
     due_date: string;
     description: string;
     invoice_number: string;
+    invoice_amount: string;
+  },
+  options?: {
+    changeOrders?: ChangeOrder[];
+    excludeInvoiceId?: string | null;
   }
 ): InvoiceContractDefaults {
   const invoiceDate = current.invoice_date || todayIsoDate();
@@ -96,8 +110,16 @@ export function contractInvoiceDefaults(
   const description =
     current.description.trim() ||
     `Progress billing — ${contract.contract_name}`;
-  const invoiceNumber =
-    current.invoice_number.trim() || suggestNextInvoiceNumber(contract, invoices);
+  const invoiceNumber = suggestNextInvoiceNumber(contract, invoices);
+
+  const remaining = remainingBillableCapacity(
+    contract as Contract,
+    options?.changeOrders ?? [],
+    invoices,
+    { excludeInvoiceId: options?.excludeInvoiceId }
+  );
+  const invoiceAmount =
+    current.invoice_amount.trim() || formatAmountForInput(remaining);
 
   return {
     retainage_percent:
@@ -106,5 +128,6 @@ export function contractInvoiceDefaults(
     due_date: dueDate,
     description,
     invoice_number: invoiceNumber,
+    invoice_amount: invoiceAmount,
   };
 }
