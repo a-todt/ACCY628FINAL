@@ -49,6 +49,7 @@ const SUB_PANES: DashboardPaneDef[] = [
   { id: "kpi_stats", label: "Engagement KPIs", fullWidth: true },
   { id: "open_bid_packages", label: "Open bid packages" },
   { id: "engagements", label: "My subcontract engagements" },
+  { id: "vendor_payments", label: "Payments received" },
   { id: "recent_field_logs", label: "My recent field logs" },
 ];
 
@@ -100,6 +101,11 @@ export function normalizeLayout(
   const panes = (prefs?.panes ?? [])
     .filter((id): id is string => typeof id === "string" && allowed.has(id))
     .filter((id, index, arr) => arr.indexOf(id) === index);
+
+  // Append newly added catalog panes so demos pick up new tiles.
+  for (const pane of catalog) {
+    if (!panes.includes(pane.id)) panes.push(pane.id);
+  }
 
   if (panes.length === 0) {
     return defaultLayoutForRole(role);

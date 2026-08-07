@@ -7,6 +7,7 @@ import type {
   Milestone,
   Payment,
   Subcontractor,
+  SubcontractorPayment,
   UserProfile,
   UserRole,
 } from "./types";
@@ -15,6 +16,7 @@ export interface ScopedContractBundle {
   contracts: Contract[];
   changeOrders: ChangeOrder[];
   subcontractors: Subcontractor[];
+  subcontractorPayments: SubcontractorPayment[];
   costEntries: CostEntry[];
   invoices: Invoice[];
   payments: Payment[];
@@ -72,6 +74,7 @@ export function scopeDataForSubcontractorRole(
       contracts: [],
       changeOrders: [],
       subcontractors: [],
+      subcontractorPayments: [],
       costEntries: [],
       invoices: [],
       payments: [],
@@ -81,6 +84,7 @@ export function scopeDataForSubcontractorRole(
   }
 
   const mySubs = data.subcontractors.filter((s) => s.user_id === scopeId);
+  const mySubIds = new Set(mySubs.map((s) => s.id));
   const contractIds = new Set(
     mySubs.map((s) => s.contract_id).filter((id): id is string => Boolean(id))
   );
@@ -93,6 +97,9 @@ export function scopeDataForSubcontractorRole(
     contracts,
     changeOrders: filterByContractIds(data.changeOrders, contractIds),
     subcontractors: mySubs,
+    subcontractorPayments: (data.subcontractorPayments ?? []).filter((p) =>
+      mySubIds.has(p.subcontractor_id)
+    ),
     costEntries: data.costEntries.filter(
       (c) => c.user_id === scopeId || (c.contract_id != null && contractIds.has(c.contract_id))
     ),

@@ -7,6 +7,7 @@ import type {
   Milestone,
   Payment,
   Subcontractor,
+  SubcontractorPayment,
   UserProfile,
   UserRole,
 } from "./types";
@@ -21,6 +22,7 @@ export interface ScopedContractBundle {
   contracts: Contract[];
   changeOrders: ChangeOrder[];
   subcontractors: Subcontractor[];
+  subcontractorPayments: SubcontractorPayment[];
   costEntries: CostEntry[];
   invoices: Invoice[];
   payments: Payment[];
@@ -114,12 +116,17 @@ export function scopeDataForAssignedStaffRole(
   const contracts = data.contracts.filter((c) => contractIds.has(c.id));
   const invoices = filterByContractIds(data.invoices, contractIds);
   const invoiceIds = new Set(invoices.map((i) => i.id));
+  const subcontractors = filterByContractIds(data.subcontractors, contractIds);
+  const subIds = new Set(subcontractors.map((s) => s.id));
 
   return {
     ...data,
     contracts,
     changeOrders: filterByContractIds(data.changeOrders, contractIds),
-    subcontractors: filterByContractIds(data.subcontractors, contractIds),
+    subcontractors,
+    subcontractorPayments: (data.subcontractorPayments ?? []).filter((p) =>
+      subIds.has(p.subcontractor_id)
+    ),
     costEntries: filterByContractIds(data.costEntries, contractIds),
     fieldLogs: filterByContractIds(data.fieldLogs, contractIds),
     invoices,

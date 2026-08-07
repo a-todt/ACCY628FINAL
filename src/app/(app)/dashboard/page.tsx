@@ -93,6 +93,7 @@ import type {
   Milestone,
   Payment,
   Subcontractor,
+  SubcontractorPayment,
   UserProfile,
 } from "@/lib/types";
 import type { ContractAssignmentRow } from "@/lib/staffScope";
@@ -101,6 +102,7 @@ interface DashboardData {
   contracts: Contract[];
   changeOrders: ChangeOrder[];
   subcontractors: Subcontractor[];
+  subcontractorPayments: SubcontractorPayment[];
   costEntries: CostEntry[];
   invoices: Invoice[];
   payments: Payment[];
@@ -205,6 +207,7 @@ export default function DashboardPage() {
     contracts: data.contracts,
     changeOrders: data.changeOrders,
     subcontractors: data.subcontractors,
+    subcontractorPayments: data.subcontractorPayments,
     costEntries: data.costEntries,
     invoices: data.invoices,
     payments: data.payments,
@@ -1390,6 +1393,7 @@ function FieldSupervisorDashboard({
 function SubcontractorDashboard({
   contracts,
   subcontractors,
+  subcontractorPayments,
   fieldLogs,
   costEntries,
   invoices,
@@ -1404,6 +1408,10 @@ function SubcontractorDashboard({
   refreshData,
 }: DashboardPaneProps & { userId?: string }) {
   const mySubs = subcontractors.filter((s) => !userId || s.user_id === userId);
+  const mySubIds = new Set(mySubs.map((s) => s.id));
+  const myPayments = subcontractorPayments
+    .filter((p) => mySubIds.has(p.subcontractor_id))
+    .slice(0, 10);
   const unassigned = mySubs.length === 0;
   const myFieldLogs = fieldLogs
     .filter((f) => !userId || f.user_id === userId)
@@ -1583,6 +1591,53 @@ function SubcontractorDashboard({
                 </div>
               );
             })}
+          </div>
+        )}
+      </SectionCard>
+    ),
+    vendor_payments: (
+      <SectionCard
+        compact
+        title="Payments received"
+        actions={
+          <Link href="/subcontractors/overview" className="btn btn-ghost btn-xs">
+            Overview
+          </Link>
+        }
+      >
+        {myPayments.length === 0 ? (
+          <p className="text-sm opacity-60 py-6 text-center">
+            No payments recorded yet. Accounting posts vendor payments here when paid.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Project</th>
+                  <th className="text-right">Amount</th>
+                  <th>Method</th>
+                  <th>Ref</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myPayments.map((p) => (
+                  <tr key={p.id}>
+                    <td className="whitespace-nowrap">{p.payment_date ?? "—"}</td>
+                    <td className="truncate max-w-[10rem]">
+                      {p.subcontractors?.contracts?.contract_name ??
+                        mySubs.find((s) => s.id === p.subcontractor_id)?.contracts
+                          ?.contract_name ??
+                        "—"}
+                    </td>
+                    <td className="text-right font-medium">{money(p.payment_amount)}</td>
+                    <td>{p.payment_method ?? "—"}</td>
+                    <td className="truncate max-w-[8rem]">{p.reference_number ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </SectionCard>

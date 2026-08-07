@@ -7,6 +7,7 @@ import type {
   Milestone,
   Payment,
   Subcontractor,
+  SubcontractorPayment,
   UserProfile,
   UserRole,
 } from "./types";
@@ -15,6 +16,7 @@ export interface ScopedContractBundle {
   contracts: Contract[];
   changeOrders: ChangeOrder[];
   subcontractors: Subcontractor[];
+  subcontractorPayments: SubcontractorPayment[];
   costEntries: CostEntry[];
   invoices: Invoice[];
   payments: Payment[];
@@ -85,6 +87,7 @@ export function scopeDataForClientRole(
       (co) => co.status === "approved"
     ),
     subcontractors: [],
+    subcontractorPayments: [],
     costEntries: [],
     fieldLogs: [],
     invoices,
