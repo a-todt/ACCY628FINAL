@@ -621,12 +621,13 @@ function LoginPage() {
 
               <div className="bg-base-200/80 rounded-box border border-base-300 p-3 text-xs space-y-1">
                 <p className="font-semibold tracking-tight">Demo logins (password: Demo123!)</p>
-                <p className="opacity-80">admin@gcmanager.demo · client@gcmanager.demo</p>
+                <p className="opacity-80">admin@gcmanager.demo · accounting@gcmanager.demo</p>
+                <p className="opacity-80">client@gcmanager.demo</p>
                 <p className="opacity-80">PMs: pm@ … pm5@gcmanager.demo</p>
                 <p className="opacity-80">Field: field@ … field6@gcmanager.demo</p>
                 <p className="opacity-80">Subs: sub@ · sub2@gcmanager.demo</p>
                 <p className="opacity-80">
-                  Fraud alerts: sign in as admin (or preview as Owner) → Alerts → Potential fraud
+                  Company admins can add Accounting users in Management → Team → Add Staff
                 </p>
               </div>
             </div>
