@@ -7,9 +7,13 @@ import {
   type CompliancePulseKpis,
   type WipPulseKpis,
 } from "@/lib/dashboardKpis";
+import {
+  dateInReportsRange,
+  type ReportsDateRange,
+} from "@/lib/reportsTimeFilter";
 import { createClient } from "@/lib/supabase/client";
 import type { SafetyIncident } from "@/lib/types";
-import { selectList, WIP_DB, type DbRow } from "@/lib/wipSchema";
+import { colStr, selectList, WIP_DB, type DbRow } from "@/lib/wipSchema";
 
 const EMPTY_WIP: WipPulseKpis = {
   netOverUnder: 0,
@@ -26,7 +30,10 @@ const EMPTY_COMPLIANCE: CompliancePulseKpis = {
 /**
  * Soft-fail loads for WIP + safety used by admin dashboard KPI panes.
  */
-export function useDashboardExtraKpis(enabled: boolean) {
+export function useDashboardExtraKpis(
+  enabled: boolean,
+  dateRange: ReportsDateRange | null = null
+) {
   const [projectRows, setProjectRows] = useState<DbRow[]>([]);
   const [costRows, setCostRows] = useState<DbRow[]>([]);
   const [billingRows, setBillingRows] = useState<DbRow[]>([]);
@@ -46,8 +53,10 @@ export function useDashboardExtraKpis(enabled: boolean) {
         supabase
           .from(P.table)
           .select(selectList(P.pk, P.contractValue, P.estimatedCost, P.status)),
-        supabase.from(C.table).select(selectList(C.fk, C.amount)),
-        supabase.from(B.table).select(selectList(B.fk, B.amountBilled, B.retainageHeld)),
+        supabase.from(C.table).select(selectList(C.fk, C.amount, C.costDate)),
+        supabase
+          .from(B.table)
+          .select(selectList(B.fk, B.amountBilled, B.retainageHeld, B.billingDate)),
         supabase.from("safety_incidents").select("*").order("incident_date", { ascending: false }),
       ]);
 
@@ -87,12 +96,36 @@ export function useDashboardExtraKpis(enabled: boolean) {
     void load();
   }, [load]);
 
-  const wip = useMemo(
-    () => computeWipPulseKpis(projectRows, costRows, billingRows),
-    [projectRows, costRows, billingRows]
+  const filteredCostRows = useMemo(
+    () =>
+      costRows.filter((row) =>
+        dateInReportsRange(colStr(row, WIP_DB.projectCosts.costDate) || null, dateRange)
+      ),
+    [costRows, dateRange]
   );
 
-  const compliance = useMemo(() => computeCompliancePulseKpis(incidents), [incidents]);
+  const filteredBillingRows = useMemo(
+    () =>
+      billingRows.filter((row) =>
+        dateInReportsRange(colStr(row, WIP_DB.billings.billingDate) || null, dateRange)
+      ),
+    [billingRows, dateRange]
+  );
+
+  const filteredIncidents = useMemo(
+    () => incidents.filter((i) => dateInReportsRange(i.incident_date, dateRange)),
+    [incidents, dateRange]
+  );
+
+  const wip = useMemo(
+    () => computeWipPulseKpis(projectRows, filteredCostRows, filteredBillingRows),
+    [projectRows, filteredCostRows, filteredBillingRows]
+  );
+
+  const compliance = useMemo(
+    () => computeCompliancePulseKpis(filteredIncidents),
+    [filteredIncidents]
+  );
 
   return {
     loading,

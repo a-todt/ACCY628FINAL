@@ -34,11 +34,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useDashboardExtraKpis } from "@/hooks/useDashboardExtraKpis";
 import { useDashboardLayout } from "@/hooks/useDashboardLayout";
+import { useDashboardTimeFilter } from "@/hooks/useDashboardTimeFilter";
 import { useDismissedAlerts } from "@/hooks/useDismissedAlerts";
 import { startOrGetLeadThread, startOrGetThread } from "@/hooks/useMessages";
 import { DashboardCustomizeModal } from "@/components/DashboardCustomizeModal";
 import { DashboardPaneGrid } from "@/components/DashboardPaneGrid";
 import { ExpandableChart } from "@/components/ExpandableChart";
+import { PeriodFilterBar } from "@/components/PeriodFilterBar";
 import { ScrollableBarChart, toNamedBarRows } from "@/components/ScrollableBarChart";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { SubcontractorInviteCard } from "@/components/SubcontractorInviteCard";
@@ -69,6 +71,11 @@ import {
   scheduleBadgeClass,
 } from "@/lib/metrics";
 import { isApprovedCost, isApprovedInvoice } from "@/lib/payments";
+import {
+  dateInReportsRange,
+  reportsDateRange,
+  type ReportsDateRange,
+} from "@/lib/reportsTimeFilter";
 import {
   canApprovePayments,
   canCreateChangeOrders,
@@ -117,6 +124,8 @@ type DashboardPaneProps = DashboardData & {
   layout: DashboardLayoutPrefs;
   onCustomize: () => void;
   refreshData?: () => Promise<void>;
+  /** Inclusive period filter for transactional KPIs; null = all time. */
+  dateRange?: ReportsDateRange | null;
 };
 
 function chartHasValues(
@@ -171,7 +180,70 @@ export default function DashboardPage() {
   const { effectiveRole, profile, user } = useAuth();
   const data = useContractData();
   const { layout, setLayout } = useDashboardLayout(effectiveRole);
+  const { timeFilter, setTimeFilter } = useDashboardTimeFilter();
   const [customizeOpen, setCustomizeOpen] = useState(false);
+
+  const dateRange = useMemo(() => reportsDateRange(timeFilter), [timeFilter]);
+
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>();
+    years.add(new Date().getFullYear());
+    years.add(timeFilter.year);
+    for (const list of [
+      data.invoices.map((i) => i.invoice_date),
+      data.costEntries.map((c) => c.date_incurred),
+      data.payments.map((p) => p.payment_date),
+      data.changeOrders.map((c) => c.date_submitted ?? c.date_resolved),
+      data.fieldLogs.map((f) => f.log_date),
+      data.subcontractorPayments.map((p) => p.payment_date),
+    ]) {
+      for (const raw of list) {
+        if (!raw) continue;
+        const y = Number(String(raw).slice(0, 4));
+        if (Number.isFinite(y) && y >= 2000 && y <= 2100) years.add(y);
+      }
+    }
+    return Array.from(years).sort((a, b) => b - a);
+  }, [
+    data.invoices,
+    data.costEntries,
+    data.payments,
+    data.changeOrders,
+    data.fieldLogs,
+    data.subcontractorPayments,
+    timeFilter.year,
+  ]);
+
+  const filteredChangeOrders = useMemo(
+    () =>
+      data.changeOrders.filter((co) =>
+        dateInReportsRange(co.date_submitted ?? co.date_resolved ?? co.created_at, dateRange)
+      ),
+    [data.changeOrders, dateRange]
+  );
+  const filteredCosts = useMemo(
+    () => data.costEntries.filter((c) => dateInReportsRange(c.date_incurred, dateRange)),
+    [data.costEntries, dateRange]
+  );
+  const filteredInvoices = useMemo(
+    () => data.invoices.filter((i) => dateInReportsRange(i.invoice_date, dateRange)),
+    [data.invoices, dateRange]
+  );
+  const filteredPayments = useMemo(
+    () => data.payments.filter((p) => dateInReportsRange(p.payment_date, dateRange)),
+    [data.payments, dateRange]
+  );
+  const filteredFieldLogs = useMemo(
+    () => data.fieldLogs.filter((f) => dateInReportsRange(f.log_date, dateRange)),
+    [data.fieldLogs, dateRange]
+  );
+  const filteredSubPayments = useMemo(
+    () =>
+      data.subcontractorPayments.filter((p) =>
+        dateInReportsRange(p.payment_date, dateRange)
+      ),
+    [data.subcontractorPayments, dateRange]
+  );
 
   const subScopeUserId = useMemo(
     () =>
@@ -205,13 +277,13 @@ export default function DashboardPage() {
 
   const shared: DashboardData = {
     contracts: data.contracts,
-    changeOrders: data.changeOrders,
+    changeOrders: filteredChangeOrders,
     subcontractors: data.subcontractors,
-    subcontractorPayments: data.subcontractorPayments,
-    costEntries: data.costEntries,
-    invoices: data.invoices,
-    payments: data.payments,
-    fieldLogs: data.fieldLogs,
+    subcontractorPayments: filteredSubPayments,
+    costEntries: filteredCosts,
+    invoices: filteredInvoices,
+    payments: filteredPayments,
+    fieldLogs: filteredFieldLogs,
     milestones: data.milestones,
     userProfiles: data.userProfiles,
     assignments: data.assignments,
@@ -223,6 +295,7 @@ export default function DashboardPage() {
     layout,
     onCustomize: () => setCustomizeOpen(true),
     refreshData: data.refresh,
+    dateRange,
   };
 
   return (
@@ -235,7 +308,13 @@ export default function DashboardPage() {
             ? `Cash, WIP, and billing${profile?.full_name ? ` · ${profile.full_name}` : ""}`
             : `Welcome back${profile?.full_name ? `, ${profile.full_name}` : ""}`
         }
-        actions={
+      />
+
+      <PeriodFilterBar
+        timeFilter={timeFilter}
+        yearOptions={yearOptions}
+        onChange={setTimeFilter}
+        endActions={
           <button
             type="button"
             className="btn btn-primary btn-sm gap-1.5"
@@ -504,8 +583,9 @@ function AdminDashboard({
   role,
   layout,
   onCustomize,
+  dateRange = null,
 }: DashboardPaneProps) {
-  const { wip, compliance } = useDashboardExtraKpis(true);
+  const { wip, compliance } = useDashboardExtraKpis(true, dateRange);
 
   if (contracts.length === 0) {
     return (
