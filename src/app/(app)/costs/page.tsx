@@ -189,6 +189,12 @@ export default function CostsPage() {
     });
   }, [costEntries, categoryFilter, jobFilter]);
 
+  /** Charts and money totals — pending/rejected never affect these. */
+  const approvedScoped = useMemo(
+    () => scopedEntries.filter(isApprovedCost),
+    [scopedEntries]
+  );
+
   const filtered = useMemo(() => {
     const rows = scopedEntries.filter((cost) => {
       if (!matchesColumnFilter(cost.contracts?.contract_name, jobColumnFilter)) return false;
@@ -214,9 +220,7 @@ export default function CostsPage() {
     });
   }, [scopedEntries, jobColumnFilter, descriptionFilter, sortKey, sortDir, userProfiles]);
 
-  const grandTotal = scopedEntries
-    .filter(isApprovedCost)
-    .reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
+  const grandTotal = approvedScoped.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
 
   const byJob = useMemo(() => {
     const map = new Map<
@@ -231,10 +235,10 @@ export default function CostsPage() {
       }
     >();
 
-    for (const cost of scopedEntries) {
+    for (const cost of approvedScoped) {
       const key = cost.contract_id;
       const name = cost.contracts?.contract_name ?? "Unknown job";
-      const amount = isApprovedCost(cost) ? Number(cost.amount ?? 0) : 0;
+      const amount = Number(cost.amount ?? 0);
       const category = (cost.category ?? "other") as CostCategory;
       let row = map.get(key);
       if (!row) {
@@ -250,14 +254,12 @@ export default function CostsPage() {
       }
       row.total += amount;
       row.entryCount += 1;
-      if (amount > 0) {
-        row.byCategory.set(category, (row.byCategory.get(category) ?? 0) + amount);
-      }
+      row.byCategory.set(category, (row.byCategory.get(category) ?? 0) + amount);
       row.entries.push(cost);
     }
 
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [scopedEntries]);
+  }, [approvedScoped]);
 
   const byCategory = useMemo(() => {
     const map = new Map<
@@ -271,9 +273,9 @@ export default function CostsPage() {
       }
     >();
 
-    for (const cost of scopedEntries) {
+    for (const cost of approvedScoped) {
       const category = (cost.category ?? "other") as CostCategory;
-      const amount = isApprovedCost(cost) ? Number(cost.amount ?? 0) : 0;
+      const amount = Number(cost.amount ?? 0);
       let row = map.get(category);
       if (!row) {
         row = {
@@ -297,7 +299,7 @@ export default function CostsPage() {
     }
 
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [scopedEntries]);
+  }, [approvedScoped]);
 
   const matrixRows = useMemo(() => {
     return byJob.map((job) => {
@@ -324,10 +326,7 @@ export default function CostsPage() {
     }))
   );
 
-  const yoyChart = useMemo(
-    () => buildYoyAverageChart(scopedEntries.filter(isApprovedCost)),
-    [scopedEntries]
-  );
+  const yoyChart = useMemo(() => buildYoyAverageChart(approvedScoped), [approvedScoped]);
   const useYoyChart = yoyChart.rows.length >= 2;
 
   const jobColumnOptions = useMemo(
@@ -569,7 +568,7 @@ export default function CostsPage() {
           compact
           title="Total Costs"
           value={money(grandTotal)}
-          hint={`${scopedEntries.length} entries`}
+          hint={`${approvedScoped.length} approved · ${scopedEntries.length} total`}
         />
         <StatCard compact title="Jobs with Costs" value={String(byJob.length)} />
         <StatCard compact title="Categories Used" value={String(byCategory.length)} />
@@ -644,7 +643,16 @@ export default function CostsPage() {
         />
       ) : null}
 
-      {scopedEntries.length > 0 && viewMode === "by_job" ? (
+      {scopedEntries.length > 0 &&
+      approvedScoped.length === 0 &&
+      viewMode !== "entries" ? (
+        <EmptyState
+          title="No approved costs in charts yet"
+          message="Pending and rejected cost logs stay out of graphs until Accounting (and Admin when over the threshold) approve them. Open the Entries view to see submissions waiting for approval."
+        />
+      ) : null}
+
+      {approvedScoped.length > 0 && viewMode === "by_job" ? (
         <div className="relative">
           <div className="rounded-box border border-base-300 bg-base-100 flex flex-col min-h-0 lg:w-[calc(50%-0.5rem)]">
             <div className="px-3 py-2 border-b border-base-300 text-sm font-semibold">
@@ -737,7 +745,7 @@ export default function CostsPage() {
                 <tr className="font-semibold bg-base-200/50">
                   <td />
                   <td className="text-center">Total</td>
-                  <td className="text-center tabular-nums">{scopedEntries.length}</td>
+                  <td className="text-center tabular-nums">{approvedScoped.length}</td>
                   <td className="text-center tabular-nums">{money(grandTotal)}</td>
                   <td className="text-center">100%</td>
                 </tr>
@@ -841,7 +849,7 @@ export default function CostsPage() {
         </div>
       ) : null}
 
-      {scopedEntries.length > 0 && viewMode === "by_category" ? (
+      {approvedScoped.length > 0 && viewMode === "by_category" ? (
         <div className="grid lg:grid-cols-2 gap-4">
           <div className="rounded-box border border-base-300 bg-base-100">
             <div className="px-3 py-2 border-b border-base-300 text-sm font-semibold">
@@ -933,7 +941,7 @@ export default function CostsPage() {
                 <tr className="font-semibold bg-base-200/50">
                   <td />
                   <td className="text-center">Total</td>
-                  <td className="text-center tabular-nums">{scopedEntries.length}</td>
+                  <td className="text-center tabular-nums">{approvedScoped.length}</td>
                   <td className="text-center tabular-nums">{money(grandTotal)}</td>
                   <td className="text-center">100%</td>
                 </tr>
@@ -973,7 +981,7 @@ export default function CostsPage() {
         </div>
       ) : null}
 
-      {scopedEntries.length > 0 && viewMode === "matrix" ? (
+      {approvedScoped.length > 0 && viewMode === "matrix" ? (
         <div className="rounded-box border border-base-300 bg-base-100">
           <div className="px-3 py-2 border-b border-base-300 text-sm font-semibold">
             Job × Category Matrix

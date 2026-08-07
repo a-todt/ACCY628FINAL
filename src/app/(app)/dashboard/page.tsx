@@ -68,6 +68,7 @@ import {
   percent,
   scheduleBadgeClass,
 } from "@/lib/metrics";
+import { isApprovedCost } from "@/lib/payments";
 import {
   canApprovePayments,
   canCreateChangeOrders,
@@ -609,7 +610,9 @@ function AdminDashboard({
       })
   );
 
-  const costsByCategory = costEntries.reduce<Record<string, number>>((acc, cost) => {
+  const costsByCategory = costEntries
+    .filter(isApprovedCost)
+    .reduce<Record<string, number>>((acc, cost) => {
     const key = cost.category ?? "other";
     acc[key] = (acc[key] ?? 0) + Number(cost.amount ?? 0);
     return acc;
@@ -1238,7 +1241,11 @@ function FieldSupervisorDashboard({
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
   const myCostsThisWeek = costEntries.filter(
-    (c) => (!userId || c.user_id === userId) && c.date_incurred && new Date(c.date_incurred) >= weekAgo
+    (c) =>
+      isApprovedCost(c) &&
+      (!userId || c.user_id === userId) &&
+      c.date_incurred &&
+      new Date(c.date_incurred) >= weekAgo
   );
   const costsThisWeekTotal = myCostsThisWeek.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
   const myLogCount = fieldLogs.filter((f) => !userId || f.user_id === userId).length;
@@ -1398,7 +1405,9 @@ function SubcontractorDashboard({
   const myFieldLogs = fieldLogs
     .filter((f) => !userId || f.user_id === userId)
     .slice(0, 6);
-  const myCosts = costEntries.filter((c) => !userId || c.user_id === userId);
+  const myCosts = costEntries.filter(
+    (c) => isApprovedCost(c) && (!userId || c.user_id === userId)
+  );
   const totalValue = mySubs.reduce((sum, s) => sum + Number(s.subcontract_value ?? 0), 0);
   const totalPaid = mySubs.reduce((sum, s) => sum + Number(s.amount_paid ?? 0), 0);
   const totalCostsSubmitted = myCosts.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);

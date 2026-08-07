@@ -303,6 +303,7 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   const charges: ChargeRef[] = [];
 
   for (const cost of costs) {
+    if (!isApprovedCost(cost)) continue;
     const amount = Number(cost.amount ?? 0);
     if (amount <= 0) continue;
     const actorId =
@@ -406,7 +407,9 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     });
   }
 
-  const bandCosts = costs.filter((c) => inStructuringBand(Number(c.amount ?? 0)));
+  const bandCosts = costs.filter(
+    (c) => isApprovedCost(c) && inStructuringBand(Number(c.amount ?? 0))
+  );
   if (bandCosts.length >= 3) {
     alerts.push({
       id: `fraud-band-costs-global`,

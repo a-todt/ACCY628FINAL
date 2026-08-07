@@ -1,4 +1,5 @@
 import type { ChangeOrder, Contract, CostEntry, Invoice, Payment } from "@/lib/types";
+import { isApprovedCost, isApprovedInvoice } from "@/lib/payments";
 
 export type PeriodMode = "month" | "year";
 
@@ -309,8 +310,12 @@ export function buildPeriodRows(input: BuildPeriodRowsInput): PeriodReportResult
   for (const contract of scopedContracts) {
     const wip = resolveWipProject(contract, projects);
     const revised = revisedContractValue(contract, changeOrders);
-    const relatedCosts = costEntries.filter((c) => c.contract_id === contract.id);
-    const relatedInvoices = invoices.filter((i) => i.contract_id === contract.id);
+    const relatedCosts = costEntries.filter(
+      (c) => c.contract_id === contract.id && isApprovedCost(c)
+    );
+    const relatedInvoices = invoices.filter(
+      (i) => i.contract_id === contract.id && isApprovedInvoice(i)
+    );
     const invoiceIds = new Set(relatedInvoices.map((i) => i.id));
     const relatedPayments = payments.filter((p) => {
       if (invoiceIds.has(p.invoice_id)) return true;
