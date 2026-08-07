@@ -437,9 +437,9 @@ export default function ManagementPage() {
   if (!canManageCompany(effectiveRole)) {
     return (
       <div>
-        <PageHeader title="Admin / Management" />
+        <PageHeader title="Company Management" />
         <AlertBanner type="error">
-          Access denied. Only the Owner / Executive role can open company management.
+          Access denied. Only Admin / Owner or Accounting can open company management.
         </AlertBanner>
       </div>
     );
@@ -1047,8 +1047,8 @@ export default function ManagementPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Admin / Management"
-        subtitle="Owner / Executive controls for company settings, team, and compliance."
+        title="Company Management"
+        subtitle="Accounting and Admin / Owner controls for company settings, team, and compliance."
       />
 
       {error ? <AlertBanner type="error">{error}</AlertBanner> : null}

@@ -25,6 +25,7 @@ function loadEnv() {
 
 const DEMO_USERS = [
   { email: "admin@gcmanager.demo", password: "Demo123!", full_name: "Demo Admin", role: "admin" },
+  { email: "accounting@gcmanager.demo", password: "Demo123!", full_name: "Demo Accounting", role: "owner" },
   { email: "pm@gcmanager.demo", password: "Demo123!", full_name: "Demo Project Manager", role: "project_manager" },
   { email: "client@gcmanager.demo", password: "Demo123!", full_name: "Demo Client", role: "client" },
   { email: "field@gcmanager.demo", password: "Demo123!", full_name: "Demo Field Supervisor", role: "field_supervisor" },

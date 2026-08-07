@@ -52,8 +52,8 @@ Open http://localhost:3000
 
 | Email | Password | Role |
 |-------|----------|------|
-| admin@gcmanager.demo | Demo123! | Admin |
-| owner@gcmanager.demo | Demo123! | Owner / Executive |
+| admin@gcmanager.demo | Demo123! | Admin / Owner |
+| accounting@gcmanager.demo | Demo123! | Accounting |
 | pm@gcmanager.demo | Demo123! | Project Manager |
 | pm2@gcmanager.demo | Demo123! | Project Manager (Alex Chen) |
 | client@gcmanager.demo | Demo123! | Client |

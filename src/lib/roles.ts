@@ -1,8 +1,8 @@
 import type { UserRole } from "./types";
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Admin (Internal)",
-  owner: "Owner / Executive",
+  admin: "Admin / Owner",
+  owner: "Accounting",
   project_manager: "Project Manager",
   field_supervisor: "Field Supervisor",
   subcontractor: "Subcontractor",
@@ -390,7 +390,7 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
       {
         id: "management" as const,
         href: "/management",
-        label: "Admin / Management",
+        label: "Company Management",
         show: canManageCompany(role),
       },
     ] as Array<NavItem & { id: NavCategoryId; show: boolean }>
