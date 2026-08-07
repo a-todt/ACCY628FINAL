@@ -1,6 +1,5 @@
 import { createClient as createAuthClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/types";
 
@@ -181,19 +180,9 @@ export async function DELETE(request: Request) {
       );
     }
 
-    await supabase.rpc("write_access_audit", {
-      p_action: "staff_deleted",
-      p_entity_type: "user_profiles",
-      p_entity_id: target.id,
-      p_details: {
-        email: target.email,
-        full_name: target.full_name,
-        role: target.role,
-      },
+    const { error: deleteError } = await supabase.rpc("delete_internal_employee", {
+      p_user_id: targetId,
     });
-
-    const admin = createAdminClient();
-    const { error: deleteError } = await admin.auth.admin.deleteUser(targetId);
     if (deleteError) {
       return NextResponse.json({ error: deleteError.message }, { status: 400 });
     }
