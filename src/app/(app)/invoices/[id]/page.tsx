@@ -1,16 +1,18 @@
 "use client";
 
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown, Pencil } from "lucide-react";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
+import { uniqueSorted } from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { writeAuditLog } from "@/lib/audit";
+import { contractInvoiceDefaults } from "@/lib/invoices";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
 import {
   invoiceAfterApplyingPayment,
@@ -87,6 +89,33 @@ function InvoiceDetailContent() {
   const [savingApproval, setSavingApproval] = useState(false);
 
   const invoice = invoices.find((i) => i.id === invoiceId);
+
+  const invoicesForSuggestions = useMemo(() => {
+    const contractId = form?.contract_id ?? invoice?.contract_id;
+    if (!contractId) return invoices;
+    return invoices.filter((row) => row.contract_id === contractId && row.id !== invoice?.id);
+  }, [form?.contract_id, invoice?.contract_id, invoice?.id, invoices]);
+
+  const invoiceNumberSuggestions = useMemo(
+    () => uniqueSorted(invoicesForSuggestions.map((row) => row.invoice_number)),
+    [invoicesForSuggestions]
+  );
+
+  const descriptionSuggestions = useMemo(
+    () => uniqueSorted(invoicesForSuggestions.map((row) => row.description)),
+    [invoicesForSuggestions]
+  );
+
+  const notesSuggestions = useMemo(
+    () => uniqueSorted(invoicesForSuggestions.map((row) => row.notes)),
+    [invoicesForSuggestions]
+  );
+
+  const selectedContract = useMemo(
+    () =>
+      contracts.find((c) => c.id === (form?.contract_id ?? invoice?.contract_id)) ?? null,
+    [contracts, form?.contract_id, invoice?.contract_id]
+  );
 
   if (isEditing && invoice && formSourceId !== invoice.id) {
     setFormSourceId(invoice.id);
@@ -230,6 +259,24 @@ function InvoiceDetailContent() {
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
 
+  const onContractChange = (contractId: string) => {
+    const contract = contracts.find((c) => c.id === contractId);
+    setForm((prev) => {
+      if (!prev) return prev;
+      if (!contract) return { ...prev, contract_id: contractId };
+      const defaults = contractInvoiceDefaults(contract, invoices, prev);
+      return {
+        ...prev,
+        contract_id: contractId,
+        retainage_percent: defaults.retainage_percent,
+        invoice_date: defaults.invoice_date ?? prev.invoice_date,
+        due_date: defaults.due_date ?? prev.due_date,
+        description: defaults.description ?? prev.description,
+        invoice_number: defaults.invoice_number ?? prev.invoice_number,
+      };
+    });
+  };
+
   const invoiceAmountNum = Number(form?.invoice_amount || 0);
   const retainagePercentNum = Number(form?.retainage_percent || 0);
   const computedRetainageAmount = invoiceAmountNum * (retainagePercentNum / 100);
@@ -349,15 +396,29 @@ function InvoiceDetailContent() {
               <FormField label="Invoice #">
                 <input
                   className="input input-bordered input-sm w-full"
+                  list="edit-invoice-number-suggestions"
                   value={form.invoice_number}
                   onChange={(e) => updateField("invoice_number", e.target.value)}
+                  autoComplete="off"
                 />
+                <datalist id="edit-invoice-number-suggestions">
+                  {invoiceNumberSuggestions.map((value) => (
+                    <option key={value} value={value} />
+                  ))}
+                </datalist>
               </FormField>
-              <FormField label="Project">
+              <FormField
+                label="Project"
+                hint={
+                  selectedContract?.client_name
+                    ? `Client: ${selectedContract.client_name}`
+                    : undefined
+                }
+              >
                 <select
                   className="select select-bordered select-sm w-full"
                   value={form.contract_id}
-                  onChange={(e) => updateField("contract_id", e.target.value)}
+                  onChange={(e) => onContractChange(e.target.value)}
                   required
                 >
                   <option value="">Select a contract…</option>
@@ -449,20 +510,32 @@ function InvoiceDetailContent() {
               </FormField>
             </div>
             <FormField label="Description">
-              <textarea
-                className="textarea textarea-bordered textarea-sm w-full"
-                rows={2}
+              <input
+                className="input input-bordered input-sm w-full"
+                list="edit-invoice-description-suggestions"
                 value={form.description}
                 onChange={(e) => updateField("description", e.target.value)}
+                autoComplete="off"
               />
+              <datalist id="edit-invoice-description-suggestions">
+                {descriptionSuggestions.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
             </FormField>
             <FormField label="Notes">
-              <textarea
-                className="textarea textarea-bordered textarea-sm w-full"
-                rows={2}
+              <input
+                className="input input-bordered input-sm w-full"
+                list="edit-invoice-notes-suggestions"
                 value={form.notes}
                 onChange={(e) => updateField("notes", e.target.value)}
+                autoComplete="off"
               />
+              <datalist id="edit-invoice-notes-suggestions">
+                {notesSuggestions.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
             </FormField>
             <div className="flex justify-end gap-2">
               <button type="button" className="btn btn-ghost btn-sm" onClick={exitEditMode} disabled={saving}>
