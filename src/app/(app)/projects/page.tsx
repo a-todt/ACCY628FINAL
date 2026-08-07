@@ -20,9 +20,11 @@ import {
 } from "@/components/ColumnAutocompleteHeader";
 import { compareValues } from "@/components/FilterSortBar";
 import { useAuth } from "@/contexts/AuthContext";
+import { MoneyInput } from "@/components/MoneyInput";
 import { ProjectSelect } from "@/components/ProjectSelect";
 import { AlertBanner, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { moneyExact, labelize } from "@/lib/metrics";
+import { parseMoneyInput } from "@/lib/moneyInput";
 import {
   canApproveChangeOrderForAmount,
   changeOrderApprovalBlockedReason,
@@ -102,13 +104,6 @@ const EMPTY_CHANGE_ORDER = {
   status: "pending",
   approved_date: "",
 };
-
-function parseMoney(value: string): number | null {
-  const cleaned = value.replace(/[$,\s]/g, "").trim();
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : NaN;
-}
 
 export default function ProjectsPage() {
   const { user, effectiveRole } = useAuth();
@@ -392,9 +387,9 @@ export default function ProjectsPage() {
       return;
     }
 
-    const original = parseMoney(projectForm.original_contract_value);
-    const revised = parseMoney(projectForm.revised_contract_value);
-    const estimate = parseMoney(projectForm.estimated_total_cost);
+    const original = parseMoneyInput(projectForm.original_contract_value);
+    const revised = parseMoneyInput(projectForm.revised_contract_value);
+    const estimate = parseMoneyInput(projectForm.estimated_total_cost);
 
     if (projectForm.original_contract_value && Number.isNaN(original)) {
       setProjectError("Original contract value must be a valid number.");
@@ -489,7 +484,7 @@ export default function ProjectsPage() {
       setCostError("Cost date is required.");
       return;
     }
-    const amount = parseMoney(costForm.amount);
+    const amount = parseMoneyInput(costForm.amount);
     if (amount == null || Number.isNaN(amount)) {
       setCostError("Amount is required and must be a valid number.");
       return;
@@ -538,8 +533,8 @@ export default function ProjectsPage() {
       setBillingError("Billing date is required.");
       return;
     }
-    const amountBilled = parseMoney(billingForm.amount_billed);
-    const retainage = parseMoney(billingForm.retainage_held);
+    const amountBilled = parseMoneyInput(billingForm.amount_billed);
+    const retainage = parseMoneyInput(billingForm.retainage_held);
     if (amountBilled == null || Number.isNaN(amountBilled)) {
       setBillingError("Amount billed is required and must be a valid number.");
       return;
@@ -599,7 +594,7 @@ export default function ProjectsPage() {
       setChangeOrderError("Select a project.");
       return;
     }
-    const amount = parseMoney(changeOrderForm.amount);
+    const amount = parseMoneyInput(changeOrderForm.amount);
     if (amount == null || Number.isNaN(amount)) {
       setChangeOrderError("Amount is required and must be a valid number.");
       return;
@@ -1007,35 +1002,32 @@ export default function ProjectsPage() {
                 />
               </FormField>
               <FormField stacked label="Original contract value">
-                <input
+                <MoneyInput
                   className="input input-bordered w-full"
-                  inputMode="decimal"
                   placeholder="0.00"
                   value={projectForm.original_contract_value}
-                  onChange={(e) =>
-                    setProjectForm((p) => ({ ...p, original_contract_value: e.target.value }))
+                  onValueChange={(v) =>
+                    setProjectForm((p) => ({ ...p, original_contract_value: v }))
                   }
                 />
               </FormField>
               <FormField stacked label="Revised contract value">
-                <input
+                <MoneyInput
                   className="input input-bordered w-full"
-                  inputMode="decimal"
                   placeholder="Defaults to original"
                   value={projectForm.revised_contract_value}
-                  onChange={(e) =>
-                    setProjectForm((p) => ({ ...p, revised_contract_value: e.target.value }))
+                  onValueChange={(v) =>
+                    setProjectForm((p) => ({ ...p, revised_contract_value: v }))
                   }
                 />
               </FormField>
               <FormField stacked label="Estimated total cost">
-                <input
+                <MoneyInput
                   className="input input-bordered w-full"
-                  inputMode="decimal"
                   placeholder="0.00"
                   value={projectForm.estimated_total_cost}
-                  onChange={(e) =>
-                    setProjectForm((p) => ({ ...p, estimated_total_cost: e.target.value }))
+                  onValueChange={(v) =>
+                    setProjectForm((p) => ({ ...p, estimated_total_cost: v }))
                   }
                 />
               </FormField>
@@ -1157,12 +1149,11 @@ export default function ProjectsPage() {
                 </select>
               </FormField>
               <FormField label="Amount">
-                <input
+                <MoneyInput
                   className="input input-bordered w-full"
-                  inputMode="decimal"
                   placeholder="0.00"
                   value={costForm.amount}
-                  onChange={(e) => setCostForm((p) => ({ ...p, amount: e.target.value }))}
+                  onValueChange={(v) => setCostForm((p) => ({ ...p, amount: v }))}
                   required
                 />
               </FormField>
@@ -1232,14 +1223,11 @@ export default function ProjectsPage() {
                 />
               </FormField>
               <FormField label="Amount billed">
-                <input
+                <MoneyInput
                   className="input input-bordered w-full"
-                  inputMode="decimal"
                   placeholder="0.00"
                   value={billingForm.amount_billed}
-                  onChange={(e) =>
-                    setBillingForm((p) => ({ ...p, amount_billed: e.target.value }))
-                  }
+                  onValueChange={(v) => setBillingForm((p) => ({ ...p, amount_billed: v }))}
                   required
                 />
               </FormField>
@@ -1247,14 +1235,11 @@ export default function ProjectsPage() {
                 label="Retainage receivable"
                 hint="ASC 606 contract asset — billed but withheld until conditions are met."
               >
-                <input
+                <MoneyInput
                   className="input input-bordered w-full"
-                  inputMode="decimal"
                   placeholder="0.00"
                   value={billingForm.retainage_held}
-                  onChange={(e) =>
-                    setBillingForm((p) => ({ ...p, retainage_held: e.target.value }))
-                  }
+                  onValueChange={(v) => setBillingForm((p) => ({ ...p, retainage_held: v }))}
                 />
               </FormField>
               <div className="modal-action">
@@ -1324,14 +1309,11 @@ export default function ProjectsPage() {
                 />
               </FormField>
               <FormField label="Amount">
-                <input
+                <MoneyInput
                   className="input input-bordered w-full"
-                  inputMode="decimal"
                   placeholder="0.00"
                   value={changeOrderForm.amount}
-                  onChange={(e) =>
-                    setChangeOrderForm((p) => ({ ...p, amount: e.target.value }))
-                  }
+                  onValueChange={(v) => setChangeOrderForm((p) => ({ ...p, amount: v }))}
                   required
                 />
               </FormField>
@@ -1349,14 +1331,14 @@ export default function ProjectsPage() {
                     disabled={
                       !canApproveChangeOrderForAmount(
                         effectiveRole,
-                        parseMoney(changeOrderForm.amount) ?? 0
+                        parseMoneyInput(changeOrderForm.amount) ?? 0
                       )
                     }
                   >
                     Approved
                     {!canApproveChangeOrderForAmount(
                       effectiveRole,
-                      parseMoney(changeOrderForm.amount) ?? 0
+                      parseMoneyInput(changeOrderForm.amount) ?? 0
                     )
                       ? " (Accounting / Owner required)"
                       : ""}

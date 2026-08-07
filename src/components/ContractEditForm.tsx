@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Save } from "lucide-react";
+import { MoneyInput } from "@/components/MoneyInput";
 import { FormField } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { labelize } from "@/lib/metrics";
@@ -185,12 +186,10 @@ export function ContractEditForm({
           <FormField label="Original Value">
             <label className="input input-bordered flex items-center gap-2">
               $
-              <input
-                type="number"
-                step="0.01"
+              <MoneyInput
                 className="grow"
                 value={form.original_value}
-                onChange={(e) => updateField("original_value", e.target.value)}
+                onValueChange={(v) => updateField("original_value", v)}
               />
             </label>
           </FormField>

@@ -20,6 +20,7 @@ import { StatusFilterChips } from "@/components/StatusFilterChips";
 import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
 import { useToast } from "@/components/ToastProvider";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
+import { MoneyInput } from "@/components/MoneyInput";
 import { writeAuditLog } from "@/lib/audit";
 import { CHANGE_ORDER_PENDING_BILLING_NOTE } from "@/lib/approvalThresholds";
 import {
@@ -792,13 +793,10 @@ export default function InvoicesPage() {
                 >
                   <label className="input input-bordered flex items-center gap-2 w-full">
                     $
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
+                    <MoneyInput
                       className="grow"
                       value={invoiceForm.invoice_amount}
-                      onChange={(e) => updateInvoiceField("invoice_amount", e.target.value)}
+                      onValueChange={(v) => updateInvoiceField("invoice_amount", v)}
                       required
                     />
                   </label>
@@ -980,13 +978,10 @@ export default function InvoicesPage() {
             <FormField label="Payment Amount">
               <label className="input input-bordered flex items-center gap-2">
                 $
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
+                <MoneyInput
                   className="grow"
                   value={paymentForm.payment_amount}
-                  onChange={(e) => updatePaymentField("payment_amount", e.target.value)}
+                  onValueChange={(v) => updatePaymentField("payment_amount", v)}
                   required
                 />
               </label>
