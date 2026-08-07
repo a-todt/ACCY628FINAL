@@ -69,8 +69,12 @@ export function isInvoicePending(invoice: Invoice): boolean {
 
 /** Job-cost totals only include approved cost logs. */
 export function isApprovedCost(cost: CostEntry): boolean {
-  const status = cost.approval_status ?? "approved";
-  return status === "approved";
+  return (cost.approval_status ?? "approved") === "approved";
+}
+
+/** Convenience filter for charts, KPIs, and financial aggregates. */
+export function approvedCostsOnly(costs: CostEntry[]): CostEntry[] {
+  return costs.filter(isApprovedCost);
 }
 
 export function isCostAwaitingAccounting(cost: CostEntry): boolean {
