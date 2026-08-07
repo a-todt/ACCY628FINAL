@@ -9,6 +9,7 @@ import { uniqueSorted } from "@/components/ColumnAutocompleteHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard } from "@/components/ui";
+import { MoneyInput } from "@/components/MoneyInput";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { writeAuditLog } from "@/lib/audit";
@@ -505,13 +506,10 @@ function InvoiceDetailContent() {
               >
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
+                  <MoneyInput
                     className="grow"
                     value={form.invoice_amount}
-                    onChange={(e) => updateField("invoice_amount", e.target.value)}
+                    onValueChange={(v) => updateField("invoice_amount", v)}
                     required
                   />
                 </label>
@@ -544,12 +542,10 @@ function InvoiceDetailContent() {
               <FormField label="Amount Paid">
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
-                  <input
-                    type="number"
-                    step="0.01"
+                  <MoneyInput
                     className="grow"
                     value={form.amount_paid}
-                    onChange={(e) => updateField("amount_paid", e.target.value)}
+                    onValueChange={(v) => updateField("amount_paid", v)}
                   />
                 </label>
               </FormField>

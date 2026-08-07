@@ -34,6 +34,7 @@ import {
 import { compareValues } from "@/components/FilterSortBar";
 import { ScrollableBarChart, toNamedBarRows, CHART_ROW_HEIGHT } from "@/components/ScrollableBarChart";
 import { ExpandableChart } from "@/components/ExpandableChart";
+import { MoneyInput } from "@/components/MoneyInput";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
 import { useOpenCreateFromQuery } from "@/hooks/useOpenCreateFromQuery";
@@ -493,12 +494,10 @@ export default function CostsPage() {
                 <FormField stacked label="Amount">
                   <label className="input input-bordered flex items-center gap-2 w-full">
                     $
-                    <input
-                      type="number"
-                      step="0.01"
+                    <MoneyInput
                       className="grow"
                       value={form.amount}
-                      onChange={(e) => updateField("amount", e.target.value)}
+                      onValueChange={(v) => updateField("amount", v)}
                       required
                     />
                   </label>

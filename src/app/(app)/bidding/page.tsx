@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronUp, Gavel, Plus, Star } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
+import { MoneyInput } from "@/components/MoneyInput";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard } from "@/components/ui";
 import { StarRating } from "@/components/StarRating";
 import { writeAuditLog } from "@/lib/audit";
@@ -863,13 +864,11 @@ function BiddingPage() {
                 </FormField>
               </div>
               <FormField stacked label="Estimated value">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
+                <MoneyInput
                   className="input input-bordered w-full"
+                  min="0"
                   value={pkgForm.estimated_package_value}
-                  onChange={(e) => setPkgForm((p) => ({ ...p, estimated_package_value: e.target.value }))}
+                  onValueChange={(v) => setPkgForm((p) => ({ ...p, estimated_package_value: v }))}
                 />
               </FormField>
               <FormField stacked label="Status">
@@ -1258,13 +1257,11 @@ function BiddingPage() {
                       </p>
                     </div>
                     <FormField label="Bid amount">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
+                      <MoneyInput
                         className="input input-bordered"
+                        min="0"
                         value={bidForm.amount || (myBid ? String(myBid.amount) : "")}
-                        onChange={(e) => setBidForm((p) => ({ ...p, amount: e.target.value }))}
+                        onValueChange={(v) => setBidForm((p) => ({ ...p, amount: v }))}
                         required
                       />
                     </FormField>
@@ -1413,15 +1410,11 @@ function BiddingPage() {
                         </datalist>
                       </FormField>
                       <FormField label="Bid amount">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
+                        <MoneyInput
                           className="input input-bordered input-sm"
+                          min="0"
                           value={staffBidForm.amount}
-                          onChange={(e) =>
-                            setStaffBidForm((p) => ({ ...p, amount: e.target.value }))
-                          }
+                          onValueChange={(v) => setStaffBidForm((p) => ({ ...p, amount: v }))}
                           required
                         />
                       </FormField>
