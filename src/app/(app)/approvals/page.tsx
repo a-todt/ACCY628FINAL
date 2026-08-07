@@ -46,18 +46,14 @@ type QueueTab = "accounting" | "admin";
 export default function ApprovalsPage() {
   const { effectiveRole, user } = useAuth();
   const { invoices, payments, costEntries, loading, error, refresh } = useContractData();
-  const { invoiceAdminThreshold, costAdminThreshold, allowOwnerSodOverride } =
-    useCompanySettings();
+  const { invoiceAdminThreshold, costAdminThreshold } = useCompanySettings();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const canAccounting = canApprovePayments(effectiveRole);
   const canAdmin = canApproveHighValue(effectiveRole);
-  const ownerSodOverride = canOverrideSegregationOfDuties(
-    effectiveRole,
-    allowOwnerSodOverride
-  );
+  const ownerSodOverride = canOverrideSegregationOfDuties(effectiveRole);
   const [tab, setTab] = useState<QueueTab>(canAccounting ? "accounting" : "admin");
 
   const invoiceById = useMemo(() => {
@@ -99,16 +95,8 @@ export default function ApprovalsPage() {
 
   const denySelf = (submittedBy: string | null | undefined) => {
     if (!isSelfSubmitted(submittedBy)) return false;
-    if (ownerSodOverride) {
-      const ok = window.confirm(
-        "Demo SoD override: approve an item you submitted? This bypasses segregation of duties for Accounting (owner)."
-      );
-      if (!ok) {
-        setActionError("Approval cancelled — segregation of duties still applies.");
-        return true;
-      }
-      return false;
-    }
+    // Accounting (owner) always allowed to approve their own submissions.
+    if (ownerSodOverride) return false;
     setActionError("You cannot approve an item you submitted (segregation of duties).");
     return true;
   };
@@ -496,11 +484,11 @@ export default function ApprovalsPage() {
         )} and costs over ${money(costAdminThreshold)} also need Admin / Owner. Thresholds are set in Company Settings.`}
       />
 
-      {allowOwnerSodOverride ? (
+      {ownerSodOverride ? (
         <AlertBanner type="info">
           <span className="badge badge-warning badge-sm mr-2">Demo</span>
-          Owner SoD override is on — Accounting may approve items they submitted.
-          Turn off in Management → Company Settings to enforce segregation of duties for everyone.
+          Accounting (owner) can always approve items they submitted — segregation of
+          duties does not block owners.
         </AlertBanner>
       ) : null}
 

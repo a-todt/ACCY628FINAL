@@ -526,7 +526,7 @@ export default function ManagementPage() {
           cost_admin_approval_threshold: Number(
             form.get("cost_admin_approval_threshold") || 50000
           ),
-          allow_owner_sod_override: form.get("allow_owner_sod_override") === "on",
+          allow_owner_sod_override: true,
           updated_at: new Date().toISOString(),
           updated_by: user?.id ?? null,
         })
@@ -1494,20 +1494,12 @@ export default function ManagementPage() {
                 />
               </FormField>
               <FormField
-                label="Owner SoD override (demo)"
-                hint="When on, Accounting (owner) may approve invoices, payments, and costs they submitted. Does not change amount thresholds."
+                label="Owner SoD (demo)"
+                hint="Accounting (owner) always bypasses segregation of duties and may approve items they submitted. Non-owners stay blocked."
               >
-                <label className="label cursor-pointer justify-start gap-3 py-2">
-                  <input
-                    type="checkbox"
-                    name="allow_owner_sod_override"
-                    className="checkbox checkbox-primary"
-                    defaultChecked={admin.company.allow_owner_sod_override !== false}
-                  />
-                  <span className="label-text">
-                    Allow owner to bypass segregation of duties
-                  </span>
-                </label>
+                <p className="text-sm opacity-80 py-2">
+                  Always on for Accounting — SoD cannot block owner approvals.
+                </p>
               </FormField>
               <FormField label="Address Line 1">
                 <input
@@ -1600,14 +1592,8 @@ export default function ManagementPage() {
                     }
                   />
                 </FormField>
-                <FormField label="Owner SoD override (demo)">
-                  <SettingsValue
-                    value={
-                      admin.company.allow_owner_sod_override !== false
-                        ? "On — Accounting may approve items they submitted"
-                        : "Off — segregation of duties enforced for everyone"
-                    }
-                  />
+                <FormField label="Owner SoD (demo)">
+                  <SettingsValue value="Always on for Accounting — owners are never blocked by SoD" />
                 </FormField>
                 <FormField label="Address Line 1">
                   <SettingsValue value={admin.company.address_line1} />

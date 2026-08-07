@@ -89,10 +89,10 @@ function InvoiceDetailContent() {
   const { effectiveRole, user } = useAuth();
   const { contracts, changeOrders, invoices, payments, loading, error, refresh } =
     useContractData();
-  const { invoiceAdminThreshold, allowOwnerSodOverride } = useCompanySettings();
+  const { invoiceAdminThreshold } = useCompanySettings();
   const canEdit = canCreateInvoices(effectiveRole);
   const canApprove = canApprovePayments(effectiveRole);
-  const canSelfApprove = canSelfApprovePayment(effectiveRole, allowOwnerSodOverride);
+  const canSelfApprove = canSelfApprovePayment(effectiveRole);
   const wantsEdit = searchParams.get("edit") === "1";
   const isEditing = canEdit && wantsEdit;
 

@@ -95,11 +95,11 @@ export default function InvoicesPage() {
   const { effectiveRole, user } = useAuth();
   const { contracts, changeOrders, invoices, payments, loading, error, refresh } =
     useContractData();
-  const { invoiceAdminThreshold, allowOwnerSodOverride } = useCompanySettings();
+  const { invoiceAdminThreshold } = useCompanySettings();
   const canManage = canCreateInvoices(effectiveRole);
   const canPay = canRecordPayments(effectiveRole);
   const canApprove = canApprovePayments(effectiveRole);
-  const canSelfApprove = canSelfApprovePayment(effectiveRole, allowOwnerSodOverride);
+  const canSelfApprove = canSelfApprovePayment(effectiveRole);
   const canMutate = canManage;
 
   const [invoiceForm, setInvoiceForm] = useState(EMPTY_INVOICE_FORM);

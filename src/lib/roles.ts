@@ -236,22 +236,23 @@ export function canApprovePayments(role: UserRole): boolean {
 }
 
 /**
- * Demo control: Accounting (owner) may approve items they submitted when
- * company_settings.allow_owner_sod_override is enabled. Non-owners never bypass SoD.
+ * Accounting (owner) always bypasses segregation of duties for demos —
+ * owners may approve items they submitted. Non-owners never bypass SoD.
+ * Second arg kept for call-site compatibility; ignored.
  */
 export function canOverrideSegregationOfDuties(
   role: UserRole,
-  allowOwnerSodOverride: boolean
+  _allowOwnerSodOverride?: boolean
 ): boolean {
-  return role === "owner" && allowOwnerSodOverride;
+  return role === "owner";
 }
 
 /** Same as canOverrideSegregationOfDuties — used on payment approve UIs. */
 export function canSelfApprovePayment(
   role: UserRole,
-  allowOwnerSodOverride = false
+  _allowOwnerSodOverride?: boolean
 ): boolean {
-  return canOverrideSegregationOfDuties(role, allowOwnerSodOverride);
+  return canOverrideSegregationOfDuties(role);
 }
 
 /** Admin / Owner approves high-value (≥ $250k) step 2. */
