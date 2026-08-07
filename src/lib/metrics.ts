@@ -19,13 +19,16 @@ export function money(n: number | null | undefined): string {
 }
 
 export function moneyExact(n: number | null | undefined): string {
-  const value = Number(n ?? 0);
+  const raw = Number(n ?? 0);
+  const value = Number.isFinite(raw) ? raw : 0;
+  const large = Math.abs(value) >= 1_000_000;
+  const display = large ? Math.round(value) : value;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
+    minimumFractionDigits: large ? 0 : 2,
+    maximumFractionDigits: large ? 0 : 2,
+  }).format(display);
 }
 
 export function percent(n: number | null | undefined): string {
