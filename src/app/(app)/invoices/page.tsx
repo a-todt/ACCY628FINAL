@@ -25,6 +25,7 @@ import {
   validateInvoiceBillingAmount,
   validateInvoiceStatusChange,
   validatePaymentAmount,
+  validateAmountPaid,
 } from "@/lib/invoiceValidation";
 import { daysPastDue, labelize, money, moneyExact } from "@/lib/metrics";
 import { invoiceAfterApplyingPayment, paymentNeedsOwnerApproval } from "@/lib/payments";
@@ -414,7 +415,7 @@ export default function InvoicesPage() {
     setPaymentError(null);
     setPaymentSuccess(null);
 
-    if (!paymentForm.invoice_id || !paymentForm.payment_amount) {
+    if (!paymentForm.invoice_id || paymentForm.payment_amount.trim() === "") {
       setPaymentError("Invoice and payment amount are required.");
       return;
     }
@@ -424,7 +425,16 @@ export default function InvoicesPage() {
     }
 
     const paymentAmount = Number(paymentForm.payment_amount);
-    const paymentAmountError = validatePaymentAmount(paymentAmount, selectedInvoice);
+    const reservedPending = payments
+      .filter(
+        (p) =>
+          p.invoice_id === selectedInvoice.id &&
+          (p.approval_status ?? "posted") === "pending_approval"
+      )
+      .reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0);
+    const paymentAmountError = validatePaymentAmount(paymentAmount, selectedInvoice, {
+      reservedPending,
+    });
     if (paymentAmountError) {
       setPaymentError(paymentAmountError);
       return;
@@ -855,7 +865,27 @@ export default function InvoicesPage() {
                 />
               </FormField>
             ) : null}
-            <FormField label="Payment Amount">
+            <FormField
+              label="Payment Amount"
+              hint={
+                selectedInvoice
+                  ? `Max open balance: ${moneyExact(
+                      Math.max(
+                        0,
+                        Number(selectedInvoice.net_amount_due ?? selectedInvoice.invoice_amount ?? 0) -
+                          Number(selectedInvoice.amount_paid ?? 0) -
+                          payments
+                            .filter(
+                              (p) =>
+                                p.invoice_id === selectedInvoice.id &&
+                                (p.approval_status ?? "posted") === "pending_approval"
+                            )
+                            .reduce((sum, p) => sum + Number(p.payment_amount ?? 0), 0)
+                      )
+                    )}`
+                  : undefined
+              }
+            >
               <label className="input input-bordered flex items-center gap-2">
                 $
                 <input

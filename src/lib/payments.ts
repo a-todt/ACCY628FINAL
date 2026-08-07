@@ -31,8 +31,12 @@ export function invoiceAfterApplyingPayment(
   invoice: Invoice,
   paymentAmount: number
 ): { amount_paid: number; status: InvoiceStatus } {
-  const newAmountPaid = Number(invoice.amount_paid ?? 0) + paymentAmount;
   const netAmountDue = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
+  const currentPaid = Number(invoice.amount_paid ?? 0);
+  const open = Math.max(netAmountDue - currentPaid, 0);
+  // Never let AR math create an overpayment if a caller skips validation.
+  const applied = Math.min(Math.max(paymentAmount, 0), open);
+  const newAmountPaid = currentPaid + applied;
   return {
     amount_paid: newAmountPaid,
     status: nextInvoiceStatus(newAmountPaid, netAmountDue),

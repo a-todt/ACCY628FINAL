@@ -121,6 +121,47 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     });
   }
 
+  // 2b) Zero-dollar or negative payments (should never post)
+  for (const payment of payments) {
+    const amount = Number(payment.payment_amount ?? 0);
+    if (amount > 0.005) continue;
+    if ((payment.approval_status ?? "posted") === "rejected") continue;
+    const invoice = invoices.find((i) => i.id === payment.invoice_id);
+    const number = invoice?.invoice_number?.trim() || "Invoice";
+    alerts.push({
+      id: `fraud-payment-zero-${payment.id}`,
+      severity: "critical",
+      category: "fraud",
+      title: `Potential fraud — $0 / blank payment on ${number}`,
+      detail: `${invoice?.contracts?.contract_name ?? "Project"} · Payment amount ${money(amount)}`,
+      action: "Delete or correct this payment — zero-dollar payments are not allowed",
+      href: `/invoices/${payment.invoice_id}?tab=payments`,
+      createdAt: payment.submitted_at ?? payment.created_at ?? now,
+    });
+  }
+
+  // 2c) Single payment larger than the invoice net due
+  for (const payment of payments) {
+    if ((payment.approval_status ?? "posted") === "rejected") continue;
+    const amount = Number(payment.payment_amount ?? 0);
+    if (amount <= 0.005) continue;
+    const invoice = invoices.find((i) => i.id === payment.invoice_id);
+    if (!invoice) continue;
+    const net = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
+    if (net <= 0 || amount <= net + 0.01) continue;
+    const number = invoice.invoice_number?.trim() || "Invoice";
+    alerts.push({
+      id: `fraud-payment-oversize-${payment.id}`,
+      severity: "critical",
+      category: "fraud",
+      title: `Potential fraud — payment ${money(amount)} exceeds ${number} net due`,
+      detail: `${invoice.contracts?.contract_name ?? "Project"} · Net due ${money(net)}`,
+      action: "Reject or reverse this payment — amount exceeds the invoice",
+      href: `/invoices/${payment.invoice_id}?tab=payments`,
+      createdAt: payment.submitted_at ?? payment.created_at ?? now,
+    });
+  }
+
   // 3) Duplicate invoice numbers across contracts
   const byNumber = new Map<string, Invoice[]>();
   for (const invoice of invoices) {

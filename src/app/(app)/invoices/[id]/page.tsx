@@ -17,6 +17,7 @@ import {
   validateInvoiceStatusChange,
   validatePaymentAmount,
   coerceInvoiceStatus,
+  validateAmountPaid,
 } from "@/lib/invoiceValidation";
 import { daysPastDue, labelize, money, moneyExact } from "@/lib/metrics";
 import {
@@ -272,9 +273,10 @@ function InvoiceDetailContent() {
       return;
     }
 
-    const amountPaidNum = form.amount_paid ? Number(form.amount_paid) : 0;
-    if (amountPaidNum < -0.005) {
-      setActionError("Amount paid cannot be negative.");
+    const amountPaidNum = form.amount_paid.trim() === "" ? 0 : Number(form.amount_paid);
+    const paidError = validateAmountPaid(amountPaidNum, computedNetAmountDue);
+    if (paidError) {
+      setActionError(paidError);
       return;
     }
     const statusError = validateInvoiceStatusChange(
@@ -476,12 +478,17 @@ function InvoiceDetailContent() {
                   readOnly
                 />
               </FormField>
-              <FormField label="Amount Paid">
+              <FormField
+                label="Amount Paid"
+                hint={`Cannot exceed net due (${moneyExact(computedNetAmountDue)})`}
+              >
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
+                    max={computedNetAmountDue}
                     className="grow"
                     value={form.amount_paid}
                     onChange={(e) => updateField("amount_paid", e.target.value)}
