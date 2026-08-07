@@ -1,26 +1,19 @@
 "use client";
 
-import { Fragment, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ChevronDown, Paperclip, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Pencil, Trash2 } from "lucide-react";
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
-import { AttachmentPanel } from "@/components/AttachmentPanel";
 import { ContractEditForm } from "@/components/ContractEditForm";
 import { FavoriteProjectButton } from "@/components/FavoriteProjectButton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useContractData } from "@/hooks/useContractData";
-import { useInsuranceData } from "@/hooks/useInsuranceData";
 import { AlertBanner, EmptyState, PageHeader, SectionCard, StatCard } from "@/components/ui";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { WeatherBadge } from "@/components/WeatherBadge";
 import { writeAuditLog } from "@/lib/audit";
-import {
-  labelPolicy,
-  policyHealth,
-  policyHealthBadge,
-} from "@/lib/insurance";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
 import {
   canCancelOrDeleteContracts,
@@ -30,7 +23,7 @@ import {
   statusBadgeClass,
 } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
-import type { ContractInsuranceRequirement, ContractStatus, InsurancePolicy } from "@/lib/types";
+import type { ContractStatus } from "@/lib/types";
 
 const STATUS_OPTIONS: ContractStatus[] = ["active", "on_hold", "completed", "canceled"];
 
@@ -48,8 +41,6 @@ function ContractDetailContent() {
   const searchParams = useSearchParams();
   const contractId = params.id;
   const { effectiveRole } = useAuth();
-  const canSeeInsurancePolicies =
-    effectiveRole !== "client" && effectiveRole !== "subcontractor";
   const {
     contracts,
     changeOrders,
@@ -64,11 +55,6 @@ function ContractDetailContent() {
     error,
     refresh,
   } = useContractData();
-  const {
-    policies: insurancePolicies,
-    requirements: insuranceRequirements,
-    loading: insuranceLoading,
-  } = useInsuranceData(canSeeInsurancePolicies);
   const canMutate = canCancelOrDeleteContracts(effectiveRole);
   const canEdit = canManageContracts(effectiveRole);
   const wantsEdit = searchParams.get("edit") === "1";
@@ -87,7 +73,7 @@ function ContractDetailContent() {
     router.replace(`/contracts/${contractId}`);
   };
 
-  if (loading || insuranceLoading) {
+  if (loading) {
     return (
       <div className="grid place-items-center py-24">
         <span className="loading loading-spinner loading-lg text-primary" />
@@ -168,17 +154,6 @@ function ContractDetailContent() {
       )}
     </SectionCard>
   );
-
-  const contractRequirements = insuranceRequirements.filter((r) => r.contract_id === contract.id);
-  const contractSubIds = new Set(contractSubs.map((s) => s.id));
-  const contractPolicies = insurancePolicies.filter((p) => {
-    if (p.holder_type === "gc") return true;
-    return (
-      p.holder_type === "subcontractor" &&
-      p.subcontractor_id != null &&
-      contractSubIds.has(p.subcontractor_id)
-    );
-  });
 
   const cancelContract = async () => {
     if (contract.status === "canceled") return;
@@ -405,17 +380,6 @@ function ContractDetailContent() {
             ) : null}
           </>
         )}
-
-        {canSeeInsurancePolicies ? (
-          <div className="mt-6 border-t border-base-300 pt-4">
-            <p className="text-xs uppercase tracking-wide opacity-60 mb-3">Insurance Policies</p>
-            <ContractInsuranceOverview
-              policies={contractPolicies}
-              requirements={contractRequirements}
-              showRequiredRate
-            />
-          </div>
-        ) : null}
       </SectionCard>
 
       {isClient ? milestonesSection : null}
@@ -651,131 +615,6 @@ function ContractDetailContent() {
           refreshKey={logRefreshKey}
         />
       ) : null}
-    </div>
-  );
-}
-
-function ContractInsuranceOverview({
-  policies,
-  requirements,
-  showRequiredRate,
-}: {
-  policies: InsurancePolicy[];
-  requirements: ContractInsuranceRequirement[];
-  showRequiredRate: boolean;
-}) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  if (policies.length === 0 && requirements.length === 0) {
-    return <p className="text-sm opacity-60">No insurance policies on file for this contract.</p>;
-  }
-
-  const requiredRateByType = new Map<string, number | null>(
-    requirements.map((req) => [`${req.policy_type}:${req.applies_to}`, req.minimum_limit])
-  );
-  const colSpan = showRequiredRate ? 8 : 7;
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="table table-sm">
-        <thead>
-          <tr>
-            <th>Policy</th>
-            <th>Holder</th>
-            <th>Carrier</th>
-            <th className="text-right">Rate</th>
-            {showRequiredRate ? <th className="text-right">Required</th> : null}
-            <th>Expires</th>
-            <th>Status</th>
-            <th className="text-right">Files</th>
-          </tr>
-        </thead>
-        <tbody>
-          {policies.map((policy) => {
-            const health = policyHealth(policy);
-            const holderLabel =
-              policy.holder_type === "gc"
-                ? "GC"
-                : policy.subcontractors?.company_name ?? "Subcontractor";
-            const appliesKey =
-              policy.holder_type === "gc"
-                ? [`${policy.policy_type}:gc`, `${policy.policy_type}:both`]
-                : [`${policy.policy_type}:subcontractor`, `${policy.policy_type}:both`];
-            const required =
-              appliesKey.map((key) => requiredRateByType.get(key)).find((value) => value != null) ?? null;
-            const expanded = expandedId === policy.id;
-
-            return (
-              <Fragment key={policy.id}>
-                <tr>
-                  <td>
-                    <div className="font-medium">{labelPolicy(policy.policy_type)}</div>
-                    <div className="text-xs opacity-60">{policy.policy_number || "No policy #"}</div>
-                  </td>
-                  <td>{holderLabel}</td>
-                  <td>{policy.carrier_name ?? "—"}</td>
-                  <td className="text-right">{money(policy.coverage_limit)}</td>
-                  {showRequiredRate ? (
-                    <td className="text-right">{required != null ? money(required) : "—"}</td>
-                  ) : null}
-                  <td className="whitespace-nowrap">{policy.expiration_date ?? "—"}</td>
-                  <td>
-                    <span className={`badge badge-sm ${policyHealthBadge(health)}`}>{labelize(health)}</span>
-                  </td>
-                  <td className="text-right">
-                    <button
-                      type="button"
-                      className={`btn btn-ghost btn-xs ${expanded ? "btn-active" : ""}`}
-                      title="Attachments"
-                      onClick={() => setExpandedId(expanded ? null : policy.id)}
-                    >
-                      <Paperclip className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
-                </tr>
-                {expanded ? (
-                  <tr>
-                    <td colSpan={colSpan} className="bg-base-200/40">
-                      <div className="p-3 max-w-2xl">
-                        <AttachmentPanel entityType="insurance_policy" entityId={policy.id} />
-                      </div>
-                    </td>
-                  </tr>
-                ) : null}
-              </Fragment>
-            );
-          })}
-          {requirements
-            .filter((req) => {
-              const hasMatchingPolicy = policies.some((policy) => {
-                if (policy.policy_type !== req.policy_type) return false;
-                if (req.applies_to === "both") return true;
-                if (req.applies_to === "gc") return policy.holder_type === "gc";
-                return policy.holder_type === "subcontractor";
-              });
-              return !hasMatchingPolicy;
-            })
-            .map((req) => (
-              <tr key={req.id} className="opacity-80">
-                <td>
-                  <div className="font-medium">{labelPolicy(req.policy_type)}</div>
-                  <div className="text-xs opacity-60">Required · no policy on file</div>
-                </td>
-                <td>{labelize(req.applies_to)}</td>
-                <td>—</td>
-                <td className="text-right">—</td>
-                {showRequiredRate ? (
-                  <td className="text-right">{req.minimum_limit != null ? money(req.minimum_limit) : "—"}</td>
-                ) : null}
-                <td>—</td>
-                <td>
-                  <span className="badge badge-sm badge-warning">Missing</span>
-                </td>
-                <td />
-              </tr>
-            ))}
-        </tbody>
-      </table>
     </div>
   );
 }

@@ -231,7 +231,6 @@ export interface BidPackage {
   site_conditions: string | null;
   working_hours: string | null;
   safety_requirements: string | null;
-  insurance_requirements: string | null;
   bonding_requirements: string | null;
   permit_notes: string | null;
   schedule_milestones: string | null;
@@ -380,49 +379,6 @@ export interface SafetyIncident {
   user_profiles?: { full_name: string | null; email: string | null } | null;
 }
 
-export type InsuranceHolderType = "gc" | "subcontractor";
-export type InsurancePolicyType =
-  | "general_liability"
-  | "workers_comp"
-  | "auto"
-  | "umbrella"
-  | "builders_risk"
-  | "professional_liability"
-  | "other";
-export type InsuranceAppliesTo = "gc" | "subcontractor" | "both";
-
-export interface InsurancePolicy {
-  id: string;
-  holder_type: InsuranceHolderType;
-  subcontractor_id: string | null;
-  policy_type: InsurancePolicyType;
-  carrier_name: string | null;
-  policy_number: string | null;
-  coverage_limit: number | null;
-  effective_date: string | null;
-  expiration_date: string | null;
-  additional_insured: boolean;
-  waiver_of_subrogation: boolean;
-  document_url: string | null;
-  notes: string | null;
-  created_by: string | null;
-  created_at: string;
-  subcontractors?: { company_name: string; contract_id: string } | null;
-}
-
-export interface ContractInsuranceRequirement {
-  id: string;
-  contract_id: string;
-  policy_type: InsurancePolicyType;
-  minimum_limit: number | null;
-  requires_additional_insured: boolean;
-  requires_waiver: boolean;
-  applies_to: InsuranceAppliesTo;
-  notes: string | null;
-  created_at: string;
-  contracts?: { contract_name: string } | null;
-}
-
 export interface ContractMetrics {
   approvedChangeOrders: number;
   revisedValue: number;
@@ -445,8 +401,7 @@ export interface ContractMetrics {
 export type AttachmentEntityType =
   | "field_log"
   | "invoice"
-  | "change_order"
-  | "insurance_policy";
+  | "change_order";
 
 export interface Attachment {
   id: string;

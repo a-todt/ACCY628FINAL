@@ -9,7 +9,6 @@ import type {
   ContractAssignment,
   Customer,
   EmployeeCertification,
-  InsurancePolicy,
   Subcontractor,
   SubcontractorInvite,
   UserProfile,
@@ -25,7 +24,6 @@ interface AdminDataState {
   customers: Customer[];
   subcontractors: Subcontractor[];
   invites: SubcontractorInvite[];
-  insurancePolicies: InsurancePolicy[];
   auditLog: AccessAuditEntry[];
 }
 
@@ -38,7 +36,6 @@ const EMPTY: AdminDataState = {
   customers: [],
   subcontractors: [],
   invites: [],
-  insurancePolicies: [],
   auditLog: [],
 };
 
@@ -67,7 +64,6 @@ export function useAdminData() {
         customersRes,
         subsRes,
         invitesRes,
-        insuranceRes,
         auditRes,
       ] = await Promise.all([
         supabase.from("company_settings").select("*").limit(1).maybeSingle(),
@@ -91,7 +87,6 @@ export function useAdminData() {
           .from("subcontractor_invites")
           .select("*, subcontractors(company_name, contract_id)")
           .order("created_at", { ascending: false }),
-        supabase.from("insurance_policies").select("*").order("expiration_date", { ascending: true }),
         supabase.from("access_audit_log").select("*").order("created_at", { ascending: false }).limit(100),
       ]);
 
@@ -107,11 +102,6 @@ export function useAdminData() {
         errMessage("Audit log", auditRes.error);
 
       if (criticalError) throw new Error(criticalError);
-
-      // Insurance is helpful for compliance but should not block the whole page.
-      if (insuranceRes.error) {
-        console.warn("Insurance policies load failed:", insuranceRes.error.message);
-      }
 
       const profiles = (profilesRes.data as UserProfile[]) ?? [];
       const profileById = new Map(profiles.map((p) => [p.id, p]));
@@ -139,7 +129,6 @@ export function useAdminData() {
         customers: (customersRes.data as Customer[]) ?? [],
         subcontractors: (subsRes.data as Subcontractor[]) ?? [],
         invites: (invitesRes.data as SubcontractorInvite[]) ?? [],
-        insurancePolicies: ((insuranceRes.data as InsurancePolicy[]) ?? []).filter(Boolean),
         auditLog: (auditRes.data as AccessAuditEntry[]) ?? [],
       });
     } catch (err) {
