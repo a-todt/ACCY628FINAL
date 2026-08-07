@@ -208,6 +208,11 @@ export function canManageRoles(role: UserRole): boolean {
   return hasPermission(role, "manageRoles");
 }
 
+/** Permanently delete internal employees from Team — Admin only. */
+export function canDeleteStaff(role: UserRole): boolean {
+  return role === "admin";
+}
+
 export function canManageContracts(role: UserRole): boolean {
   return hasPermission(role, "manageContracts");
 }

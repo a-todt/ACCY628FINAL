@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Pencil,
   Plus,
+  Trash2,
   Users,
   ClipboardList,
   Building2,
@@ -27,6 +28,7 @@ import {
 import { compareValues } from "@/components/FilterSortBar";
 import {
   ROLE_LABELS,
+  canDeleteStaff,
   canManageCompany,
   canViewAuditLog,
   roleBadgeClass,
@@ -66,6 +68,7 @@ const STAFF_EDIT_ROLES: UserRole[] = ["owner", "project_manager", "field_supervi
 const HIGH_SIGNAL_AUDIT_ACTIONS = new Set([
   "staff_created",
   "staff_updated",
+  "staff_deleted",
   "password_reset_sent",
   "client_access_email_sent",
   "assignment_created",
@@ -96,6 +99,7 @@ function labelAssignmentRole(role: string) {
 
 export default function ManagementPage() {
   const { effectiveRole, user } = useAuth();
+  const canRemoveStaff = canDeleteStaff(effectiveRole);
   const searchParams = useSearchParams();
   const activeTab = tabFromParam(searchParams.get("tab"));
   const staffParam = searchParams.get("staff");
@@ -650,6 +654,48 @@ export default function ManagementPage() {
   };
 
   const closeStaffEdit = () => setEditingStaff(null);
+
+  const onDeleteStaff = async (profile: UserProfile) => {
+    if (!canRemoveStaff) {
+      setError("Only Admin can delete internal employees.");
+      return;
+    }
+    if (user?.id === profile.id) {
+      setError("You cannot delete your own account.");
+      return;
+    }
+    const label = profile.full_name || profile.email || "this employee";
+    if (
+      !window.confirm(
+        `Permanently delete ${label}? Their login and team profile will be removed. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/staff", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: profile.id }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Failed to delete staff.");
+
+      if (editingStaff?.id === profile.id) closeStaffEdit();
+      if (viewingAssignmentsFor?.id === profile.id) closeAssignments();
+      if (viewingCertsFor?.id === profile.id) setViewingCertsFor(null);
+      setMessage(`${label} deleted.`);
+      await admin.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete staff.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const onAddCertification = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1783,14 +1829,27 @@ export default function ManagementPage() {
                               </datalist>
                             </td>
                             <td className="px-1 text-center">
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs h-auto min-h-7 whitespace-normal px-1"
-                                onClick={() => setEditingStaff(p)}
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                                Edit
-                              </button>
+                              <div className="flex flex-col items-center gap-1">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs h-auto min-h-7 whitespace-normal px-1"
+                                  onClick={() => setEditingStaff(p)}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Edit
+                                </button>
+                                {canRemoveStaff && user?.id !== p.id ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs h-auto min-h-7 whitespace-normal px-1 text-error"
+                                    disabled={busy}
+                                    onClick={() => void onDeleteStaff(p)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Delete
+                                  </button>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1958,22 +2017,37 @@ export default function ManagementPage() {
                       <option value="false">Inactive</option>
                     </select>
                   </FormField>
-                  <div className="modal-action sm:col-span-2 mt-2 mb-0">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      disabled={busy}
-                      onClick={closeStaffEdit}
-                    >
-                      Cancel
-                    </button>
-                    <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
-                      {busy ? (
-                        <span className="loading loading-spinner loading-xs" />
-                      ) : (
-                        "Save Changes"
-                      )}
-                    </button>
+                  <div className="modal-action sm:col-span-2 mt-2 mb-0 flex-wrap gap-2 justify-between">
+                    {canRemoveStaff && user?.id !== editingStaff.id ? (
+                      <button
+                        type="button"
+                        className="btn btn-error btn-outline btn-sm"
+                        disabled={busy}
+                        onClick={() => void onDeleteStaff(editingStaff)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete Employee
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={closeStaffEdit}
+                      >
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
+                        {busy ? (
+                          <span className="loading loading-spinner loading-xs" />
+                        ) : (
+                          "Save Changes"
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>
