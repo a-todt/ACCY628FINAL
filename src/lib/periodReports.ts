@@ -1,5 +1,5 @@
 import type { ChangeOrder, Contract, CostEntry, Invoice, Payment } from "@/lib/types";
-import { isApprovedCost, isApprovedInvoice } from "@/lib/payments";
+import { isApprovedCost, isApprovedInvoice, isPostedPayment } from "@/lib/payments";
 
 export type PeriodMode = "month" | "year";
 
@@ -289,8 +289,6 @@ export function buildPeriodRows(input: BuildPeriodRowsInput): PeriodReportResult
     ? contracts.filter((c) => c.id === contractId)
     : contracts;
 
-  const invoiceById = new Map(invoices.map((i) => [i.id, i]));
-
   const availableYears = collectAvailableYears({
     costEntries,
     invoices,
@@ -317,11 +315,10 @@ export function buildPeriodRows(input: BuildPeriodRowsInput): PeriodReportResult
       (i) => i.contract_id === contract.id && isApprovedInvoice(i)
     );
     const invoiceIds = new Set(relatedInvoices.map((i) => i.id));
-    const relatedPayments = payments.filter((p) => {
-      if (invoiceIds.has(p.invoice_id)) return true;
-      const inv = invoiceById.get(p.invoice_id);
-      return inv?.contract_id === contract.id;
-    });
+    // Collected cash: posted payments on approved invoices only.
+    const relatedPayments = payments.filter(
+      (p) => invoiceIds.has(p.invoice_id) && isPostedPayment(p)
+    );
     const relatedWipCosts = wip
       ? projectCosts.filter((c) => c.project_id === wip.id)
       : [];

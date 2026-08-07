@@ -49,27 +49,32 @@ export function isPaymentPending(payment: Payment): boolean {
   return isPaymentAwaitingAccounting(payment) || isPaymentAwaitingAdmin(payment);
 }
 
-/** Billable invoices only — pending/rejected do not count toward AR/billed. */
+/**
+ * Billable invoices only — pending/rejected (and missing status) do not count
+ * toward AR, billed totals, or charts. Require an explicit `approved` status.
+ */
 export function isApprovedInvoice(invoice: Invoice): boolean {
-  const status = invoice.approval_status ?? "approved";
-  return status === "approved";
+  return invoice.approval_status === "approved";
 }
 
 export function isInvoiceAwaitingAccounting(invoice: Invoice): boolean {
-  return (invoice.approval_status ?? "approved") === "pending_accounting";
+  return invoice.approval_status === "pending_accounting";
 }
 
 export function isInvoiceAwaitingAdmin(invoice: Invoice): boolean {
-  return (invoice.approval_status ?? "approved") === "pending_admin";
+  return invoice.approval_status === "pending_admin";
 }
 
 export function isInvoicePending(invoice: Invoice): boolean {
   return isInvoiceAwaitingAccounting(invoice) || isInvoiceAwaitingAdmin(invoice);
 }
 
-/** Job-cost totals only include approved cost logs. */
+/**
+ * Job-cost totals / charts only include approved cost logs.
+ * Missing status is excluded so unapproved entries never inflate visuals.
+ */
 export function isApprovedCost(cost: CostEntry): boolean {
-  return (cost.approval_status ?? "approved") === "approved";
+  return cost.approval_status === "approved";
 }
 
 /** Convenience filter for charts, KPIs, and financial aggregates. */
@@ -77,12 +82,16 @@ export function approvedCostsOnly(costs: CostEntry[]): CostEntry[] {
   return costs.filter(isApprovedCost);
 }
 
+export function approvedInvoicesOnly(invoices: Invoice[]): Invoice[] {
+  return invoices.filter(isApprovedInvoice);
+}
+
 export function isCostAwaitingAccounting(cost: CostEntry): boolean {
-  return (cost.approval_status ?? "approved") === "pending_accounting";
+  return cost.approval_status === "pending_accounting";
 }
 
 export function isCostAwaitingAdmin(cost: CostEntry): boolean {
-  return (cost.approval_status ?? "approved") === "pending_admin";
+  return cost.approval_status === "pending_admin";
 }
 
 export function isCostPending(cost: CostEntry): boolean {
