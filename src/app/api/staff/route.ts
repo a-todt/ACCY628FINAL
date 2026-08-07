@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
     if (requester?.role !== "owner" && requester?.role !== "admin") {
       return NextResponse.json(
-        { error: "Only owners and admins can add staff." },
+        { error: "Only company admins and Accounting can add staff." },
         { status: 403 }
       );
     }
@@ -49,6 +49,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Name, email, a 6+ character temporary password, and staff role are required." },
         { status: 400 }
+      );
+    }
+
+    // Only company Admin may create additional Accounting logins.
+    if (role === "owner" && requester?.role !== "admin") {
+      return NextResponse.json(
+        { error: "Only company admins can create Accounting users." },
+        { status: 403 }
       );
     }
 

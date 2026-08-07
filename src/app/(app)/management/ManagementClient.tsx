@@ -63,6 +63,12 @@ type SubSortKey = "company" | "contract" | "trade" | "license" | "status";
 
 const TABS: TabId[] = ["overview", "settings", "team", "parties", "compliance", "audit"];
 const STAFF_EDIT_ROLES: UserRole[] = ["owner", "project_manager", "field_supervisor"];
+
+function staffRolesForCreator(creatorRole: string): UserRole[] {
+  if (creatorRole === "admin") return STAFF_EDIT_ROLES;
+  // Accounting can add PMs / field supervisors, but not more Accounting accounts.
+  return STAFF_EDIT_ROLES.filter((role) => role !== "owner");
+}
 const HIGH_SIGNAL_AUDIT_ACTIONS = new Set([
   "staff_created",
   "staff_updated",
@@ -1807,7 +1813,8 @@ export default function ManagementPage() {
               <div className="modal-box max-w-2xl">
                 <h3 className="mb-1 text-lg font-semibold">Add Staff</h3>
                 <p className="mb-4 text-sm opacity-60">
-                  Create a staff login and add their information to the team table.
+                  Create a company login (Accounting, Project Manager, or Field Supervisor) and add
+                  them to the team table.
                 </p>
                 <form onSubmit={onAddStaff} className="grid gap-3 sm:grid-cols-2">
                   <label className="form-control">
@@ -1854,7 +1861,7 @@ export default function ManagementPage() {
                       className="select select-bordered w-full"
                       defaultValue="field_supervisor"
                     >
-                      {STAFF_EDIT_ROLES.map((role) => (
+                      {staffRolesForCreator(effectiveRole).map((role) => (
                         <option key={role} value={role}>
                           {ROLE_LABELS[role]}
                         </option>
