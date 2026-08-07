@@ -84,6 +84,7 @@ select u.id, u.email, v.full_name, v.role, v.employee_id, v.title, v.phone, true
 from auth.users u
 join (values
   ('admin@gcmanager.demo', 'Demo Admin', 'admin', 'EMP-001', 'Company Administrator', '312-555-0100'),
+  ('accounting@gcmanager.demo', 'Demo Accounting', 'owner', 'EMP-002', 'Accounting', '312-555-0109'),
   ('pm@gcmanager.demo', 'Jordan Blake', 'project_manager', 'EMP-101', 'Senior Project Manager', '312-555-0101'),
   ('pm2@gcmanager.demo', 'Alex Chen', 'project_manager', 'EMP-102', 'Project Manager', '312-555-0102'),
   ('pm3@gcmanager.demo', 'Morgan Ellis', 'project_manager', 'EMP-103', 'Project Manager', '312-555-0103'),
@@ -138,6 +139,8 @@ delete from public.milestones;
 delete from public.subcontractor_invites where true;
 delete from public.insurance_policies where true;
 delete from public.contract_insurance_requirements where true;
+delete from public.safety_incidents where true;
+delete from public.message_threads where true;
 delete from public.subcontractors;
 delete from public.contract_assignments;
 delete from public.attachments where true;
@@ -598,8 +601,8 @@ select
   current_date - 1,
   'ACH',
   'FRAUD-PMT-DEMO-01',
-  'DEMO FRAUD — PM-submitted payment waiting for owner approval',
-  'pending_approval',
+  'DEMO FRAUD — PM-submitted payment waiting for Accounting approval',
+  'pending_accounting',
   p.id,
   now() - interval '1 day'
 from public.invoices i
@@ -609,7 +612,7 @@ where i.invoice_number = 'INV-01-3'
   and p.email = 'pm@gcmanager.demo'
 limit 1
 on conflict (id) do update set
-  approval_status = 'pending_approval',
+  approval_status = 'pending_accounting',
   notes = excluded.notes;
 
 insert into public.change_orders (
