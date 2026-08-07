@@ -82,7 +82,7 @@ export function useContractData() {
           .order("created_at", { ascending: false }),
         supabase
           .from("cost_entries")
-          .select("*, contracts(contract_name)")
+          .select("*, contracts(contract_name), user_profiles(full_name, email)")
           .order("date_incurred", { ascending: false }),
         supabase
           .from("invoices")

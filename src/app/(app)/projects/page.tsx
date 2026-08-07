@@ -105,6 +105,26 @@ const EMPTY_CHANGE_ORDER = {
   approved_date: "",
 };
 
+/** Hard ceiling for a single WIP cost/billing/CO line (blocks trillion-scale typos). */
+const MAX_WIP_LINE_AMOUNT = 999_999_999.99;
+
+function validateWipLineAmount(
+  amount: number,
+  label: string,
+  options?: { projectCeiling?: number | null }
+): string | null {
+  if (!Number.isFinite(amount)) return `${label} must be a valid number.`;
+  if (amount <= 0) return `${label} must be greater than zero.`;
+  if (amount > MAX_WIP_LINE_AMOUNT) {
+    return `${label} cannot exceed $999,999,999.99 (check for an extra zero).`;
+  }
+  const ceiling = options?.projectCeiling;
+  if (ceiling != null && ceiling > 0 && amount > ceiling + 0.005) {
+    return `${label} cannot exceed this project's revised contract value ($${ceiling.toLocaleString("en-US", { maximumFractionDigits: 2 })}).`;
+  }
+  return null;
+}
+
 export default function ProjectsPage() {
   const { user, effectiveRole } = useAuth();
   const canView = canViewCosts(effectiveRole);
@@ -489,8 +509,16 @@ export default function ProjectsPage() {
       setCostError("Amount is required and must be a valid number.");
       return;
     }
-    if (amount <= 0) {
-      setCostError("Amount must be greater than zero.");
+    const project = projects.find((row) => String(row[P.pk]) === costForm.project_id);
+    const projectCeiling = project
+      ? Math.max(colNum(project, P.contractValue), colNum(project, P.originalValue), 0) * 5
+      : null;
+    const amountError = validateWipLineAmount(amount, "Amount", {
+      // Costs can exceed contract somewhat, but not by absurd multiples / trillion typos.
+      projectCeiling: projectCeiling && projectCeiling > 0 ? projectCeiling : MAX_WIP_LINE_AMOUNT,
+    });
+    if (amountError) {
+      setCostError(amountError);
       return;
     }
 
@@ -539,8 +567,15 @@ export default function ProjectsPage() {
       setBillingError("Amount billed is required and must be a valid number.");
       return;
     }
-    if (amountBilled <= 0) {
-      setBillingError("Amount billed must be greater than zero.");
+    const project = projects.find((row) => String(row[P.pk]) === billingForm.project_id);
+    const revised = project
+      ? Math.max(colNum(project, P.contractValue), colNum(project, P.originalValue), 0)
+      : 0;
+    const amountError = validateWipLineAmount(amountBilled, "Amount billed", {
+      projectCeiling: revised > 0 ? revised : MAX_WIP_LINE_AMOUNT,
+    });
+    if (amountError) {
+      setBillingError(amountError);
       return;
     }
     if (billingForm.retainage_held && Number.isNaN(retainage)) {
@@ -599,8 +634,16 @@ export default function ProjectsPage() {
       setChangeOrderError("Amount is required and must be a valid number.");
       return;
     }
+    const amountError = validateWipLineAmount(Math.abs(amount), "Amount", {
+      projectCeiling: MAX_WIP_LINE_AMOUNT,
+    });
+    // COs may be negative (deductives); only block zero and absurd magnitude.
     if (amount === 0) {
       setChangeOrderError("Amount cannot be zero.");
+      return;
+    }
+    if (amountError) {
+      setChangeOrderError(amountError);
       return;
     }
     if (changeOrderForm.status === "approved") {

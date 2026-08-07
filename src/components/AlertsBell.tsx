@@ -37,6 +37,8 @@ export function AlertsBell() {
       payments: data.payments,
       costEntries: data.costEntries,
       contracts: data.contracts,
+      assignments: data.assignments,
+      userProfiles: data.userProfiles,
     });
   }, [
     effectiveRole,
@@ -47,6 +49,8 @@ export function AlertsBell() {
     data.payments,
     data.costEntries,
     data.contracts,
+    data.assignments,
+    data.userProfiles,
   ]);
 
   useEffect(() => {

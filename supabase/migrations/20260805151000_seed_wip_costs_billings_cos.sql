@@ -44,7 +44,9 @@ SELECT
 FROM public.invoices i
 JOIN public.contracts c ON c.id = i.contract_id
 JOIN public.projects p ON p.project_name = c.contract_name
-WHERE NOT EXISTS (
+WHERE coalesce(i.invoice_amount, 0) > 0
+  AND coalesce(i.invoice_amount, 0) < 1000000000
+  AND NOT EXISTS (
   SELECT 1
   FROM public.billings b
   WHERE b.project_id = p.id
