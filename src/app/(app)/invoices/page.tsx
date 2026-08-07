@@ -269,7 +269,9 @@ export default function InvoicesPage() {
       if (!contract) {
         return { ...prev, contract_id: contractId };
       }
-      const defaults = contractInvoiceDefaults(contract, invoices, prev);
+      const defaults = contractInvoiceDefaults(contract, invoices, prev, {
+        changeOrders,
+      });
       return {
         ...prev,
         contract_id: contractId,
@@ -278,6 +280,7 @@ export default function InvoicesPage() {
         due_date: defaults.due_date ?? prev.due_date,
         description: defaults.description ?? prev.description,
         invoice_number: defaults.invoice_number ?? prev.invoice_number,
+        invoice_amount: defaults.invoice_amount ?? prev.invoice_amount,
       };
     });
   };
