@@ -8,6 +8,7 @@ import {
   ChevronRight,
   KeyRound,
   LogOut,
+  ScrollText,
   Settings,
   UserRound,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import {
   ROLE_LABELS,
   canManageCompany,
   canUseMessaging,
+  canViewAuditLog,
 } from "@/lib/roles";
 import type { UserRole } from "@/lib/types";
 import {
@@ -49,6 +51,7 @@ export function UserMenu({ panelWidthPx }: { panelWidthPx?: number }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   const showCompany = canManageCompany(effectiveRole);
+  const showAuditLog = canViewAuditLog(effectiveRole);
   const showInboxMute = canUseMessaging(effectiveRole);
   const label = profile?.full_name || user?.email || "Account";
   const baseRole = profile?.role ?? "field_supervisor";
@@ -456,18 +459,31 @@ export function UserMenu({ panelWidthPx }: { panelWidthPx?: number }) {
               </label>
             </section>
 
-            {showCompany ? (
+            {showCompany || showAuditLog ? (
               <section className="space-y-2 border-t border-base-300 pt-3">
                 <p className="text-[10px] uppercase tracking-wide opacity-50">Company</p>
-                <Link
-                  href="/management?tab=settings"
-                  className="btn btn-ghost btn-sm justify-start w-full gap-2"
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                >
-                  <Building2 className="h-4 w-4" />
-                  Company Settings
-                </Link>
+                {showCompany ? (
+                  <Link
+                    href="/management?tab=settings"
+                    className="btn btn-ghost btn-sm justify-start w-full gap-2"
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Company Settings
+                  </Link>
+                ) : null}
+                {showAuditLog ? (
+                  <Link
+                    href="/management?tab=audit"
+                    className="btn btn-ghost btn-sm justify-start w-full gap-2"
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                  >
+                    <ScrollText className="h-4 w-4" />
+                    Audit Log
+                  </Link>
+                ) : null}
               </section>
             ) : null}
           </div>

@@ -28,6 +28,7 @@ import { compareValues } from "@/components/FilterSortBar";
 import {
   ROLE_LABELS,
   canManageCompany,
+  canViewAuditLog,
   roleBadgeClass,
 } from "@/lib/roles";
 import {
@@ -434,13 +435,29 @@ export default function ManagementPage() {
     };
   }, [staffProfiles, assignmentCountByUser, admin.contracts, admin.assignments, admin.customers, admin.invites, admin.auditLog]);
 
-  if (!canManageCompany(effectiveRole)) {
+  const canOpenManagement = canManageCompany(effectiveRole);
+  const canOpenAudit = canViewAuditLog(effectiveRole);
+
+  if (!canOpenManagement && !(activeTab === "audit" && canOpenAudit)) {
     return (
       <div>
         <PageHeader title="Company Management" />
         <AlertBanner type="error">
           Access denied. Only Admin / Owner or Accounting can open company management.
         </AlertBanner>
+      </div>
+    );
+  }
+
+  // Audit Log loads on its own so Accounting still sees it if other management queries fail.
+  if (activeTab === "audit" && canOpenAudit) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Company Management"
+          subtitle="Accounting and Admin / Owner controls for company settings, team, and compliance."
+        />
+        <AuditLogPanel />
       </div>
     );
   }

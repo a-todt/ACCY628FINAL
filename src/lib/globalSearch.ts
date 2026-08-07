@@ -150,7 +150,7 @@ function navPagesForRole(role: UserRole): SearchResult[] {
     pushPage("/admin/roles", "Role Switcher", "Admin");
   }
   if (canViewAuditLog(role)) {
-    pushPage("/audit-log", "Audit Log", "Admin");
+    pushPage("/management?tab=audit", "Audit Log", "Company");
   }
 
   return pages;

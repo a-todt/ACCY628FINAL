@@ -79,9 +79,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: { ...FULL_ACCESS },
   owner: {
     ...FULL_ACCESS,
-    // Owners review submitted field logs but do not create or edit them.
+    // Owners (Accounting) review submitted field logs but do not create or edit them.
     createFieldLogs: false,
     manageFieldLogEntries: false,
+    viewAuditLog: true,
   },
   project_manager: {
     manageCompany: false,
@@ -255,9 +256,9 @@ export function canViewReports(role: UserRole): boolean {
   return hasPermission(role, "viewReports");
 }
 
-/** Full system audit log — Admin and Owner only. */
+/** Full system audit log — Admin / Owner and Accounting. */
 export function canViewAuditLog(role: UserRole): boolean {
-  return hasPermission(role, "viewAuditLog");
+  return hasPermission(role, "viewAuditLog") || role === "admin" || role === "owner";
 }
 
 export function canViewInvoices(role: UserRole): boolean {
@@ -475,14 +476,22 @@ export function secondaryNavForCategory(
   }
 
   if (category === "management") {
-    return [
-      { href: "/management", label: "Overview" },
-      { href: "/management?tab=settings", label: "Company Settings" },
-      { href: "/management?tab=team", label: "Team" },
-      { href: "/management?tab=parties", label: "External Parties" },
-      { href: "/management?tab=compliance", label: "Compliance" },
-      { href: "/management?tab=audit", label: "Audit Log" },
-    ];
+    return (
+      [
+        { href: "/management", label: "Overview", show: true },
+        { href: "/management?tab=settings", label: "Company Settings", show: true },
+        { href: "/management?tab=team", label: "Team", show: true },
+        { href: "/management?tab=parties", label: "External Parties", show: true },
+        { href: "/management?tab=compliance", label: "Compliance", show: true },
+        {
+          href: "/management?tab=audit",
+          label: "Audit Log",
+          show: canViewAuditLog(role),
+        },
+      ] as Array<NavItem & { show: boolean }>
+    )
+      .filter((item) => item.show)
+      .map(({ href, label }) => ({ href, label }));
   }
 
   return [];
