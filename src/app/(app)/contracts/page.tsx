@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Ban,
   Building2,
@@ -27,6 +28,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { useContractSummaries } from "@/hooks/useContractSummaries";
 import { FilterSortBar, compareValues, type SortDir } from "@/components/FilterSortBar";
 import { StatusFilterChips } from "@/components/StatusFilterChips";
+import { StickyToolbar } from "@/components/StickyToolbar";
 import { AlertBanner, EmptyState, PageHeader } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
@@ -52,8 +54,17 @@ type SortKey =
 type SummarySortKey = "name" | "client" | "status" | "end_date";
 
 const STATUS_OPTIONS: ContractStatus[] = ["active", "on_hold", "completed", "canceled"];
+const STATUS_FILTER_VALUES = new Set<string>(["all", ...STATUS_OPTIONS]);
+
+function statusFromSearchParams(params: { get: (key: string) => string | null }): string {
+  const status = params.get("status");
+  return status && STATUS_FILTER_VALUES.has(status) ? status : "all";
+}
 
 export default function ContractsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const { effectiveRole } = useAuth();
   const {
     contracts,
@@ -87,10 +98,37 @@ export default function ContractsPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [logRefreshKey, setLogRefreshKey] = useState(0);
   const [showAllRows, setShowAllRows] = useState(false);
+  const [statusChip, setStatusChip] = useState(() => statusFromSearchParams(searchParams));
+
+  const statusParam = searchParams.get("status") ?? "";
 
   useEffect(() => {
     setShowAllRows(false);
-  }, [filters.name, filters.client, filters.location]);
+  }, [filters.name, filters.client, filters.location, statusChip]);
+
+  useEffect(() => {
+    setStatusChip(statusFromSearchParams(searchParams));
+  }, [searchParams, statusParam]);
+
+  useEffect(() => {
+    if (loading || isFieldSupervisor) return;
+    if (!statusParam || !STATUS_FILTER_VALUES.has(statusParam)) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("contracts-table")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [loading, isFieldSupervisor, statusParam]);
+
+  const setStatusFilterChip = (value: string) => {
+    setStatusChip(value);
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === "all") next.delete("status");
+    else next.set("status", value);
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const setFilter = (key: keyof typeof filters, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -238,6 +276,7 @@ export default function ContractsPage() {
 
   const filtered = useMemo(() => {
     const next = rows.filter((row) => {
+      if (statusChip !== "all" && row.contract.status !== statusChip) return false;
       if (!matchesColumnFilter(row.contract.contract_name, filters.name)) return false;
       if (!matchesColumnFilter(row.contract.client_name ?? "—", filters.client)) return false;
       if (!matchesColumnFilter(row.location, filters.location)) return false;
@@ -269,7 +308,7 @@ export default function ContractsPage() {
       }
       return compareValues(a.metrics.completionPercent, b.metrics.completionPercent, sortDir);
     });
-  }, [rows, filters, sortKey, sortDir]);
+  }, [rows, filters, statusChip, sortKey, sortDir]);
 
   const selectedRows = useMemo(
     () => filtered.filter((row) => selectedIds.has(row.contract.id)),
@@ -368,6 +407,8 @@ export default function ContractsPage() {
         summaries={summaryData.summaries}
         loading={summaryData.loading}
         error={summaryData.error}
+        initialStatus={statusFromSearchParams(searchParams)}
+        statusParam={statusParam}
       />
     );
   }
@@ -462,6 +503,19 @@ export default function ContractsPage() {
         </div>
       ) : null}
 
+      <StickyToolbar>
+        <StatusFilterChips
+          options={STATUS_OPTIONS}
+          value={statusChip}
+          onChange={setStatusFilterChip}
+          allLabel="All statuses"
+        />
+        <p className="text-xs opacity-55 tabular-nums">
+          {filtered.length} shown
+          {selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ""}
+        </p>
+      </StickyToolbar>
+
       {filtered.length === 0 && contracts.length === 0 ? (
         <EmptyState
           title="No contracts found"
@@ -544,7 +598,7 @@ export default function ContractsPage() {
             ) : null}
           </div>
 
-          <div className="hidden md:block rounded-box border border-base-300 bg-base-100">
+          <div id="contracts-table" className="hidden md:block rounded-box border border-base-300 bg-base-100 scroll-mt-24">
             <div className={tableScrollClass}>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
@@ -849,16 +903,47 @@ function FieldSupervisorContracts({
   summaries,
   loading,
   error,
+  initialStatus,
+  statusParam,
 }: {
   summaries: ContractSummary[];
   loading: boolean;
   error: string | null;
+  initialStatus: string;
+  statusParam: string;
 }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [accessFilter, setAccessFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SummarySortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  useEffect(() => {
+    setStatusFilter(statusFromSearchParams(searchParams));
+  }, [searchParams, statusParam]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!statusParam || !STATUS_FILTER_VALUES.has(statusParam)) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("contracts-table")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [loading, statusParam]);
+
+  const setStatusFilterChip = (value: string) => {
+    setStatusFilter(value);
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === "all") next.delete("status");
+    else next.set("status", value);
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -932,7 +1017,7 @@ function FieldSupervisorContracts({
               <StatusFilterChips
                 options={["active", "on_hold", "completed", "canceled"]}
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={setStatusFilterChip}
               />
             </div>
             <label className="form-control w-full lg:w-44">
@@ -1001,7 +1086,7 @@ function FieldSupervisorContracts({
             ))}
           </div>
 
-          <div className="hidden md:block overflow-x-auto rounded-box border border-base-300 bg-base-100">
+          <div id="contracts-table" className="hidden md:block overflow-x-auto rounded-box border border-base-300 bg-base-100 scroll-mt-24">
             <table className="table">
               <thead>
                 <tr>

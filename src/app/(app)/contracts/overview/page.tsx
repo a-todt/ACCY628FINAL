@@ -111,14 +111,22 @@ export default function ContractsOverviewPage() {
           value={String(contracts.length)}
           hint={`${activeContracts} active`}
           icon={Building2}
+          href="/contracts"
         />
-        <StatCard compact title="Revised Value" value={money(totalContractValue)} icon={ClipboardList} />
+        <StatCard
+          compact
+          title="Revised Value"
+          value={money(totalContractValue)}
+          icon={ClipboardList}
+          href="/contracts"
+        />
         <StatCard
           compact
           title="Change Orders"
           value={String(visibleChangeOrders.length)}
           hint={effectiveRole === "client" ? "Approved only" : `${pendingCOs} pending`}
           tone={pendingCOs > 0 ? "warning" : "default"}
+          href="/change-orders"
         />
         {showSubs ? (
           <StatCard
@@ -127,12 +135,14 @@ export default function ContractsOverviewPage() {
             value={String(subcontractors.length)}
             hint={money(totalSubValue)}
             icon={Users}
+            href="/subcontractors"
           />
         ) : (
           <StatCard
             compact
             title="Clients"
             value={String(new Set(contracts.map((c) => c.client_name).filter(Boolean)).size)}
+            href="/contracts"
           />
         )}
       </div>
@@ -147,24 +157,40 @@ export default function ContractsOverviewPage() {
               { value: "canceled", label: "Cancelled" },
             ].map(({ value, label }) => {
               const count = contracts.filter((c) => c.status === value).length;
+              if (!count) return null;
               return (
-                <span key={value} className={`badge badge-sm ${statusBadgeClass(value)}`}>
+                <Link
+                  key={value}
+                  href={`/contracts?status=${encodeURIComponent(value)}#contracts-table`}
+                  className={`badge badge-sm ${statusBadgeClass(value)} hover:opacity-80 transition-opacity`}
+                >
                   {label}: {count}
-                </span>
+                </Link>
               );
             })}
+            {contracts.length === 0 ? (
+              <p className="text-sm opacity-60">No contracts yet.</p>
+            ) : null}
           </div>
         </SectionCard>
         <SectionCard compact title="Change order status">
           <div className="flex flex-wrap gap-1.5">
             {["pending", "approved", "rejected"].map((status) => {
               const count = visibleChangeOrders.filter((c) => c.status === status).length;
+              if (!count) return null;
               return (
-                <span key={status} className={`badge badge-sm ${statusBadgeClass(status)}`}>
+                <Link
+                  key={status}
+                  href={`/change-orders?status=${encodeURIComponent(status)}#change-orders-table`}
+                  className={`badge badge-sm ${statusBadgeClass(status)} hover:opacity-80 transition-opacity`}
+                >
                   {labelize(status)}: {count}
-                </span>
+                </Link>
               );
             })}
+            {visibleChangeOrders.length === 0 ? (
+              <p className="text-sm opacity-60">No change orders yet.</p>
+            ) : null}
           </div>
         </SectionCard>
       </div>

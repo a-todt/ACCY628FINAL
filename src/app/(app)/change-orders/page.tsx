@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Building2, ChevronDown, ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { AttachmentPanel } from "@/components/AttachmentPanel";
 import {
@@ -28,6 +28,12 @@ import { createClient } from "@/lib/supabase/client";
 import type { ChangeOrder, ChangeOrderStatus } from "@/lib/types";
 
 const STATUS_OPTIONS: ChangeOrderStatus[] = ["pending", "approved", "rejected"];
+const STATUS_FILTER_VALUES = new Set<string>(["all", ...STATUS_OPTIONS]);
+
+function statusFromSearchParams(params: { get: (key: string) => string | null }): string {
+  const status = params.get("status");
+  return status && STATUS_FILTER_VALUES.has(status) ? status : "all";
+}
 
 const EMPTY_FORM = {
   contract_id: "",
@@ -72,6 +78,8 @@ function editFormFromChangeOrder(co: ChangeOrder): EditForm {
 export default function ChangeOrdersPage() {
   const { effectiveRole } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const { contracts, changeOrders, loading, error, refresh } = useContractData();
   const canCreate = canCreateChangeOrders(effectiveRole);
   const canMutate = canCreate;
@@ -95,11 +103,12 @@ export default function ChangeOrdersPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [viewing, setViewing] = useState<ChangeOrder | null>(null);
-  const [statusChip, setStatusChip] = useState("all");
+  const [statusChip, setStatusChip] = useState(() => statusFromSearchParams(searchParams));
   const [showAllRows, setShowAllRows] = useState(false);
   const { toast } = useToast();
 
   const isClient = effectiveRole === "client";
+  const statusParam = searchParams.get("status") ?? "";
 
   const openCreateForm = useCallback(() => setShowForm(true), []);
   useOpenCreateFromQuery(canCreate, openCreateForm);
@@ -110,8 +119,32 @@ export default function ChangeOrdersPage() {
   }, [searchParams]);
 
   useEffect(() => {
+    setStatusChip(statusFromSearchParams(searchParams));
+  }, [searchParams, statusParam]);
+
+  useEffect(() => {
     setShowAllRows(false);
   }, [projectFilter, numberFilter, statusChip]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!statusParam || !STATUS_FILTER_VALUES.has(statusParam)) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("change-orders-table")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [loading, statusParam]);
+
+  const setStatusFilter = (value: string) => {
+    setStatusChip(value);
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === "all") next.delete("status");
+    else next.set("status", value);
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const baseList = useMemo(
     () => (isClient ? changeOrders.filter((co) => co.status === "approved") : changeOrders),
@@ -464,7 +497,7 @@ export default function ChangeOrdersPage() {
           <StatusFilterChips
             options={STATUS_OPTIONS}
             value={statusChip}
-            onChange={setStatusChip}
+            onChange={setStatusFilter}
             allLabel="All statuses"
           />
           <p className="text-xs opacity-55 tabular-nums">
@@ -638,7 +671,10 @@ export default function ChangeOrdersPage() {
         />
       ) : (
         <>
-        <div className={`rounded-box border border-base-300 bg-base-100 ${tableScrollClass}`}>
+        <div
+          id="change-orders-table"
+          className={`rounded-box border border-base-300 bg-base-100 scroll-mt-24 ${tableScrollClass}`}
+        >
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>
                 {canMutate ? <col className="w-[3%]" /> : null}

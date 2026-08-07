@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { CircleDollarSign, Download, FileDown, Receipt } from "lucide-react";
 import { ActivityLogPanel } from "@/components/ActivityLogPanel";
 import { useAuth } from "@/contexts/AuthContext";
@@ -138,6 +139,7 @@ export default function FinanceOverviewPage() {
             value={money(totalCosts)}
             hint={`${costEntries.length} entries`}
             icon={CircleDollarSign}
+            href="/costs"
           />
         ) : null}
         {showInvoices ? (
@@ -147,10 +149,16 @@ export default function FinanceOverviewPage() {
             value={money(totalBilled)}
             hint={`${invoices.length} invoices`}
             icon={Receipt}
+            href="/invoices"
           />
         ) : null}
         {showInvoices ? (
-          <StatCard compact title="Collected" value={money(Math.max(totalCollected, totalPayments))} />
+          <StatCard
+            compact
+            title="Collected"
+            value={money(Math.max(totalCollected, totalPayments))}
+            href="/invoices"
+          />
         ) : null}
         {showInvoices ? (
           <StatCard
@@ -158,6 +166,7 @@ export default function FinanceOverviewPage() {
             title="Retainage Receivable"
             value={money(retainageReceivable)}
             hint="ASC 606 contract asset"
+            href="/invoices"
           />
         ) : null}
         {showInvoices ? (
@@ -167,9 +176,15 @@ export default function FinanceOverviewPage() {
             value={String(overdueCount)}
             hint="Invoices past due"
             tone={overdueCount > 0 ? "warning" : "default"}
+            href="/invoices?status=overdue"
           />
         ) : (
-          <StatCard compact title="Cost Entries" value={String(costEntries.length)} />
+          <StatCard
+            compact
+            title="Cost Entries"
+            value={String(costEntries.length)}
+            href="/costs"
+          />
         )}
       </div>
 
@@ -203,9 +218,13 @@ export default function FinanceOverviewPage() {
                 const count = invoiceStatuses.filter((s) => s === status).length;
                 if (!count) return null;
                 return (
-                  <span key={status} className={`badge badge-sm ${statusBadgeClass(status)}`}>
+                  <Link
+                    key={status}
+                    href={`/invoices?status=${status}`}
+                    className={`badge badge-sm ${statusBadgeClass(status)} hover:opacity-80 transition-opacity`}
+                  >
                     {labelize(status)}: {count}
-                  </span>
+                  </Link>
                 );
               })}
               {invoiceStatuses.length === 0 ? (

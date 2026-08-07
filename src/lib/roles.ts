@@ -381,9 +381,11 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
         label: "Costing and Invoicing",
         show: canViewFinance(role),
       },
-        {
+      {
         id: "subcontracting" as const,
-        href: role === "subcontractor" ? "/bidding" : canViewSubcontractors(role) ? "/subcontractors" : "/bidding",
+        href: canViewSubcontractors(role)
+          ? "/subcontractors/overview"
+          : "/bidding",
         label: "Subcontracting",
         show: showSubcontracting,
       },
@@ -437,6 +439,11 @@ export function secondaryNavForCategory(
   if (category === "subcontracting") {
     return (
       [
+        {
+          href: "/subcontractors/overview",
+          label: "Overview",
+          show: true,
+        },
         {
           href: "/subcontractors",
           label: "Subcontractors",
@@ -546,6 +553,16 @@ export function isNavItemActive(
   }
   if (href === "/contracts/overview") return pathname.startsWith("/contracts/overview");
   if (href === "/contracts/new") return pathname.startsWith("/contracts/new");
+  if (href === "/subcontractors") {
+    return (
+      pathname === "/subcontractors" ||
+      (pathname.startsWith("/subcontractors/") &&
+        !pathname.startsWith("/subcontractors/overview"))
+    );
+  }
+  if (href === "/subcontractors/overview") {
+    return pathname.startsWith("/subcontractors/overview");
+  }
   if (href === "/finance") return pathname === "/finance";
   return pathname === href || pathname.startsWith(`${href}/`);
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Building2, ChevronDown, HardHat, Pencil, Plus, Trash2, TriangleAlert } from "lucide-react";
 import {
   ColumnAutocompleteHeader,
@@ -27,6 +28,13 @@ import { createClient } from "@/lib/supabase/client";
 import type { SubStatus, Subcontractor } from "@/lib/types";
 
 const STATUS_OPTIONS: SubStatus[] = ["active", "complete", "terminated"];
+const FILTER_STATUS_OPTIONS: SubStatus[] = ["active", "complete", "terminated", "prospect"];
+const STATUS_FILTER_VALUES = new Set<string>(["all", ...FILTER_STATUS_OPTIONS]);
+
+function statusFromSearchParams(params: { get: (key: string) => string | null }): string {
+  const status = params.get("status");
+  return status && STATUS_FILTER_VALUES.has(status) ? status : "all";
+}
 
 const EMPTY_FORM = {
   contract_id: "",
@@ -84,6 +92,9 @@ function contactLabel(sub: Subcontractor) {
 }
 
 export default function SubcontractorsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const { effectiveRole, user, profile } = useAuth();
   const { contracts, subcontractors, userProfiles, loading, error, refresh } = useContractData();
   const canManage = canManageSubcontractors(effectiveRole);
@@ -111,7 +122,7 @@ export default function SubcontractorsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("company");
   const [sortDir, setSortDir] = useState<ColumnSortDir>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [statusChip, setStatusChip] = useState("all");
+  const [statusChip, setStatusChip] = useState(() => statusFromSearchParams(searchParams));
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -124,9 +135,35 @@ export default function SubcontractorsPage() {
   const [viewing, setViewing] = useState<Subcontractor | null>(null);
   const [showAllRows, setShowAllRows] = useState(false);
 
+  const statusParam = searchParams.get("status") ?? "";
+
   useEffect(() => {
     setShowAllRows(false);
   }, [companyFilter, projectFilter, statusChip]);
+
+  useEffect(() => {
+    setStatusChip(statusFromSearchParams(searchParams));
+  }, [searchParams, statusParam]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!statusParam || !STATUS_FILTER_VALUES.has(statusParam)) return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("subcontractors-table")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [loading, statusParam]);
+
+  const setStatusFilter = (value: string) => {
+    setStatusChip(value);
+    const next = new URLSearchParams(searchParams.toString());
+    if (value === "all") next.delete("status");
+    else next.set("status", value);
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
 
   const subLogins = useMemo(() => userProfiles.filter((p) => p.role === "subcontractor"), [userProfiles]);
 
@@ -475,9 +512,9 @@ export default function SubcontractorsPage() {
 
       <StickyToolbar>
         <StatusFilterChips
-          options={STATUS_OPTIONS}
+          options={FILTER_STATUS_OPTIONS}
           value={statusChip}
-          onChange={setStatusChip}
+          onChange={setStatusFilter}
           allLabel="All statuses"
         />
         <p className="text-xs opacity-55 tabular-nums">
@@ -731,7 +768,7 @@ export default function SubcontractorsPage() {
           }
         />
       ) : (
-        <div className="rounded-box border border-base-300 bg-base-100">
+        <div id="subcontractors-table" className="rounded-box border border-base-300 bg-base-100 scroll-mt-24">
           <div className={tableScrollClass}>
             <table className="table table-xs table-fixed w-full text-[11px]">
               <colgroup>

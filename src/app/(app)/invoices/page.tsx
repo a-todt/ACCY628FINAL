@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Building2, ChevronDown, FileText, Pencil, Plus, Receipt, Trash2 } from "lucide-react";
 import {
   ColumnAutocompleteHeader,
@@ -33,6 +34,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 
 const STATUS_OPTIONS: InvoiceStatus[] = ["unpaid", "partially_paid", "paid", "overdue"];
+const STATUS_FILTER_VALUES = new Set<string>(["all", ...STATUS_OPTIONS]);
 
 const EMPTY_INVOICE_FORM = {
   contract_id: "",
@@ -73,6 +75,7 @@ function invoiceBalance(invoice: Invoice): number {
 type SortKey = "number" | "contract" | "date" | "due" | "amount" | "status" | "balance";
 
 export default function InvoicesPage() {
+  const searchParams = useSearchParams();
   const { effectiveRole, user } = useAuth();
   const { contracts, changeOrders, invoices, payments, loading, error, refresh } =
     useContractData();
@@ -103,6 +106,13 @@ export default function InvoicesPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [statusChip, setStatusChip] = useState("all");
   const { toast } = useToast();
+
+  useEffect(() => {
+    const status = searchParams.get("status");
+    if (status && STATUS_FILTER_VALUES.has(status)) {
+      setStatusChip(status);
+    }
+  }, [searchParams]);
 
   const openInvoiceForm = useCallback(() => {
     setShowInvoiceForm(true);
