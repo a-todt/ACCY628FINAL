@@ -144,8 +144,12 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Alerts"
-        subtitle="Actionable warnings for overdue invoices, pending change orders, and control exceptions."
+        title={effectiveRole === "owner" ? "Control exceptions" : "Alerts"}
+        subtitle={
+          effectiveRole === "owner"
+            ? "Payment approvals, overpayments, duplicate invoices, and other cash control exceptions."
+            : "Actionable warnings for overdue invoices, pending change orders, and control exceptions."
+        }
         actions={
           <span
             className={`badge badge-lg gap-1.5 font-medium tabular-nums ${
@@ -177,7 +181,7 @@ export default function AlertsPage() {
           <option value="all">All categories</option>
           <option value="invoice">Invoices</option>
           <option value="change_order">Change orders</option>
-          <option value="fraud">Potential fraud</option>
+          <option value="fraud">Control</option>
         </select>
         {filtered.length > 0 ? (
           <label className="label cursor-pointer gap-2 py-0 ml-auto">
@@ -235,7 +239,7 @@ export default function AlertsPage() {
                     <p className={`text-sm mt-0.5 ${alertDetailClass(alert)}`}>{alert.detail}</p>
                     <p className="text-sm text-primary mt-1">{alert.action}</p>
                     <p className={`text-xs mt-1 ${alertMetaClass(alert)}`}>
-                      {alert.category === "fraud" ? "Potential fraud" : labelize(alert.category)}
+                      {alert.category === "fraud" ? "Control exception" : labelize(alert.category)}
                     </p>
                   </div>
                   <ChevronRight className="h-4 w-4 opacity-40 shrink-0 mt-1" />
