@@ -48,8 +48,14 @@ import {
 } from "@/components/ui";
 import { CHART_COLORS, CHART_SERIES } from "@/lib/chartColors";
 import { labelize, money } from "@/lib/metrics";
+import {
+  costApprovalBadge,
+  costApprovalLabel,
+  isApprovedCost,
+} from "@/lib/payments";
 import { canEnterCosts, canViewCosts } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
+import { useCompanySettings } from "@/hooks/useCompanySettings";
 import type { CostCategory, CostEntry } from "@/lib/types";
 
 const CATEGORIES: CostCategory[] = [
@@ -140,6 +146,7 @@ export default function CostsPage() {
   const router = useRouter();
   const { effectiveRole, user } = useAuth();
   const { contracts, costEntries, userProfiles, loading, error, refresh } = useContractData();
+  const { costAdminThreshold } = useCompanySettings();
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -207,7 +214,9 @@ export default function CostsPage() {
     });
   }, [scopedEntries, jobColumnFilter, descriptionFilter, sortKey, sortDir, userProfiles]);
 
-  const grandTotal = scopedEntries.reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
+  const grandTotal = scopedEntries
+    .filter(isApprovedCost)
+    .reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
 
   const byJob = useMemo(() => {
     const map = new Map<
@@ -225,7 +234,7 @@ export default function CostsPage() {
     for (const cost of scopedEntries) {
       const key = cost.contract_id;
       const name = cost.contracts?.contract_name ?? "Unknown job";
-      const amount = Number(cost.amount ?? 0);
+      const amount = isApprovedCost(cost) ? Number(cost.amount ?? 0) : 0;
       const category = (cost.category ?? "other") as CostCategory;
       let row = map.get(key);
       if (!row) {
@@ -241,7 +250,9 @@ export default function CostsPage() {
       }
       row.total += amount;
       row.entryCount += 1;
-      row.byCategory.set(category, (row.byCategory.get(category) ?? 0) + amount);
+      if (amount > 0) {
+        row.byCategory.set(category, (row.byCategory.get(category) ?? 0) + amount);
+      }
       row.entries.push(cost);
     }
 
@@ -262,7 +273,7 @@ export default function CostsPage() {
 
     for (const cost of scopedEntries) {
       const category = (cost.category ?? "other") as CostCategory;
-      const amount = Number(cost.amount ?? 0);
+      const amount = isApprovedCost(cost) ? Number(cost.amount ?? 0) : 0;
       let row = map.get(category);
       if (!row) {
         row = {
@@ -313,7 +324,10 @@ export default function CostsPage() {
     }))
   );
 
-  const yoyChart = useMemo(() => buildYoyAverageChart(scopedEntries), [scopedEntries]);
+  const yoyChart = useMemo(
+    () => buildYoyAverageChart(scopedEntries.filter(isApprovedCost)),
+    [scopedEntries]
+  );
   const useYoyChart = yoyChart.rows.length >= 2;
 
   const jobColumnOptions = useMemo(
@@ -381,10 +395,19 @@ export default function CostsPage() {
         amount: Number(form.amount),
         date_incurred: form.date_incurred || null,
         notes: form.notes.trim() || null,
+        approval_status: "pending_accounting",
+        submitted_by: user.id,
+        submitted_at: new Date().toISOString(),
       });
       if (insertError) throw insertError;
 
-      setSuccess("Cost entry recorded successfully.");
+      setSuccess(
+        `Cost submitted for Accounting approval${
+          Number(form.amount) > costAdminThreshold
+            ? ` (over ${money(costAdminThreshold)} also needs Admin / Owner)`
+            : ""
+        }.`
+      );
       setForm(EMPTY_FORM);
       await refresh();
     } catch (err) {
@@ -1076,12 +1099,13 @@ export default function CostsPage() {
                     onSort={() => onSort("amount")}
                     align="right"
                   />
+                  <th className="text-center">Approval</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center opacity-60 py-6">
+                    <td colSpan={7} className="text-center opacity-60 py-6">
                       No entries match the column filters.
                     </td>
                   </tr>
@@ -1120,6 +1144,14 @@ export default function CostsPage() {
                           title={money(cost.amount)}
                         >
                           {money(cost.amount)}
+                        </td>
+                        <td className="text-center px-1">
+                          <span
+                            className={`badge badge-sm ${costApprovalBadge(cost.approval_status)}`}
+                            title={cost.rejection_reason ?? undefined}
+                          >
+                            {costApprovalLabel(cost.approval_status)}
+                          </span>
                         </td>
                       </tr>
                     );

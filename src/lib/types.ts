@@ -52,6 +52,10 @@ export interface CompanySettings {
   logo_url: string | null;
   default_retainage_percent: number;
   default_payment_terms: string;
+  /** Invoice/payment amounts at or above this need Accounting then Admin. Default 250000. */
+  invoice_admin_approval_threshold?: number | null;
+  /** Cost amounts at or below this need Accounting only; above need Admin too. Default 50000. */
+  cost_admin_approval_threshold?: number | null;
   updated_at: string;
   updated_by: string | null;
 }
@@ -283,6 +287,15 @@ export interface CostEntry {
   date_incurred: string | null;
   notes: string | null;
   created_at: string;
+  /** Approval before cost counts toward job cost totals. */
+  approval_status?: CostApprovalStatus;
+  submitted_by?: string | null;
+  accounting_approved_by?: string | null;
+  admin_approved_by?: string | null;
+  submitted_at?: string | null;
+  accounting_approved_at?: string | null;
+  admin_approved_at?: string | null;
+  rejection_reason?: string | null;
   contracts?: { contract_name: string } | null;
   user_profiles?: { full_name: string | null; email: string | null } | null;
 }
@@ -319,6 +332,9 @@ export type InvoiceApprovalStatus =
   | "pending_admin"
   | "approved"
   | "rejected";
+
+/** Same queue states as invoices — cost logs count only when approved. */
+export type CostApprovalStatus = InvoiceApprovalStatus;
 
 export type PaymentApprovalStatus =
   | "pending_accounting"
