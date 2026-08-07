@@ -1,4 +1,5 @@
 import { daysPastDue, labelize, money } from "@/lib/metrics";
+import { isApprovedInvoice } from "@/lib/payments";
 import { canViewFraudAlerts } from "@/lib/roles";
 import { isBadWeather } from "@/lib/weather";
 import type {
@@ -448,7 +449,7 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
       .reduce((sum, c) => sum + Number(c.amount ?? 0), 0);
     if (contractCosts <= 0) continue;
     const billed = invoices
-      .filter((i) => i.contract_id === contract.id)
+      .filter((i) => i.contract_id === contract.id && isApprovedInvoice(i))
       .reduce((sum, i) => sum + Number(i.invoice_amount ?? 0), 0);
     const baseline = billed > 0 ? billed : Number(contract.original_value ?? 0);
     if (baseline <= 0) continue;
@@ -551,6 +552,7 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
 
   if (isClient || canSeeFinancialAlerts(role)) {
     for (const invoice of data.invoices) {
+      if (!isApprovedInvoice(invoice)) continue;
       const outstanding =
         Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0) -
         Number(invoice.amount_paid ?? 0);
@@ -575,6 +577,55 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
         href: `/invoices/${invoice.id}`,
         createdAt: invoice.due_date ?? invoice.created_at ?? now,
       });
+    }
+  }
+
+  // Tell PMs when their invoices are approved or rejected.
+  if (role === "project_manager") {
+    for (const invoice of data.invoices) {
+      const status = invoice.approval_status ?? "approved";
+      if (status !== "approved" && status !== "rejected") continue;
+      // Skip legacy approved rows that never went through the approval queue.
+      if (
+        status === "approved" &&
+        !invoice.accounting_approved_at &&
+        !invoice.admin_approved_at
+      ) {
+        continue;
+      }
+      const decidedAt =
+        invoice.admin_approved_at ??
+        invoice.accounting_approved_at ??
+        invoice.created_at ??
+        now;
+      const number = invoice.invoice_number?.trim() || "Invoice";
+      const project = invoice.contracts?.contract_name ?? "Project";
+      const amount = money(Number(invoice.invoice_amount ?? invoice.net_amount_due ?? 0));
+      if (status === "rejected") {
+        alerts.push({
+          id: `invoice-rejected-${invoice.id}`,
+          severity: "warning",
+          category: "invoice",
+          title: `${number} was rejected`,
+          detail: `${project} · ${amount}${
+            invoice.rejection_reason ? ` · ${invoice.rejection_reason}` : ""
+          }`,
+          action: "Review the rejection and resubmit if needed",
+          href: `/invoices/${invoice.id}`,
+          createdAt: decidedAt,
+        });
+      } else {
+        alerts.push({
+          id: `invoice-approved-${invoice.id}`,
+          severity: "info",
+          category: "invoice",
+          title: `${number} was approved`,
+          detail: `${project} · ${amount} is now billable`,
+          action: "Open invoice to track collection",
+          href: `/invoices/${invoice.id}`,
+          createdAt: decidedAt,
+        });
+      }
     }
   }
 
