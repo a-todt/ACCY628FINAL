@@ -327,7 +327,6 @@ export function canViewBidding(role: UserRole): boolean {
   return (
     role === "admin" ||
     role === "project_manager" ||
-    role === "field_supervisor" ||
     role === "subcontractor"
   );
 }
@@ -390,8 +389,10 @@ export interface NavItem {
 }
 
 export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCategoryId }> {
-  const showSubcontracting = canViewSubcontractors(role) || canViewBidding(role);
+  const showSubcontracting =
+    canViewSubcontractors(role) || canViewBidding(role) || role === "field_supervisor";
   const isAccounting = role === "owner";
+  const isFieldSupervisor = role === "field_supervisor";
   return (
     [
       { id: "favorites" as const, href: "/favorites", label: "Favorites", show: true },
@@ -409,21 +410,21 @@ export function primaryNavForRole(role: UserRole): Array<NavItem & { id: NavCate
       },
       {
         id: "contracts" as const,
-        href: role === "field_supervisor" ? "/contracts" : "/contracts/overview",
+        href: isFieldSupervisor ? "/contracts" : "/contracts/overview",
         label: isAccounting ? "Jobs / Contract Values" : "Contracts",
         show: true,
       },
       {
         id: "finance" as const,
         href: "/finance",
-        label: isAccounting ? "Billing & Cash" : "Costing and Invoicing",
+        label: isAccounting ? "Billing & Cash" : isFieldSupervisor ? "Costing" : "Costing and Invoicing",
         show: canViewFinance(role),
       },
       {
         id: "subcontracting" as const,
         href: role === "subcontractor"
           ? "/bidding"
-          : canViewSubcontractors(role)
+          : canViewSubcontractors(role) || isFieldSupervisor
             ? "/subcontractors/overview"
             : "/bidding",
         label: isAccounting ? "Vendor Payables" : "Subcontracting",
@@ -521,7 +522,11 @@ export function secondaryNavForCategory(
           show: canViewCosts(role),
         },
         { href: "/costs", label: "Cost Tracker", show: canViewCosts(role) },
-        { href: "/wip", label: "WIP Schedule", show: canViewCosts(role) },
+        {
+          href: "/wip",
+          label: "WIP Schedule",
+          show: canViewCosts(role) && role !== "field_supervisor",
+        },
         {
           href: "/invoices",
           label: isAccounting ? "Invoices & Payments" : "Invoices",

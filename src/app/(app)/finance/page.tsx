@@ -67,8 +67,12 @@ export default function FinanceOverviewPage() {
     <div className="space-y-2.5">
       <PageHeader
         compact
-        title="Costing and Invoicing"
-        subtitle="Portfolio snapshot for costs, invoices, and payments."
+        title={effectiveRole === "field_supervisor" ? "Costing" : "Costing and Invoicing"}
+        subtitle={
+          effectiveRole === "field_supervisor"
+            ? "Portfolio snapshot for project costs."
+            : "Portfolio snapshot for costs, invoices, and payments."
+        }
         actions={
           <>
             <button
