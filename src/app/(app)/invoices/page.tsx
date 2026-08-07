@@ -20,7 +20,13 @@ import { BulkActionBar, StickyToolbar } from "@/components/StickyToolbar";
 import { useToast } from "@/components/ToastProvider";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
-import { daysPastDue, labelize, money } from "@/lib/metrics";
+import {
+  remainingBillableCapacity,
+  validateInvoiceBillingAmount,
+  validateInvoiceStatusChange,
+  validatePaymentAmount,
+} from "@/lib/invoiceValidation";
+import { daysPastDue, labelize, money, moneyExact } from "@/lib/metrics";
 import { invoiceAfterApplyingPayment, paymentNeedsOwnerApproval } from "@/lib/payments";
 import { canApprovePayments, canCreateInvoices, canRecordPayments, canSelfApprovePayment, statusBadgeClass } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
@@ -68,7 +74,8 @@ type SortKey = "number" | "contract" | "date" | "due" | "amount" | "status" | "b
 
 export default function InvoicesPage() {
   const { effectiveRole, user } = useAuth();
-  const { contracts, invoices, payments, loading, error, refresh } = useContractData();
+  const { contracts, changeOrders, invoices, payments, loading, error, refresh } =
+    useContractData();
   const canManage = canCreateInvoices(effectiveRole);
   const canPay = canRecordPayments(effectiveRole);
   const canApprove = canApprovePayments(effectiveRole);
@@ -161,6 +168,12 @@ export default function InvoicesPage() {
     [invoices, paymentForm.invoice_id]
   );
 
+  const remainingOnSelectedContract = useMemo(() => {
+    const contract = contracts.find((c) => c.id === invoiceForm.contract_id);
+    if (!contract) return null;
+    return remainingBillableCapacity(contract, changeOrders, invoices);
+  }, [contracts, changeOrders, invoices, invoiceForm.contract_id]);
+
   const onSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((current) => (current === "asc" ? "desc" : "asc"));
@@ -224,6 +237,12 @@ export default function InvoicesPage() {
     { silent = false } = {}
   ) => {
     if (invoice.status === status) return;
+    const statusError = validateInvoiceStatusChange(invoice, status);
+    if (statusError) {
+      if (silent) throw new Error(statusError);
+      setActionError(statusError);
+      return;
+    }
     setActionError(null);
     setActionSuccess(null);
     setBusyId(invoice.id);
@@ -339,6 +358,18 @@ export default function InvoicesPage() {
       return;
     }
 
+    const contract = contracts.find((c) => c.id === invoiceForm.contract_id);
+    const amountError = validateInvoiceBillingAmount({
+      amount: invoiceAmountNum,
+      contract,
+      changeOrders,
+      invoices,
+    });
+    if (amountError) {
+      setInvoiceError(amountError);
+      return;
+    }
+
     setSavingInvoice(true);
     try {
       const supabase = createClient();
@@ -392,10 +423,16 @@ export default function InvoicesPage() {
       return;
     }
 
+    const paymentAmount = Number(paymentForm.payment_amount);
+    const paymentAmountError = validatePaymentAmount(paymentAmount, selectedInvoice);
+    if (paymentAmountError) {
+      setPaymentError(paymentAmountError);
+      return;
+    }
+
     setSavingPayment(true);
     try {
       const supabase = createClient();
-      const paymentAmount = Number(paymentForm.payment_amount);
       const needsApproval = paymentNeedsOwnerApproval(effectiveRole);
       const nowIso = new Date().toISOString();
 
@@ -469,11 +506,17 @@ export default function InvoicesPage() {
       return;
     }
 
+    const amount = Number(payment.payment_amount ?? 0);
+    const paymentAmountError = validatePaymentAmount(amount, invoice);
+    if (paymentAmountError) {
+      setPaymentError(paymentAmountError);
+      return;
+    }
+
     setSavingPayment(true);
     setPaymentError(null);
     try {
       const supabase = createClient();
-      const amount = Number(payment.payment_amount ?? 0);
       const update = invoiceAfterApplyingPayment(invoice, amount);
       const nowIso = new Date().toISOString();
 
@@ -628,12 +671,21 @@ export default function InvoicesPage() {
                     onChange={(e) => updateInvoiceField("due_date", e.target.value)}
                   />
                 </FormField>
-                <FormField stacked label="Invoice Amount">
+                <FormField
+                  stacked
+                  label="Invoice Amount"
+                  hint={
+                    remainingOnSelectedContract != null
+                      ? `Max remaining on contract: ${moneyExact(remainingOnSelectedContract)}`
+                      : undefined
+                  }
+                >
                   <label className="input input-bordered flex items-center gap-2 w-full">
                     $
                     <input
                       type="number"
                       step="0.01"
+                      min="0.01"
                       className="grow"
                       value={invoiceForm.invoice_amount}
                       onChange={(e) => updateInvoiceField("invoice_amount", e.target.value)}
@@ -809,6 +861,7 @@ export default function InvoicesPage() {
                 <input
                   type="number"
                   step="0.01"
+                  min="0.01"
                   className="grow"
                   value={paymentForm.payment_amount}
                   onChange={(e) => updatePaymentField("payment_amount", e.target.value)}

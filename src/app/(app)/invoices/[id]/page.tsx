@@ -11,7 +11,14 @@ import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, StatCard }
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { writeAuditLog } from "@/lib/audit";
-import { daysPastDue, labelize, money } from "@/lib/metrics";
+import {
+  remainingBillableCapacity,
+  validateInvoiceBillingAmount,
+  validateInvoiceStatusChange,
+  validatePaymentAmount,
+  coerceInvoiceStatus,
+} from "@/lib/invoiceValidation";
+import { daysPastDue, labelize, money, moneyExact } from "@/lib/metrics";
 import {
   invoiceAfterApplyingPayment,
   isPostedPayment,
@@ -72,7 +79,8 @@ function InvoiceDetailContent() {
   const searchParams = useSearchParams();
   const invoiceId = params.id;
   const { effectiveRole, user } = useAuth();
-  const { contracts, invoices, payments, loading, error, refresh } = useContractData();
+  const { contracts, changeOrders, invoices, payments, loading, error, refresh } =
+    useContractData();
   const canEdit = canCreateInvoices(effectiveRole);
   const canApprove = canApprovePayments(effectiveRole);
   const canSelfApprove = canSelfApprovePayment(effectiveRole);
@@ -162,12 +170,17 @@ function InvoiceDetailContent() {
       setActionError("You cannot approve a payment you submitted (dual-approval control).");
       return;
     }
+    const amount = Number(payment.payment_amount ?? 0);
+    const paymentAmountError = validatePaymentAmount(amount, invoice);
+    if (paymentAmountError) {
+      setActionError(paymentAmountError);
+      return;
+    }
     setSavingApproval(true);
     setActionError(null);
     setActionSuccess(null);
     try {
       const supabase = createClient();
-      const amount = Number(payment.payment_amount ?? 0);
       const update = invoiceAfterApplyingPayment(invoice, amount);
       const { error: payErr } = await supabase
         .from("payments")
@@ -246,6 +259,35 @@ function InvoiceDetailContent() {
       return;
     }
 
+    const contract = contracts.find((c) => c.id === form.contract_id);
+    const amountError = validateInvoiceBillingAmount({
+      amount: invoiceAmountNum,
+      contract,
+      changeOrders,
+      invoices,
+      excludeInvoiceId: invoice.id,
+    });
+    if (amountError) {
+      setActionError(amountError);
+      return;
+    }
+
+    const amountPaidNum = form.amount_paid ? Number(form.amount_paid) : 0;
+    if (amountPaidNum < -0.005) {
+      setActionError("Amount paid cannot be negative.");
+      return;
+    }
+    const statusError = validateInvoiceStatusChange(
+      { ...invoice, net_amount_due: computedNetAmountDue, invoice_amount: invoiceAmountNum },
+      form.status,
+      amountPaidNum
+    );
+    if (statusError) {
+      setActionError(statusError);
+      return;
+    }
+    const nextStatus = coerceInvoiceStatus(amountPaidNum, computedNetAmountDue, form.status);
+
     setSaving(true);
     try {
       const supabase = createClient();
@@ -261,8 +303,8 @@ function InvoiceDetailContent() {
           retainage_percent: retainagePercentNum,
           retainage_amount: computedRetainageAmount,
           net_amount_due: computedNetAmountDue,
-          amount_paid: form.amount_paid ? Number(form.amount_paid) : 0,
-          status: form.status,
+          amount_paid: amountPaidNum,
+          status: nextStatus,
           notes: form.notes.trim() || null,
         })
         .eq("id", invoice.id);
@@ -272,7 +314,7 @@ function InvoiceDetailContent() {
         invoice_number: form.invoice_number.trim() || null,
         contract_id: form.contract_id,
         from_status: invoice.status,
-        to_status: form.status,
+        to_status: nextStatus,
       });
 
       setActionSuccess("Invoice updated successfully.");
@@ -384,12 +426,24 @@ function InvoiceDetailContent() {
                   onChange={(e) => updateField("due_date", e.target.value)}
                 />
               </FormField>
-              <FormField label="Invoice Amount">
+              <FormField
+                label="Invoice Amount"
+                hint={(() => {
+                  const contract = contracts.find((c) => c.id === form.contract_id);
+                  if (!contract) return undefined;
+                  return `Max remaining: ${moneyExact(
+                    remainingBillableCapacity(contract, changeOrders, invoices, {
+                      excludeInvoiceId: invoice.id,
+                    })
+                  )}`;
+                })()}
+              >
                 <label className="input input-bordered input-sm flex items-center gap-2">
                   $
                   <input
                     type="number"
                     step="0.01"
+                    min="0.01"
                     className="grow"
                     value={form.invoice_amount}
                     onChange={(e) => updateField("invoice_amount", e.target.value)}
