@@ -209,7 +209,7 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
 }
 
 export function alertBadgeLabel(alert: AlertItem): string {
-  if (alert.category === "fraud") return "Potential fraud";
+  if (alert.category === "fraud") return "Control";
   if (alert.category === "invoice" && alert.severity === "critical") return "Overdue";
   return labelize(alert.severity);
 }
@@ -282,24 +282,27 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
   }
 
   if (canSeeFinancialAlerts(role)) {
-    for (const co of data.changeOrders) {
-      if (co.status !== "pending") continue;
+    // Accounting focuses on cash/control exceptions — skip pending CO ops noise.
+    if (role !== "owner") {
+      for (const co of data.changeOrders) {
+        if (co.status !== "pending") continue;
 
-      const number = co.change_order_number?.trim() || "Change order";
-      const project = co.contracts?.contract_name ?? "Project";
-      const q = co.change_order_number?.trim() || co.description?.trim() || "";
-      const href = q ? `/change-orders?q=${encodeQuery(q)}` : "/change-orders";
+        const number = co.change_order_number?.trim() || "Change order";
+        const project = co.contracts?.contract_name ?? "Project";
+        const q = co.change_order_number?.trim() || co.description?.trim() || "";
+        const href = q ? `/change-orders?q=${encodeQuery(q)}` : "/change-orders";
 
-      alerts.push({
-        id: `co-pending-${co.id}`,
-        severity: "info",
-        category: "change_order",
-        title: `${number} awaiting decision`,
-        detail: `${project}${co.description ? ` · ${co.description}` : ""}`,
-        action: "Open change order to approve or reject",
-        href,
-        createdAt: co.created_at ?? now,
-      });
+        alerts.push({
+          id: `co-pending-${co.id}`,
+          severity: "info",
+          category: "change_order",
+          title: `${number} awaiting decision`,
+          detail: `${project}${co.description ? ` · ${co.description}` : ""}`,
+          action: "Open change order to approve or reject",
+          href,
+          createdAt: co.created_at ?? now,
+        });
+      }
     }
   }
 
@@ -307,11 +310,15 @@ export function buildAlertsForRole(role: UserRole, data: AlertSourceData): Alert
     alerts.push(...buildFraudAlerts(data, now));
   }
 
-  // Fraud first, then severity, then newest.
+  // Fraud / control first (especially for Accounting), then severity, then newest.
   return alerts.sort((a, b) => {
-    const fraudRank = (alert: AlertItem) => (alert.category === "fraud" ? 0 : 1);
-    const byFraud = fraudRank(a) - fraudRank(b);
-    if (byFraud !== 0) return byFraud;
+    const controlRank = (alert: AlertItem) => {
+      if (alert.category === "fraud") return 0;
+      if (role === "owner" && alert.category === "invoice") return 1;
+      return 2;
+    };
+    const byControl = controlRank(a) - controlRank(b);
+    if (byControl !== 0) return byControl;
     const severityRank: Record<AlertSeverity, number> = { critical: 0, warning: 1, info: 2 };
     const bySeverity = severityRank[a.severity] - severityRank[b.severity];
     if (bySeverity !== 0) return bySeverity;
