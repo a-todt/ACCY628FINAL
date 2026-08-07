@@ -1871,53 +1871,53 @@ export default function ManagementPage() {
 
           {editingStaff ? (
             <div className="modal modal-open">
-              <div className="modal-box max-w-lg">
+              <div className="modal-box max-w-2xl">
                 <h3 className="font-semibold text-lg mb-1">Edit Staff</h3>
                 <p className="text-sm opacity-60 mb-4">
                   Update profile details for{" "}
                   {editingStaff.full_name || editingStaff.email || "this employee"}.
                 </p>
                 <form onSubmit={onSaveStaff} className="grid gap-3 sm:grid-cols-2">
-                  <FormField label="Full Name">
+                  <FormField stacked label="Full Name">
                     <input
                       name="full_name"
-                      className="input input-bordered w-full"
+                      className="input input-bordered w-full min-w-0"
                       defaultValue={editingStaff.full_name ?? ""}
                     />
                   </FormField>
-                  <FormField label="Email">
+                  <FormField stacked label="Email">
                     <input
                       name="email"
                       type="email"
-                      className="input input-bordered w-full"
+                      className="input input-bordered w-full min-w-0"
                       defaultValue={editingStaff.email ?? ""}
                     />
                   </FormField>
-                  <FormField label="Employee ID">
+                  <FormField stacked label="Employee ID">
                     <input
                       name="employee_id"
-                      className="input input-bordered w-full"
+                      className="input input-bordered w-full min-w-0"
                       defaultValue={editingStaff.employee_id ?? ""}
                     />
                   </FormField>
-                  <FormField label="Title">
+                  <FormField stacked label="Title">
                     <input
                       name="title"
-                      className="input input-bordered w-full"
+                      className="input input-bordered w-full min-w-0"
                       defaultValue={editingStaff.title ?? ""}
                     />
                   </FormField>
-                  <FormField label="Phone">
+                  <FormField stacked label="Phone">
                     <input
                       name="phone"
-                      className="input input-bordered w-full"
+                      className="input input-bordered w-full min-w-0"
                       defaultValue={editingStaff.phone ?? ""}
                     />
                   </FormField>
-                  <FormField label="Role">
+                  <FormField stacked label="Role">
                     <select
                       name="role"
-                      className="select select-bordered w-full"
+                      className="select select-bordered w-full min-w-0"
                       defaultValue={
                         STAFF_EDIT_ROLES.includes(editingStaff.role)
                           ? editingStaff.role
@@ -1931,10 +1931,10 @@ export default function ManagementPage() {
                       ))}
                     </select>
                   </FormField>
-                  <FormField label="Status">
+                  <FormField stacked label="Status">
                     <select
                       name="is_active"
-                      className="select select-bordered w-full"
+                      className="select select-bordered w-full min-w-0"
                       defaultValue={editingStaff.is_active === false ? "false" : "true"}
                     >
                       <option value="true">Active</option>
