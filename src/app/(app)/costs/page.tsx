@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bar,
   Cell,
@@ -75,6 +76,7 @@ function submitterLabel(
 }
 
 export default function CostsPage() {
+  const router = useRouter();
   const { effectiveRole, user } = useAuth();
   const { contracts, costEntries, userProfiles, loading, error, refresh } = useContractData();
 
@@ -242,7 +244,10 @@ export default function CostsPage() {
   const jobChartData = toNamedBarRows(
     byJob.map((row) => ({
       fullName: row.name,
-      values: { total: row.total },
+      values: {
+        average: row.entryCount > 0 ? row.total / row.entryCount : 0,
+        contractId: row.contractId,
+      },
     }))
   );
 
@@ -678,12 +683,23 @@ export default function CostsPage() {
                       ? jobChartData
                       : jobChartData.slice(0, 10);
                   return (
-                    <ScrollableBarChart data={rows} panelHeight={height} rowHeight={CHART_ROW_HEIGHT}>
+                    <ScrollableBarChart
+                      data={rows}
+                      panelHeight={height}
+                      rowHeight={CHART_ROW_HEIGHT}
+                      onRowClick={(row) => {
+                        const id = row.contractId;
+                        if (typeof id === "string" && id) {
+                          router.push(`/contracts/${id}`);
+                        }
+                      }}
+                    >
                       <Bar
-                        dataKey="total"
+                        dataKey="average"
                         fill={CHART_SERIES.primary}
                         radius={[0, 5, 5, 0]}
-                        name="Total"
+                        name="Average"
+                        cursor="pointer"
                       />
                     </ScrollableBarChart>
                   );

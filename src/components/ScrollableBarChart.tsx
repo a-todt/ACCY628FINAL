@@ -83,7 +83,9 @@ function dataExtent(data: NamedBarRow[], stackKeys?: string[]): { min: number; m
 
   for (const row of data) {
     for (const [key, value] of Object.entries(row)) {
-      if (key === "fullName" || key === "shortName") continue;
+      if (key === "fullName" || key === "shortName" || key === "tipExtra" || key === "href" || key === "contractId") {
+        continue;
+      }
       if (typeof value !== "number" || !Number.isFinite(value)) continue;
       min = Math.min(min, value);
       max = Math.max(max, value);
@@ -311,7 +313,48 @@ type ScrollableBarChartProps = {
   rowHeight?: number;
   /** When set, domain uses the sum of these keys (stacked bars). */
   stackKeys?: string[];
+  /** Navigate / act when a bar or Y-axis label is clicked. */
+  onRowClick?: (row: NamedBarRow) => void;
 };
+
+function CategoryTick({
+  x = 0,
+  y = 0,
+  payload,
+  data,
+  onRowClick,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+  data: NamedBarRow[];
+  onRowClick?: (row: NamedBarRow) => void;
+}) {
+  const row = data.find((d) => d.shortName === payload?.value);
+  const clickable = Boolean(onRowClick && row);
+
+  return (
+    <text
+      x={x}
+      y={y}
+      dy={4}
+      textAnchor="end"
+      fontSize={11}
+      className={clickable ? "fill-current cursor-pointer hover:fill-primary" : "fill-current"}
+      style={clickable ? { cursor: "pointer" } : undefined}
+      onClick={
+        clickable
+          ? (event) => {
+              event.stopPropagation();
+              onRowClick?.(row!);
+            }
+          : undefined
+      }
+    >
+      {payload?.value}
+    </text>
+  );
+}
 
 export function ScrollableBarChart({
   data,
@@ -321,6 +364,7 @@ export function ScrollableBarChart({
   panelHeight = CHART_PANEL_HEIGHT,
   rowHeight = CHART_ROW_HEIGHT,
   stackKeys,
+  onRowClick,
 }: ScrollableBarChartProps) {
   const plotRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
@@ -410,13 +454,19 @@ export function ScrollableBarChart({
                 data={data}
                 margin={{ top: CHART_TOP_MARGIN, right: 16, left: 4, bottom: 4 }}
                 onMouseLeave={() => onPayload(null)}
+                onClick={(state) => {
+                  if (!onRowClick) return;
+                  const row = state?.activePayload?.[0]?.payload as NamedBarRow | undefined;
+                  if (row) onRowClick(row);
+                }}
+                style={onRowClick ? { cursor: "pointer" } : undefined}
               >
                 <CartesianGrid strokeDasharray="3 3" opacity={0.12} horizontal={false} />
                 <XAxis type="number" domain={domain} hide />
                 <YAxis
                   type="category"
                   dataKey="shortName"
-                  tick={{ fontSize: 11 }}
+                  tick={<CategoryTick data={data} onRowClick={onRowClick} />}
                   width={categoryWidth}
                   interval={0}
                 />
