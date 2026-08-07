@@ -56,6 +56,11 @@ export interface CompanySettings {
   invoice_admin_approval_threshold?: number | null;
   /** Cost amounts at or below this need Accounting only; above need Admin too. Default 50000. */
   cost_admin_approval_threshold?: number | null;
+  /**
+   * When true, Accounting (owner) may approve invoices/payments/costs they submitted.
+   * Demo convenience only; does not change amount thresholds. Default true.
+   */
+  allow_owner_sod_override?: boolean | null;
   updated_at: string;
   updated_by: string | null;
 }

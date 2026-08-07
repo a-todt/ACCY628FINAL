@@ -525,6 +525,7 @@ export default function ManagementPage() {
           cost_admin_approval_threshold: Number(
             form.get("cost_admin_approval_threshold") || 50000
           ),
+          allow_owner_sod_override: form.get("allow_owner_sod_override") === "on",
           updated_at: new Date().toISOString(),
           updated_by: user?.id ?? null,
         })
@@ -1491,6 +1492,22 @@ export default function ManagementPage() {
                   required
                 />
               </FormField>
+              <FormField
+                label="Owner SoD override (demo)"
+                hint="When on, Accounting (owner) may approve invoices, payments, and costs they submitted. Does not change amount thresholds."
+              >
+                <label className="label cursor-pointer justify-start gap-3 py-2">
+                  <input
+                    type="checkbox"
+                    name="allow_owner_sod_override"
+                    className="checkbox checkbox-primary"
+                    defaultChecked={admin.company.allow_owner_sod_override !== false}
+                  />
+                  <span className="label-text">
+                    Allow owner to bypass segregation of duties
+                  </span>
+                </label>
+              </FormField>
               <FormField label="Address Line 1">
                 <input
                   name="address_line1"
@@ -1579,6 +1596,15 @@ export default function ManagementPage() {
                       admin.company.cost_admin_approval_threshold != null
                         ? `$${Number(admin.company.cost_admin_approval_threshold).toLocaleString()}`
                         : "$50,000"
+                    }
+                  />
+                </FormField>
+                <FormField label="Owner SoD override (demo)">
+                  <SettingsValue
+                    value={
+                      admin.company.allow_owner_sod_override !== false
+                        ? "On — Accounting may approve items they submitted"
+                        : "Off — segregation of duties enforced for everyone"
                     }
                   />
                 </FormField>
