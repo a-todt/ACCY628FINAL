@@ -94,7 +94,14 @@ export function computeCashControlsKpis(
   totalCollected: number
 ): CashControlsKpis {
   const pendingApprovals = payments.filter(
-    (p) => (p.approval_status ?? "posted") === "pending_approval"
+    (p) => {
+      const status = p.approval_status ?? "posted";
+      return (
+        status === "pending_approval" ||
+        status === "pending_accounting" ||
+        status === "pending_admin"
+      );
+    }
   ).length;
 
   const now = new Date();

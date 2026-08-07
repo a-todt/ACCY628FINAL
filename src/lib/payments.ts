@@ -1,10 +1,57 @@
-import type { Invoice, InvoiceStatus, Payment, PaymentApprovalStatus } from "@/lib/types";
+import type {
+  Invoice,
+  InvoiceApprovalStatus,
+  Payment,
+  PaymentApprovalStatus,
+  UserRole,
+} from "@/lib/types";
+
+/** Invoice amount or payment amount at/above this needs Admin / Owner after Accounting. */
+export const HIGH_VALUE_APPROVAL_THRESHOLD = 250_000;
+
+export function requiresAdminHighValueApproval(amount: number | null | undefined): boolean {
+  return Number(amount ?? 0) >= HIGH_VALUE_APPROVAL_THRESHOLD;
+}
 
 export function isPostedPayment(payment: Payment): boolean {
   return (payment.approval_status ?? "posted") === "posted";
 }
 
-export function nextInvoiceStatus(amountPaid: number, netAmountDue: number): InvoiceStatus {
+export function isPaymentAwaitingAccounting(payment: Payment): boolean {
+  const status = payment.approval_status ?? "posted";
+  return status === "pending_accounting" || status === "pending_approval";
+}
+
+export function isPaymentAwaitingAdmin(payment: Payment): boolean {
+  return (payment.approval_status ?? "posted") === "pending_admin";
+}
+
+export function isPaymentPending(payment: Payment): boolean {
+  return isPaymentAwaitingAccounting(payment) || isPaymentAwaitingAdmin(payment);
+}
+
+/** Billable invoices only — pending/rejected do not count toward AR/billed. */
+export function isApprovedInvoice(invoice: Invoice): boolean {
+  const status = invoice.approval_status ?? "approved";
+  return status === "approved";
+}
+
+export function isInvoiceAwaitingAccounting(invoice: Invoice): boolean {
+  return (invoice.approval_status ?? "approved") === "pending_accounting";
+}
+
+export function isInvoiceAwaitingAdmin(invoice: Invoice): boolean {
+  return (invoice.approval_status ?? "approved") === "pending_admin";
+}
+
+export function isInvoicePending(invoice: Invoice): boolean {
+  return isInvoiceAwaitingAccounting(invoice) || isInvoiceAwaitingAdmin(invoice);
+}
+
+export function nextInvoiceStatus(
+  amountPaid: number,
+  netAmountDue: number
+): import("@/lib/types").InvoiceStatus {
   if (netAmountDue > 0 && amountPaid >= netAmountDue) return "paid";
   if (amountPaid > 0) return "partially_paid";
   return "unpaid";
@@ -13,6 +60,8 @@ export function nextInvoiceStatus(amountPaid: number, netAmountDue: number): Inv
 export function paymentApprovalBadge(status: PaymentApprovalStatus | undefined): string {
   switch (status ?? "posted") {
     case "pending_approval":
+    case "pending_accounting":
+    case "pending_admin":
       return "badge-warning";
     case "rejected":
       return "badge-error";
@@ -21,19 +70,80 @@ export function paymentApprovalBadge(status: PaymentApprovalStatus | undefined):
   }
 }
 
-/** Whether this role's payment should wait for owner approval before updating AR. */
-export function paymentNeedsOwnerApproval(role: string): boolean {
-  return role !== "owner";
+export function invoiceApprovalBadge(status: InvoiceApprovalStatus | undefined): string {
+  switch (status ?? "approved") {
+    case "pending_accounting":
+    case "pending_admin":
+      return "badge-warning";
+    case "rejected":
+      return "badge-error";
+    default:
+      return "badge-success";
+  }
+}
+
+export function paymentApprovalLabel(status: PaymentApprovalStatus | undefined): string {
+  switch (status ?? "posted") {
+    case "pending_approval":
+    case "pending_accounting":
+      return "Awaiting Accounting";
+    case "pending_admin":
+      return "Awaiting Admin";
+    case "rejected":
+      return "Rejected";
+    default:
+      return "Posted";
+  }
+}
+
+export function invoiceApprovalLabel(status: InvoiceApprovalStatus | undefined): string {
+  switch (status ?? "approved") {
+    case "pending_accounting":
+      return "Awaiting Accounting";
+    case "pending_admin":
+      return "Awaiting Admin";
+    case "rejected":
+      return "Rejected";
+    default:
+      return "Approved";
+  }
+}
+
+/** @deprecated All payments now enter the Accounting queue — kept for call-site compatibility. */
+export function paymentNeedsOwnerApproval(_role: string): boolean {
+  return true;
 }
 
 export function invoiceAfterApplyingPayment(
   invoice: Invoice,
   paymentAmount: number
-): { amount_paid: number; status: InvoiceStatus } {
+): { amount_paid: number; status: import("@/lib/types").InvoiceStatus } {
   const newAmountPaid = Number(invoice.amount_paid ?? 0) + paymentAmount;
   const netAmountDue = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
   return {
     amount_paid: newAmountPaid,
     status: nextInvoiceStatus(newAmountPaid, netAmountDue),
   };
+}
+
+export function canApproveAccountingStep(role: UserRole): boolean {
+  return role === "owner";
+}
+
+export function canApproveAdminHighValueStep(role: UserRole): boolean {
+  return role === "admin";
+}
+
+export function canViewApprovalsQueue(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+/** Next payment status after Accounting signs off. */
+export function paymentStatusAfterAccounting(amount: number): PaymentApprovalStatus {
+  return requiresAdminHighValueApproval(amount) ? "pending_admin" : "posted";
+}
+
+/** Next invoice status after Accounting signs off. */
+export function invoiceStatusAfterAccounting(amount: number): InvoiceApprovalStatus {
+  return requiresAdminHighValueApproval(amount) ? "pending_admin" : "approved";
 }

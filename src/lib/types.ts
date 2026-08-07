@@ -302,10 +302,31 @@ export interface Invoice {
   status: InvoiceStatus;
   notes: string | null;
   created_at: string;
+  /** Approval before invoice is billable / counted in AR. */
+  approval_status?: InvoiceApprovalStatus;
+  submitted_by?: string | null;
+  accounting_approved_by?: string | null;
+  admin_approved_by?: string | null;
+  submitted_at?: string | null;
+  accounting_approved_at?: string | null;
+  admin_approved_at?: string | null;
+  rejection_reason?: string | null;
   contracts?: { contract_name: string; client_name: string | null } | null;
 }
 
-export type PaymentApprovalStatus = "pending_approval" | "posted" | "rejected";
+export type InvoiceApprovalStatus =
+  | "pending_accounting"
+  | "pending_admin"
+  | "approved"
+  | "rejected";
+
+export type PaymentApprovalStatus =
+  | "pending_accounting"
+  | "pending_admin"
+  | "posted"
+  | "rejected"
+  /** @deprecated Legacy dual-approval value; treat as pending_accounting. */
+  | "pending_approval";
 
 export interface Payment {
   id: string;
@@ -316,12 +337,16 @@ export interface Payment {
   reference_number: string | null;
   notes: string | null;
   created_at: string;
-  /** Dual-approval: pending until owner posts; rejected payments never hit AR. */
+  /** Dual/triple approval: pending until posted; rejected payments never hit AR. */
   approval_status?: PaymentApprovalStatus;
   submitted_by?: string | null;
   approved_by?: string | null;
+  accounting_approved_by?: string | null;
+  admin_approved_by?: string | null;
   submitted_at?: string | null;
   approved_at?: string | null;
+  accounting_approved_at?: string | null;
+  admin_approved_at?: string | null;
   rejection_reason?: string | null;
   invoices?: { invoice_number: string | null; contract_id: string } | null;
 }

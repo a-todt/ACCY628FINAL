@@ -21,8 +21,18 @@ import { useToast } from "@/components/ToastProvider";
 import { AlertBanner, EmptyState, FormField, PageHeader, SectionCard, TableShell } from "@/components/ui";
 import { writeAuditLog } from "@/lib/audit";
 import { daysPastDue, labelize, money } from "@/lib/metrics";
-import { invoiceAfterApplyingPayment, paymentNeedsOwnerApproval } from "@/lib/payments";
-import { canApprovePayments, canCreateInvoices, canRecordPayments, statusBadgeClass } from "@/lib/roles";
+import {
+  invoiceAfterApplyingPayment,
+  isApprovedInvoice,
+  isPaymentAwaitingAccounting,
+  paymentStatusAfterAccounting,
+} from "@/lib/payments";
+import {
+  canApprovePayments,
+  canCreateInvoices,
+  canRecordPayments,
+  statusBadgeClass,
+} from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 
@@ -356,6 +366,9 @@ export default function InvoicesPage() {
           amount_paid: 0,
           status: "unpaid",
           notes: invoiceForm.notes.trim() || null,
+          approval_status: "pending_accounting",
+          submitted_by: user?.id ?? null,
+          submitted_at: new Date().toISOString(),
         })
         .select("id")
         .single();
@@ -365,9 +378,14 @@ export default function InvoicesPage() {
         invoice_number: invoiceForm.invoice_number.trim() || null,
         contract_id: invoiceForm.contract_id,
         status: "unpaid",
+        approval_status: "pending_accounting",
       });
 
-      setInvoiceSuccess("Invoice created successfully.");
+      setInvoiceSuccess(
+        invoiceAmountNum >= 250_000
+          ? "Invoice submitted for Accounting approval (also needs Admin / Owner after Accounting because it is ≥ $250k)."
+          : "Invoice submitted for Accounting approval before it becomes billable."
+      );
       setInvoiceForm(EMPTY_INVOICE_FORM);
       await refresh();
     } catch (err) {
@@ -395,8 +413,11 @@ export default function InvoicesPage() {
     try {
       const supabase = createClient();
       const paymentAmount = Number(paymentForm.payment_amount);
-      const needsApproval = paymentNeedsOwnerApproval(effectiveRole);
       const nowIso = new Date().toISOString();
+
+      if (!isApprovedInvoice(selectedInvoice)) {
+        throw new Error("This invoice is still awaiting approval and cannot accept payments yet.");
+      }
 
       const { data: inserted, error: paymentInsertError } = await supabase
         .from("payments")
@@ -407,38 +428,23 @@ export default function InvoicesPage() {
           payment_method: paymentForm.payment_method.trim() || null,
           reference_number: paymentForm.reference_number.trim() || null,
           notes: paymentForm.notes.trim() || null,
-          approval_status: needsApproval ? "pending_approval" : "posted",
+          approval_status: "pending_accounting",
           submitted_by: user?.id ?? null,
           submitted_at: nowIso,
-          approved_by: needsApproval ? null : user?.id ?? null,
-          approved_at: needsApproval ? null : nowIso,
         })
         .select("id")
         .single();
       if (paymentInsertError) throw paymentInsertError;
 
-      if (needsApproval) {
-        await writeAuditLog("payment_submitted_for_approval", "payment", inserted?.id, {
-          invoice_id: paymentForm.invoice_id,
-          payment_amount: paymentAmount,
-        });
-        setPaymentSuccess(
-          "Payment submitted for owner approval. AR will update after the owner posts it."
-        );
-      } else {
-        const update = invoiceAfterApplyingPayment(selectedInvoice, paymentAmount);
-        const { error: updateError } = await supabase
-          .from("invoices")
-          .update(update)
-          .eq("id", paymentForm.invoice_id);
-        if (updateError) throw updateError;
-        await writeAuditLog("payment_posted", "payment", inserted?.id, {
-          invoice_id: paymentForm.invoice_id,
-          payment_amount: paymentAmount,
-          dual_approval: "owner_direct",
-        });
-        setPaymentSuccess("Payment posted to AR.");
-      }
+      await writeAuditLog("payment_submitted_for_approval", "payment", inserted?.id, {
+        invoice_id: paymentForm.invoice_id,
+        payment_amount: paymentAmount,
+      });
+      setPaymentSuccess(
+        paymentAmount >= 250_000
+          ? "Payment submitted for Accounting approval (Admin / Owner must also approve after Accounting because it is ≥ $250k)."
+          : "Payment submitted for Accounting approval. AR updates after it is posted."
+      );
 
       setPaymentForm(EMPTY_PAYMENT_FORM);
       await refresh();
@@ -450,7 +456,7 @@ export default function InvoicesPage() {
   };
 
   const pendingPayments = useMemo(
-    () => payments.filter((p) => (p.approval_status ?? "posted") === "pending_approval"),
+    () => payments.filter(isPaymentAwaitingAccounting),
     [payments]
   );
 
@@ -462,35 +468,49 @@ export default function InvoicesPage() {
       setPaymentError("You cannot approve a payment you submitted (dual-approval control).");
       return;
     }
+    if (!canApprovePayments(effectiveRole)) {
+      setPaymentError("Only Accounting can clear the first approval step.");
+      return;
+    }
 
     setSavingPayment(true);
     setPaymentError(null);
     try {
       const supabase = createClient();
       const amount = Number(payment.payment_amount ?? 0);
-      const update = invoiceAfterApplyingPayment(invoice, amount);
       const nowIso = new Date().toISOString();
+      const next = paymentStatusAfterAccounting(amount);
 
       const { error: payErr } = await supabase
         .from("payments")
         .update({
-          approval_status: "posted",
-          approved_by: user?.id ?? null,
-          approved_at: nowIso,
+          approval_status: next,
+          accounting_approved_by: user?.id ?? null,
+          accounting_approved_at: nowIso,
+          approved_by: next === "posted" ? user?.id ?? null : null,
+          approved_at: next === "posted" ? nowIso : null,
           rejection_reason: null,
         })
         .eq("id", paymentId)
-        .eq("approval_status", "pending_approval");
+        .in("approval_status", ["pending_accounting", "pending_approval"]);
       if (payErr) throw payErr;
 
-      const { error: invErr } = await supabase.from("invoices").update(update).eq("id", invoiceId);
-      if (invErr) throw invErr;
+      if (next === "posted") {
+        const update = invoiceAfterApplyingPayment(invoice, amount);
+        const { error: invErr } = await supabase.from("invoices").update(update).eq("id", invoiceId);
+        if (invErr) throw invErr;
+      }
 
-      await writeAuditLog("payment_approved", "payment", paymentId, {
+      await writeAuditLog("payment_accounting_approved", "payment", paymentId, {
         invoice_id: invoiceId,
         payment_amount: amount,
+        next_status: next,
       });
-      setPaymentSuccess("Payment approved and posted to AR.");
+      setPaymentSuccess(
+        next === "pending_admin"
+          ? "Cleared by Accounting — awaiting Admin / Owner (≥ $250k)."
+          : "Payment approved and posted to AR."
+      );
       await refresh();
     } catch (err) {
       setPaymentError(err instanceof Error ? err.message : "Failed to approve payment.");
@@ -514,7 +534,7 @@ export default function InvoicesPage() {
           rejection_reason: reason.trim() || null,
         })
         .eq("id", paymentId)
-        .eq("approval_status", "pending_approval");
+        .in("approval_status", ["pending_accounting", "pending_approval"]);
       if (payErr) throw payErr;
       await writeAuditLog("payment_rejected", "payment", paymentId, {
         reason: reason.trim() || null,
@@ -761,9 +781,8 @@ export default function InvoicesPage() {
       {canPay && showPaymentForm ? (
         <SectionCard title="Record Payment">
           <p className="text-sm opacity-70 mb-3">
-            {paymentNeedsOwnerApproval(effectiveRole)
-              ? "This payment will be submitted for owner dual-approval before it updates AR."
-              : "As owner, this payment posts to AR immediately."}
+            Every payment goes to Accounting for approval before AR updates. Payments ≥ $250,000
+            also need Admin / Owner after Accounting.
           </p>
           {paymentError ? <AlertBanner type="error">{paymentError}</AlertBanner> : null}
           {paymentSuccess ? <AlertBanner type="success">{paymentSuccess}</AlertBanner> : null}
@@ -844,7 +863,7 @@ export default function InvoicesPage() {
             <div className="flex justify-end gap-2">
               <button type="submit" className="btn btn-primary" disabled={savingPayment}>
                 {savingPayment ? <span className="loading loading-spinner loading-sm" /> : null}
-                {paymentNeedsOwnerApproval(effectiveRole) ? "Submit for Approval" : "Post Payment"}
+                Submit for Approval
               </button>
             </div>
           </form>
@@ -852,7 +871,14 @@ export default function InvoicesPage() {
       ) : null}
 
       {canApprove && pendingPayments.length > 0 ? (
-        <SectionCard title={`Payments awaiting your approval (${pendingPayments.length})`}>
+        <SectionCard
+          title={`Payments awaiting Accounting (${pendingPayments.length})`}
+          actions={
+            <Link href="/approvals" className="btn btn-primary btn-xs">
+              Open Approvals
+            </Link>
+          }
+        >
           {paymentError ? <AlertBanner type="error">{paymentError}</AlertBanner> : null}
           {paymentSuccess ? <AlertBanner type="success">{paymentSuccess}</AlertBanner> : null}
           <div className="overflow-x-auto">

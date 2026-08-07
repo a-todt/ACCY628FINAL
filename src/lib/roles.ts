@@ -220,9 +220,19 @@ export function canRecordPayments(role: UserRole): boolean {
   return hasPermission(role, "recordPayments");
 }
 
-/** Accounting is the checker in the payment dual-approval workflow. */
+/** Accounting approves invoice/payment step 1. */
 export function canApprovePayments(role: UserRole): boolean {
   return role === "owner";
+}
+
+/** Admin / Owner approves high-value (≥ $250k) step 2. */
+export function canApproveHighValue(role: UserRole): boolean {
+  return role === "admin";
+}
+
+/** Approvals queue under Billing & Cash. */
+export function canViewApprovals(role: UserRole): boolean {
+  return role === "owner" || role === "admin";
 }
 
 /** Accounting fraud / control exception alerts (admin can also view for demos). */
@@ -503,6 +513,11 @@ export function secondaryNavForCategory(
           label: isAccounting ? "Invoices & Payments" : "Invoices",
           show: canViewInvoices(role),
         },
+        {
+          href: "/approvals",
+          label: "Approvals",
+          show: canViewApprovals(role),
+        },
       ] as Array<NavItem & { show: boolean }>
     )
       .filter((item) => item.show)
@@ -546,7 +561,8 @@ export function categoryFromPath(pathname: string): NavCategoryId | null {
     pathname.startsWith("/projects") ||
     pathname.startsWith("/costs") ||
     pathname.startsWith("/wip") ||
-    pathname.startsWith("/invoices")
+    pathname.startsWith("/invoices") ||
+    pathname.startsWith("/approvals")
   ) {
     return "finance";
   }
