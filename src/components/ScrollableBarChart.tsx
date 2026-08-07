@@ -483,7 +483,19 @@ export function ScrollableBarChart({
                 onMouseLeave={() => onPayload(null)}
                 onClick={(state) => {
                   if (!onRowClick) return;
-                  const row = state?.activePayload?.[0]?.payload as NamedBarRow | undefined;
+                  // Recharts 3 MouseHandlerDataParam no longer includes activePayload.
+                  const label = state?.activeLabel;
+                  const byLabel =
+                    label != null
+                      ? data.find((d) => d.shortName === String(label))
+                      : undefined;
+                  const index =
+                    typeof state?.activeTooltipIndex === "number"
+                      ? state.activeTooltipIndex
+                      : typeof state?.activeIndex === "number"
+                        ? state.activeIndex
+                        : undefined;
+                  const row = byLabel ?? (index != null ? data[index] : undefined);
                   if (row) onRowClick(row);
                 }}
                 style={onRowClick ? { cursor: "pointer" } : undefined}
