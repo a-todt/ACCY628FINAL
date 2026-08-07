@@ -7,6 +7,7 @@ import type {
   Milestone,
   Payment,
 } from "./types";
+import { isApprovedInvoice } from "./payments";
 
 export function money(n: number | null | undefined): string {
   const value = Number(n ?? 0);
@@ -63,7 +64,9 @@ export function computeContractMetrics(
   payments: Payment[] = []
 ): ContractMetrics {
   const relatedCOs = changeOrders.filter((c) => c.contract_id === contract.id);
-  const relatedInvoices = invoices.filter((i) => i.contract_id === contract.id);
+  const relatedInvoices = invoices.filter(
+    (i) => i.contract_id === contract.id && isApprovedInvoice(i)
+  );
   const relatedCosts = costs.filter((c) => c.contract_id === contract.id);
   const relatedMilestones = milestones.filter((m) => m.contract_id === contract.id);
   const invoiceIds = new Set(relatedInvoices.map((i) => i.id));

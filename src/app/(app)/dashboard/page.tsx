@@ -289,8 +289,8 @@ function DashboardQuickActions({ role }: { role: UserRole }) {
       show: canEnterCosts(role) && role !== "field_supervisor" && role !== "subcontractor",
     },
     {
-      href: "/invoices",
-      label: "Review Payments",
+      href: "/approvals",
+      label: "Approvals",
       icon: Banknote,
       show: canApprovePayments(role),
     },
@@ -642,8 +642,8 @@ function AdminDashboard({
         compact
         title="Work queue"
         actions={
-          <Link href="/invoices" className="btn btn-ghost btn-xs gap-1">
-            Open invoices
+          <Link href="/approvals" className="btn btn-ghost btn-xs gap-1">
+            Open Approvals
             <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         }
@@ -655,7 +655,7 @@ function AdminDashboard({
             value={String(cashControls.pendingApprovals)}
             icon={Banknote}
             tone={cashControls.pendingApprovals > 0 ? "warning" : "default"}
-            href="/invoices"
+            href="/approvals"
           />
           <StatCard
             compact

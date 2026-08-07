@@ -84,20 +84,28 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   const contracts = data.contracts ?? [];
   const invoices = data.invoices;
 
-  // 1) Payments awaiting owner dual-approval
+  // 1) Payments awaiting Accounting or Admin dual-approval
   for (const payment of payments) {
-    if ((payment.approval_status ?? "posted") !== "pending_approval") continue;
+    const status = payment.approval_status ?? "posted";
+    if (status !== "pending_accounting" && status !== "pending_approval" && status !== "pending_admin") {
+      continue;
+    }
     const invoice = invoices.find((i) => i.id === payment.invoice_id);
     const number = invoice?.invoice_number?.trim() || "Invoice";
     const project = invoice?.contracts?.contract_name ?? "Project";
+    const awaitingAdmin = status === "pending_admin";
     alerts.push({
       id: `fraud-payment-pending-${payment.id}`,
       severity: "critical",
       category: "fraud",
-      title: `Potential fraud — payment awaiting approval · ${money(payment.payment_amount)}`,
+      title: awaitingAdmin
+        ? `High-value payment awaiting Admin · ${money(payment.payment_amount)}`
+        : `Payment awaiting Accounting · ${money(payment.payment_amount)}`,
       detail: `${number} · ${project}${payment.reference_number ? ` · Ref ${payment.reference_number}` : ""}`,
-      action: "Open invoice to approve or reject this payment (dual approval)",
-      href: `/invoices/${payment.invoice_id}?tab=payments`,
+      action: awaitingAdmin
+        ? "Open Approvals for Admin / Owner sign-off (≥ $250k)"
+        : "Open Approvals for Accounting sign-off",
+      href: `/approvals`,
       createdAt: payment.submitted_at ?? payment.created_at ?? now,
     });
   }
