@@ -124,7 +124,11 @@ export default function SubcontractingOverviewPage() {
       <PageHeader
         compact
         title="Subcontracting Overview"
-        subtitle="Portfolio snapshot for subcontractors and bidding."
+        subtitle={
+          effectiveRole === "field_supervisor"
+            ? "High-level subcontracting snapshot for your assigned work."
+            : "Portfolio snapshot for subcontractors and bidding."
+        }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
