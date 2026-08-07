@@ -18,17 +18,9 @@ export function money(n: number | null | undefined): string {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+/** Whole-dollar display (same as `money`). Cents remain in stored values / form inputs. */
 export function moneyExact(n: number | null | undefined): string {
-  const raw = Number(n ?? 0);
-  const value = Number.isFinite(raw) ? raw : 0;
-  const large = Math.abs(value) >= 1_000_000;
-  const display = large ? Math.round(value) : value;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: large ? 0 : 2,
-    maximumFractionDigits: large ? 0 : 2,
-  }).format(display);
+  return money(n);
 }
 
 export function percent(n: number | null | undefined): string {
