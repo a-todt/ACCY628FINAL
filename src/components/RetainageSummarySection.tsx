@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
-import Link from "next/link";
-import { ReportDetailsModal, ReportPane, StatCard } from "@/components/ui";
+import { useMemo } from "react";
+import { ReportBarChart } from "@/components/ReportMiniChart";
+import { ReportPane, StatCard, type ReportPaneDisplayControls } from "@/components/ui";
 import { downloadCsv, downloadPdfTables } from "@/lib/export";
 import { money } from "@/lib/metrics";
 import type { Contract } from "@/lib/types";
@@ -17,12 +17,17 @@ export type RetainageRow = {
 
 type Props = {
   rows: RetainageRow[];
+  showSummaryNumbers?: boolean;
+  showGraphs?: boolean;
+  displayControls?: ReportPaneDisplayControls;
 };
 
-export function RetainageSummarySection({ rows }: Props) {
-  const [showDetails, setShowDetails] = useState(false);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
-
+export function RetainageSummarySection({
+  rows,
+  showSummaryNumbers = true,
+  showGraphs = false,
+  displayControls,
+}: Props) {
   const sorted = useMemo(
     () =>
       [...rows].sort((a, b) => {
@@ -48,23 +53,15 @@ export function RetainageSummarySection({ rows }: Props) {
     };
   }, [sorted, activeRows]);
 
-  const displayRows = activeRows.length > 0 ? activeRows : sorted;
-  const allExpanded =
-    displayRows.length > 0 && displayRows.every((r) => expandedIds.has(r.contract.id));
-
-  function toggleRow(id: string) {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleAll() {
-    if (allExpanded) setExpandedIds(new Set());
-    else setExpandedIds(new Set(displayRows.map((r) => r.contract.id)));
-  }
+  const chartData = useMemo(
+    () =>
+      activeRows.slice(0, 8).map((row) => ({
+        name: row.contract.contract_name ?? "Contract",
+        value: row.invoiceRetainage,
+        value2: row.subRetainage,
+      })),
+    [activeRows]
+  );
 
   function exportCsv() {
     downloadCsv(
@@ -91,29 +88,17 @@ export function RetainageSummarySection({ rows }: Props) {
     ]);
   }
 
-  const title = "Retainage (ASC 606)";
-  const subtitle =
-    "Owner retainage receivable is a contract asset; sub retainage withheld is a liability — not combined.";
+  const showHint = !showSummaryNumbers && !showGraphs;
 
   return (
-    <>
-      <ReportPane
-        title={title}
-        subtitle={subtitle}
-        onExportCsv={exportCsv}
-        onExportPdf={exportPdf}
-        footerStart={
-          sorted.length > 0 ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-xs"
-              onClick={() => setShowDetails(true)}
-            >
-              Show details
-            </button>
-          ) : null
-        }
-      >
+    <ReportPane
+      title="Retainage (ASC 606)"
+      subtitle="Owner retainage receivable is a contract asset; sub retainage withheld is a liability — not combined."
+      onExportCsv={exportCsv}
+      onExportPdf={exportPdf}
+      displayControls={displayControls}
+    >
+      {showSummaryNumbers ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mb-1">
           <StatCard
             compact
@@ -133,107 +118,19 @@ export function RetainageSummarySection({ rows }: Props) {
             value={String(totals.contractsWithRetainage)}
           />
         </div>
+      ) : null}
 
-        {sorted.length === 0 ? (
-          <p className="text-sm opacity-60 py-4 text-center">No contracts to report.</p>
-        ) : null}
-      </ReportPane>
+      {showGraphs ? (
+        <ReportBarChart data={chartData} valueLabel="Receivable" value2Label="Payable est." />
+      ) : null}
 
-      <ReportDetailsModal
-        open={showDetails}
-        title={title}
-        subtitle={subtitle}
-        onClose={() => {
-          setShowDetails(false);
-          setExpandedIds(new Set());
-        }}
-      >
-        {displayRows.every((r) => r.invoiceRetainage <= 0.005 && r.subRetainage <= 0.005) ? (
-          <p className="text-sm opacity-60 py-4 text-center">No retainage recorded yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th className="w-28">
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-xs"
-                      onClick={toggleAll}
-                      aria-expanded={allExpanded}
-                    >
-                      {allExpanded ? "Hide all" : "Show all"}
-                    </button>
-                  </th>
-                  <th>Contract</th>
-                  <th className="text-right">Receivable (Asset)</th>
-                  <th className="text-right">Payable Est (Liability)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayRows.map((row) => {
-                  const open = expandedIds.has(row.contract.id);
-                  return (
-                    <Fragment key={row.contract.id}>
-                      <tr className="font-medium bg-base-200/50">
-                        <td className="whitespace-nowrap">
-                          <button
-                            type="button"
-                            className={`btn btn-ghost btn-xs ${open ? "btn-active" : ""}`}
-                            onClick={() => toggleRow(row.contract.id)}
-                            aria-expanded={open}
-                          >
-                            {open ? "Hide" : "Details"}
-                          </button>
-                        </td>
-                        <td className="whitespace-nowrap">
-                          <Link
-                            href={`/contracts/${row.contract.id}`}
-                            className="link link-primary font-medium"
-                          >
-                            {row.contract.contract_name}
-                          </Link>
-                        </td>
-                        <td className="text-right whitespace-nowrap">{money(row.invoiceRetainage)}</td>
-                        <td className="text-right whitespace-nowrap">{money(row.subRetainage)}</td>
-                      </tr>
-                      {open ? (
-                        <tr className="bg-base-100">
-                          <td />
-                          <td colSpan={3} className="py-3">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm pl-2 border-l-2 border-primary/30">
-                              <div>
-                                <div className="opacity-60 text-xs">ASC 606 classification</div>
-                                <div className="font-medium">
-                                  Owner withholdings → contract asset; sub withholdings → liability
-                                </div>
-                              </div>
-                              <div>
-                                <div className="opacity-60 text-xs">Not netted</div>
-                                <div className="font-medium">
-                                  Receivable and payable are presented separately under GAAP
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="font-semibold bg-base-200">
-                  <td />
-                  <td>TOTALS</td>
-                  <td className="text-right whitespace-nowrap">{money(totals.invoiceRetainage)}</td>
-                  <td className="text-right whitespace-nowrap">{money(totals.subRetainage)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </ReportDetailsModal>
-    </>
+      {sorted.length === 0 ? (
+        <p className="text-sm opacity-60 py-4 text-center">No contracts to report.</p>
+      ) : showHint ? (
+        <p className="text-sm opacity-60 py-1">
+          Export CSV or PDF for per-contract retainage receivable and payable estimates.
+        </p>
+      ) : null}
+    </ReportPane>
   );
 }
