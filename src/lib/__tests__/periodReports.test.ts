@@ -41,6 +41,7 @@ function cost(partial: Partial<CostEntry> & Pick<CostEntry, "amount" | "date_inc
     description: null,
     notes: null,
     created_at: "2026-01-01",
+    approval_status: "approved",
     ...partial,
   };
 }
@@ -61,6 +62,7 @@ function invoice(
     status: "unpaid",
     notes: null,
     created_at: "2026-01-01",
+    approval_status: "approved",
     ...partial,
   };
 }
@@ -207,6 +209,80 @@ describe("buildPeriodRows", () => {
     expect(result.totals.billed).toBe(230_000);
     expect(result.totals.collected).toBe(50_000);
     expect(revisedContractValue(contract, changeOrders)).toBe(1_000_000);
+  });
+
+  it("excludes pending and rejected costs/invoices from period billed and expenses", () => {
+    const result = buildPeriodRows({
+      contracts: [contract],
+      costEntries: [
+        cost({ amount: 40_000, date_incurred: "2026-02-01", approval_status: "approved" }),
+        cost({
+          amount: 999_000,
+          date_incurred: "2026-02-02",
+          approval_status: "pending_accounting",
+        }),
+        cost({ amount: 888_000, date_incurred: "2026-02-03", approval_status: "rejected" }),
+      ],
+      invoices: [
+        invoice({
+          id: "ok",
+          invoice_amount: 25_000,
+          invoice_date: "2026-02-10",
+          approval_status: "approved",
+        }),
+        invoice({
+          id: "pend",
+          invoice_amount: 1_500_000,
+          invoice_date: "2026-02-11",
+          approval_status: "pending_accounting",
+        }),
+        invoice({
+          id: "rej",
+          invoice_amount: 750_000,
+          invoice_date: "2026-02-12",
+          approval_status: "rejected",
+        }),
+      ],
+      payments: [
+        {
+          id: "pay-ok",
+          invoice_id: "ok",
+          payment_amount: 10_000,
+          payment_date: "2026-02-15",
+          payment_method: null,
+          reference_number: null,
+          notes: null,
+          created_at: "2026-02-15",
+          approval_status: "posted",
+        },
+        {
+          id: "pay-rej-inv",
+          invoice_id: "rej",
+          payment_amount: 100_000,
+          payment_date: "2026-02-16",
+          payment_method: null,
+          reference_number: null,
+          notes: null,
+          created_at: "2026-02-16",
+          approval_status: "posted",
+        },
+      ],
+      changeOrders: [],
+      projects: [],
+      projectCosts: [],
+      billings: [],
+      mode: "month",
+      year: 2026,
+      contractId: "c1",
+    });
+
+    const feb = result.rows.find((r) => r.periodKey === "2026-02");
+    expect(feb?.expenses).toBe(40_000);
+    expect(feb?.billed).toBe(25_000);
+    expect(feb?.collected).toBe(10_000);
+    expect(result.totals.expenses).toBe(40_000);
+    expect(result.totals.billed).toBe(25_000);
+    expect(result.totals.collected).toBe(10_000);
   });
 
   it("yearly mode returns one row with period earned delta", () => {

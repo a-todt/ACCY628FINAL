@@ -16,6 +16,14 @@ import { WeatherBadge } from "@/components/WeatherBadge";
 import { writeAuditLog } from "@/lib/audit";
 import { computeContractMetrics, labelize, money, percent } from "@/lib/metrics";
 import {
+  costApprovalBadge,
+  costApprovalLabel,
+  invoiceApprovalBadge,
+  invoiceApprovalLabel,
+  isApprovedCost,
+  isApprovedInvoice,
+} from "@/lib/payments";
+import {
   canCancelOrDeleteContracts,
   canManageContracts,
   canViewContractFinancials,
@@ -115,8 +123,12 @@ function ContractDetailContent() {
     .filter((co) => co.contract_id === contract.id)
     .filter((co) => (isClient ? co.status === "approved" : true));
   const contractSubs = isClient ? [] : subcontractors.filter((s) => s.contract_id === contract.id);
-  const contractCosts = costEntries.filter((c) => c.contract_id === contract.id);
-  const contractInvoices = invoices.filter((i) => i.contract_id === contract.id);
+  const contractCosts = costEntries.filter(
+    (c) => c.contract_id === contract.id && (isClient ? isApprovedCost(c) : true)
+  );
+  const contractInvoices = invoices.filter(
+    (i) => i.contract_id === contract.id && (isClient ? isApprovedInvoice(i) : true)
+  );
   const contractFieldLogs = isClient ? [] : fieldLogs.filter((f) => f.contract_id === contract.id);
   const contractMilestones = milestones.filter((m) => m.contract_id === contract.id);
 
@@ -499,6 +511,7 @@ function ContractDetailContent() {
                     <th>Category</th>
                     <th>Description</th>
                     <th>Submitted By</th>
+                    <th>Approval</th>
                     <th className="text-right">Amount</th>
                   </tr>
                 </thead>
@@ -512,6 +525,11 @@ function ContractDetailContent() {
                         {userProfiles.find((p) => p.id === cost.user_id)?.full_name ??
                           userProfiles.find((p) => p.id === cost.user_id)?.email ??
                           "—"}
+                      </td>
+                      <td>
+                        <span className={`badge badge-sm ${costApprovalBadge(cost.approval_status)}`}>
+                          {costApprovalLabel(cost.approval_status)}
+                        </span>
                       </td>
                       <td className="text-right">{money(cost.amount)}</td>
                     </tr>
@@ -530,13 +548,14 @@ function ContractDetailContent() {
           <div className="overflow-x-auto">
             <table className="table table-sm">
               <thead>
-                <tr>
+                  <tr>
                   <th>Invoice #</th>
                   <th>Date</th>
                   <th>Due</th>
                   <th className="text-right">Amount</th>
                   <th className="text-right">Paid</th>
-                  <th>Status</th>
+                  <th>Payment</th>
+                  <th>Approval</th>
                 </tr>
               </thead>
               <tbody>
@@ -554,6 +573,13 @@ function ContractDetailContent() {
                     <td>
                       <span className={`badge badge-sm ${statusBadgeClass(invoice.status)}`}>
                         {labelize(invoice.status)}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        className={`badge badge-sm ${invoiceApprovalBadge(invoice.approval_status)}`}
+                      >
+                        {invoiceApprovalLabel(invoice.approval_status)}
                       </span>
                     </td>
                   </tr>

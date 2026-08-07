@@ -68,7 +68,7 @@ import {
   percent,
   scheduleBadgeClass,
 } from "@/lib/metrics";
-import { isApprovedCost } from "@/lib/payments";
+import { isApprovedCost, isApprovedInvoice } from "@/lib/payments";
 import {
   canApprovePayments,
   canCreateChangeOrders,
@@ -558,7 +558,10 @@ function AdminDashboard({
   const activeContracts = contracts.filter((c) => c.status === "active").length;
   const pendingCOs = changeOrders.filter((c) => c.status === "pending").length;
   const overdueInvoices = invoices.filter(
-    (i) => (i.status === "unpaid" || i.status === "partially_paid") && daysPastDue(i.due_date) > 0
+    (i) =>
+      isApprovedInvoice(i) &&
+      (i.status === "unpaid" || i.status === "partially_paid") &&
+      daysPastDue(i.due_date) > 0
   );
 
   const schedulePulse = computeSchedulePulseKpis(
@@ -2025,8 +2028,8 @@ function ClientDashboard({
     ),
     invoices: (
       <SectionCard compact title="Invoices & Payment Status">
-        {invoices.length === 0 ? (
-          <p className="text-sm opacity-60 py-6 text-center">No invoices issued yet.</p>
+        {invoices.filter(isApprovedInvoice).length === 0 ? (
+          <p className="text-sm opacity-60 py-6 text-center">No approved invoices yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="table table-sm">
@@ -2040,7 +2043,7 @@ function ClientDashboard({
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((invoice) => {
+                {invoices.filter(isApprovedInvoice).map((invoice) => {
                   const overdue =
                     (invoice.status === "unpaid" || invoice.status === "partially_paid") &&
                     daysPastDue(invoice.due_date) > 0;

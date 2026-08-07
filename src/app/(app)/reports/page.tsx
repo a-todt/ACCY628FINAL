@@ -24,7 +24,7 @@ import { DashboardCustomizeModal } from "@/components/DashboardCustomizeModal";
 import { DashboardPaneGrid } from "@/components/DashboardPaneGrid";
 import { AlertBanner, PageHeader } from "@/components/ui";
 import { computeContractMetrics, daysPastDue, invoiceRetainageReceivable, labelize } from "@/lib/metrics";
-import { isApprovedCost, isApprovedInvoice } from "@/lib/payments";
+import { isApprovedCost, isApprovedInvoice, isPostedPayment } from "@/lib/payments";
 import { canViewReports } from "@/lib/roles";
 import { defaultReportsLayout, paneShowsGraphs, paneShowsNumbers, REPORTS_PANES } from "@/lib/reportsLayout";
 import {
@@ -110,8 +110,18 @@ export default function ReportsPage() {
     [costEntries, dateRange]
   );
   const filteredPayments = useMemo(
-    () => payments.filter((p) => dateInReportsRange(p.payment_date, dateRange)),
-    [payments, dateRange]
+    () => {
+      const approvedInvoiceIds = new Set(
+        invoices.filter(isApprovedInvoice).map((i) => i.id)
+      );
+      return payments.filter(
+        (p) =>
+          isPostedPayment(p) &&
+          approvedInvoiceIds.has(p.invoice_id) &&
+          dateInReportsRange(p.payment_date, dateRange)
+      );
+    },
+    [payments, invoices, dateRange]
   );
   const filteredChangeOrders = useMemo(
     () =>

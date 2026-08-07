@@ -13,7 +13,7 @@ function contractRevisedValue(contract: Contract, changeOrders: ChangeOrder[]): 
 
 /** Pending + approved reserve capacity; rejected invoices do not. */
 function countsTowardBillableCapacity(invoice: Invoice): boolean {
-  return (invoice.approval_status ?? "approved") !== "rejected";
+  return invoice.approval_status !== "rejected";
 }
 
 /** Remaining contract value that can still be billed (revised − already billed). */

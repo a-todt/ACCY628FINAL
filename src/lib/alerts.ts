@@ -176,8 +176,9 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     });
   }
 
-  // 2) Overpayment vs net amount due (posted AR)
+  // 2) Overpayment vs net amount due (posted AR — approved invoices only)
   for (const invoice of invoices) {
+    if (!isApprovedInvoice(invoice)) continue;
     const net = Number(invoice.net_amount_due ?? invoice.invoice_amount ?? 0);
     const paid = Number(invoice.amount_paid ?? 0);
     if (net <= 0 || paid <= net + 0.01) continue;
@@ -320,6 +321,7 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
   }
 
   for (const invoice of invoices) {
+    if (invoice.approval_status === "rejected") continue;
     const amount = Number(invoice.invoice_amount ?? 0);
     if (amount <= 0) continue;
     const pmId = pmForContract(invoice.contract_id);
@@ -388,8 +390,10 @@ function buildFraudAlerts(data: AlertSourceData, now: string): AlertItem[] {
     });
   }
 
-  const bandInvoices = invoices.filter((i) =>
-    inStructuringBand(Number(i.invoice_amount ?? 0))
+  const bandInvoices = invoices.filter(
+    (i) =>
+      i.approval_status !== "rejected" &&
+      inStructuringBand(Number(i.invoice_amount ?? 0))
   );
   if (bandInvoices.length >= 3) {
     alerts.push({
